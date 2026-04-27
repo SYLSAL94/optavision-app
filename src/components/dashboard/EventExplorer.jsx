@@ -1,212 +1,330 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Search, 
-  Filter, 
-  Video, 
-  CheckCircle2, 
-  Circle, 
-  Clock, 
+  Trophy, 
+  ChevronRight, 
+  ChevronDown,
+  BarChart2, 
   User, 
-  Zap, 
-  TrendingUp, 
-  ChevronRight,
-  Loader2,
-  AlertCircle,
-  VideoIcon,
-  ShoppingCart
+  Target, 
+  Activity, 
+  Database,
+  ArrowUpDown,
+  Filter,
+  Layers
 } from 'lucide-react';
-import { OPTAVISION_API_URL } from '../../config';
+import { FootballPitch } from './FootballPitch';
 
-const EventExplorer = ({ matchId, matchName }) => {
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [search, setSearch] = useState('');
-  const [selectedEvents, setSelectedEvents] = useState([]);
-  const [filterType, setFilterType] = useState('all');
+const ACTION_TYPES = [
+  { id: 'Pass', label: 'Passes', icon: <Activity size={14} />, color: '#3cffd0' },
+  { id: 'Shot', label: 'Tirs', icon: <Target size={14} />, color: '#ff4d4d' },
+  { id: 'Duel', label: 'Duels', icon: <Layers size={14} />, color: '#5200ff' },
+  { id: 'Interception', label: 'Interceptions', icon: <Database size={14} />, color: '#ffd03c' },
+];
 
-  useEffect(() => {
-    const fetchEvents = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch(`${OPTAVISION_API_URL}/api/optavision/events/${encodeURIComponent(matchName)}`);
-        if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-        const data = await response.json();
-        setEvents(data);
-      } catch (err) {
-        console.error('Failed to fetch events:', err);
-        setError(err.message);
-      } finally {
-        setLoading(false);
+const RankBadge = ({ rank }) => {
+  if (rank === 1) return (
+    <div className="w-10 h-10 bg-[#3cffd0] text-black flex items-center justify-center text-xs font-black rounded-[4px] shadow-[4px_4px_0px_rgba(60,255,208,0.2)]">
+      {rank}
+    </div>
+  );
+  if (rank <= 3) return (
+    <div className="w-10 h-10 bg-[#5200ff] text-white flex items-center justify-center text-xs font-black rounded-[4px] shadow-[4px_4px_0px_rgba(82,0,255,0.2)]">
+      {rank}
+    </div>
+  );
+  return (
+    <div className="w-10 h-10 bg-[#2d2d2d] text-[#949494] flex items-center justify-center text-xs font-black rounded-[4px] border border-white/5">
+      {rank}
+    </div>
+  );
+};
+
+const EventExplorer = ({ data = [], matchId, loading = false, filters }) => {
+  const [selectedAction, setSelectedAction] = useState('Pass');
+  const [sortOrder, setSortOrder] = useState('desc');
+  const [isSelectOpen, setIsSelectOpen] = useState(false);
+
+  // FILTRAGE DYNAMIQUE DES DONNÉES (Binding avec le FilterPanel)
+  const filteredData = useMemo(() => {
+    return data.filter(event => {
+      // Filtrage par types d'actions (Auto-Discovery)
+      const matchesType = filters?.types?.length > 0 
+        ? filters.types.includes(event.type) 
+        : true;
+        
+      // Filtrage par joueurs
+      const matchesPlayer = filters?.players?.length > 0
+        ? filters.players.includes(event.playerName)
+        : true;
+
+      return matchesType && matchesPlayer;
+    });
+  }, [data, filters]);
+
+  // Calcul du classement des joueurs basé sur l'action sélectionnée dans le sélecteur DROIT
+  const playerRanking = useMemo(() => {
+    if (!filteredData || filteredData.length === 0) return [];
+
+    const counts = {};
+    const playerTeams = {};
+
+    filteredData.forEach(event => {
+      if (event.type === selectedAction) {
+        const playerName = event.playerName || 'Unknown Player';
+        counts[playerName] = (counts[playerName] || 0) + 1;
+        playerTeams[playerName] = event.teamName || 'Unknown Team';
       }
-    };
+    });
 
-    if (matchName) fetchEvents();
-  }, [matchName]);
-
-  const toggleEvent = (eventId) => {
-    setSelectedEvents(prev => 
-      prev.includes(eventId) 
-        ? prev.filter(id => id !== eventId)
-        : [...prev, eventId]
-    );
-  };
-
-  const filteredEvents = events.filter(e => {
-    const matchesSearch = (e.playerName?.toLowerCase().includes(search.toLowerCase()) || e.type?.toLowerCase().includes(search.toLowerCase()));
-    const matchesType = filterType === 'all' || e.type?.toLowerCase() === filterType.toLowerCase();
-    return matchesSearch && matchesType;
-  });
-
-  const uniqueTypes = ['all', ...new Set(events.map(e => e.type))];
-
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-32 gap-6 bg-[#131313] border border-white/5 rounded-[24px]">
-        <Loader2 size={40} className="text-[#3cffd0] animate-spin" />
-        <div className="text-center">
-          <p className="verge-label-mono text-[10px] text-[#3cffd0] uppercase tracking-[0.4em] font-black">Analyse du flux Opta...</p>
-          <p className="verge-label-mono text-[8px] text-[#949494] uppercase tracking-[0.2em] mt-2">Désarchivage du JSONB en colonnes analytiques</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="bg-red-500/5 border border-red-500/20 rounded-[24px] p-16 text-center">
-        <AlertCircle size={40} className="text-red-500 mx-auto mb-6" />
-        <h3 className="verge-h3 text-white mb-2 uppercase">Échec de récupération des événements</h3>
-        <p className="verge-label-mono text-[11px] text-[#949494] uppercase tracking-widest">{error}</p>
-      </div>
-    );
-  }
+    return Object.entries(counts)
+      .map(([name, count]) => ({
+        name,
+        count,
+        team: playerTeams[name],
+      }))
+      .sort((a, b) => sortOrder === 'desc' ? b.count - a.count : a.count - b.count);
+  }, [filteredData, selectedAction, sortOrder]);
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-8 bg-[#131313] border border-white/10 p-8 rounded-[24px]">
-        <div className="flex flex-col md:flex-row gap-6 w-full xl:w-auto">
-          <div className="relative w-full md:w-[400px]">
-            <Search size={16} className="absolute left-6 top-1/2 -translate-y-1/2 text-[#949494]" />
-            <input 
-              type="text"
-              placeholder="FILTRER PAR JOUEUR OU ACTION..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-full px-14 py-4 text-white verge-label-mono text-[11px] focus:outline-none focus:border-[#3cffd0] transition-all"
-            />
-          </div>
-          <select 
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className="bg-white/5 border border-white/10 rounded-full px-8 py-4 text-white verge-label-mono text-[11px] outline-none hover:border-white/20 transition-all uppercase"
-          >
-            {uniqueTypes.map(t => (
-              <option key={t} value={t} className="bg-[#131313]">{t}</option>
-            ))}
-          </select>
-        </div>
+    <div className="flex h-full w-full gap-8 animate-in fade-in zoom-in-95 duration-500 overflow-hidden">
+      
+      {/* ZONE CENTRALE : TERRAIN TACTIQUE */}
+      <div className="flex-1 flex flex-col gap-8 min-w-0">
+        <div className="bg-[#1a1a1a] border border-white/10 rounded-[4px] p-8 flex flex-col gap-6 relative overflow-hidden group flex-1">
+          <div className="absolute inset-0 bg-gradient-to-b from-[#3cffd0]/2 to-transparent pointer-events-none" />
+          
+          {/* Corner Markers (Scouting Style) */}
+          <div className="absolute top-0 right-0 w-8 h-8 border-t border-r border-white/5 pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-8 h-8 border-b border-l border-white/5 pointer-events-none" />
 
-        <div className="flex items-center gap-6 w-full xl:w-auto border-t xl:border-t-0 xl:border-l border-white/10 pt-6 xl:pt-0 xl:pl-8">
-           <div className="flex flex-col">
-              <span className="verge-label-mono text-[9px] text-[#949494] uppercase font-black tracking-widest">Événements Sélectionnés</span>
-              <div className="flex items-center gap-3">
-                 <ShoppingCart size={16} className={selectedEvents.length > 0 ? "text-[#3cffd0]" : "text-[#949494]"} />
-                 <span className="verge-label-mono text-[16px] text-white font-black">{selectedEvents.length}</span>
+          <div className="flex justify-between items-center relative z-10 border-b border-white/5 pb-6">
+            <div className="flex items-center gap-6">
+              <div className="w-1 h-8 bg-[#3cffd0]" />
+              <div>
+                <h3 className="verge-h3 text-white uppercase tracking-tighter font-black">Visualisation Spatiale</h3>
+                <p className="verge-label-mono text-[9px] text-[#3cffd0] uppercase tracking-[0.3em] font-bold mt-1">
+                  Aperçu tactique des {selectedAction}s ({filteredData.length} sélectionnés)
+                </p>
               </div>
-           </div>
-           <button 
-             disabled={selectedEvents.length === 0}
-             className={`btn-verge-primary px-10 py-4 text-[10px] flex items-center gap-3 ml-auto ${selectedEvents.length === 0 ? 'opacity-30 grayscale cursor-not-allowed' : ''}`}
-           >
-             GÉNÉRER LA SÉQUENCE <VideoIcon size={14} />
-           </button>
-        </div>
-      </div>
-
-      <div className="bg-[#131313] border border-white/10 rounded-[24px] overflow-hidden">
-        <div className="grid grid-cols-[80px_1fr_120px_150px_120px_60px] p-6 border-b border-white/10 bg-white/5">
-          {['TEMPS', 'ÉVÉNEMENT / JOUEUR', 'IMPACT XT', 'PROG. PASS', 'COORDONNÉES', ''].map((h, i) => (
-            <span key={i} className="verge-label-mono text-[9px] text-[#949494] font-black uppercase tracking-widest">{h}</span>
-          ))}
-        </div>
-
-        <div className="max-h-[600px] overflow-y-auto scrollbar-verge">
-          {filteredEvents.map((event, idx) => {
-            const isSelected = selectedEvents.includes(event.id);
-            const isHighXT = event.xT > 0.03;
-            return (
-              <motion.div 
-                key={event.id || idx}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                onClick={() => toggleEvent(event.id)}
-                className={`grid grid-cols-[80px_1fr_120px_150px_120px_60px] items-center p-6 border-b border-white/5 cursor-pointer transition-all hover:bg-white/[0.02] ${isSelected ? 'bg-[#3cffd0]/5' : ''}`}
-              >
-                <div className="flex items-center gap-2">
-                  <Clock size={12} className="text-[#949494]" />
-                  <span className="verge-label-mono text-[12px] text-white font-black">
-                    {String(event.minute).padStart(2, '0')}:{String(event.second).padStart(2, '0')}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center gap-3">
-                    <span className={`verge-label-mono text-[10px] font-black px-2 py-0.5 rounded-[2px] uppercase ${isSelected ? 'bg-[#3cffd0] text-black' : 'bg-white/10 text-white'}`}>
-                      {event.type}
-                    </span>
-                    <span className="verge-label-mono text-[11px] text-white flex items-center gap-2">
-                      <User size={10} className="text-[#949494]" /> {event.playerName || 'JOUEUR INCONNU'}
-                    </span>
-                  </div>
-                  <span className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-tighter opacity-60">
-                    {event.teamName} • Sequence ID: {event.id.split('_').pop()}
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  {isHighXT && <Zap size={12} className="text-[#3cffd0] animate-pulse" />}
-                  <span className={`verge-label-mono text-[12px] font-black ${isHighXT ? 'text-[#3cffd0]' : 'text-white/60'}`}>
-                    {event.xT ? `+${event.xT.toFixed(4)}` : '0.0000'}
-                  </span>
-                </div>
-                <div>
-                  {event.prog_pass ? (
-                    <div className="flex items-center gap-2 text-[#3cffd0] bg-[#3cffd0]/10 w-fit px-3 py-1 rounded-full border border-[#3cffd0]/20">
-                      <TrendingUp size={10} />
-                      <span className="verge-label-mono text-[9px] font-black uppercase">Progressive</span>
-                    </div>
-                  ) : (
-                    <span className="verge-label-mono text-[9px] text-white/20 uppercase font-black">Standard</span>
-                  )}
-                </div>
-                <div className="verge-label-mono text-[10px] text-[#949494]">
-                  {event.x ? `${event.x.toFixed(1)}, ${event.y.toFixed(1)}` : 'N/A'}
-                </div>
-                <div className="flex justify-center">
-                  <button className={`transition-all ${isSelected ? 'text-[#3cffd0] scale-110' : 'text-white/10 hover:text-white/30'}`}>
-                    {isSelected ? <CheckCircle2 size={22} /> : <Circle size={22} />}
-                  </button>
-                </div>
-              </motion.div>
-            );
-          })}
-          {filteredEvents.length === 0 && (
-            <div className="p-20 text-center space-y-4">
-              <p className="verge-label-mono text-[11px] text-[#949494] uppercase tracking-widest italic opacity-40">Aucun événement ne correspond aux filtres actifs.</p>
             </div>
-          )}
+            
+            <div className="flex items-center gap-3">
+              <div className="px-5 py-2.5 bg-black border border-white/10 rounded-[2px] verge-label-mono text-[10px] text-[#949494] font-black tracking-widest">
+                SESSION: <span className="text-[#3cffd0]">{matchId || 'ANALYST_PRO'}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Terrain Svg */}
+          <div className="flex-1 min-h-0 bg-black/40 rounded-[2px] border border-white/5 p-8 shadow-inner relative flex items-center justify-center overflow-hidden">
+             <div className="w-full h-full max-w-[1000px] max-h-[700px] relative">
+               <FootballPitch 
+                  orientation="horizontal" 
+                  style={{ grass: 'transparent', line: 'rgba(255,255,255,0.08)', background: 'transparent' }} 
+               />
+               
+               {/* Affichage des points (Events) sur le terrain avec SCALING CORRECT */}
+               {!loading && filteredData.length > 0 && (
+                 <svg viewBox="0 0 105 68" className="absolute inset-0 w-full h-full pointer-events-none">
+                   {filteredData.slice(0, 1000).map((event, i) => (
+                     <circle 
+                       key={i}
+                       cx={(event.x / 100) * 105} 
+                       cy={(event.y / 100) * 68} 
+                       r="0.6" 
+                       fill={event.type === 'Shot' ? '#ff4d4d' : '#3cffd0'}
+                       className="animate-in fade-in zoom-in duration-300"
+                     />
+                   ))}
+                 </svg>
+               )}
+             </div>
+             
+             {/* Overlay de message si chargement ou pas de données */}
+             {(loading || data.length === 0) && (
+               <div className="absolute inset-0 flex items-center justify-center backdrop-blur-[1px] z-50">
+                 <div className="bg-black/90 border border-white/10 p-8 rounded-[2px] text-center max-w-sm shadow-2xl">
+                   <div className="w-16 h-16 bg-[#3cffd0]/10 border border-[#3cffd0]/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                     {loading ? (
+                       <div className="w-8 h-8 border-2 border-[#3cffd0] border-t-transparent rounded-full animate-spin" />
+                     ) : (
+                       <Filter className="text-[#3cffd0]" size={24} />
+                     )}
+                   </div>
+                   <h4 className="verge-label-mono text-white text-[12px] font-black uppercase mb-2">
+                     {loading ? 'Hyrdratation en cours' : 'Synchronisation prête'}
+                   </h4>
+                   <p className="verge-label-mono text-[9px] text-[#949494] leading-relaxed uppercase tracking-widest">
+                     {loading ? 'Récupération du flux JSONB depuis le serveur...' : 'En attente de réception du flux pour le Match ID fourni.'}
+                   </p>
+                 </div>
+               </div>
+             )}
+          </div>
+        </div>
+
+        {/* LOG DES ÉVÉNEMENTS (Filtré) */}
+        <div className="h-56 bg-[#1a1a1a] border border-white/10 rounded-[4px] flex flex-col overflow-hidden">
+          <div className="px-6 py-4 border-b border-white/10 bg-[#2d2d2d] flex justify-between items-center">
+             <div className="flex items-center gap-4">
+               <div className={`w-2 h-2 rounded-full ${loading ? 'bg-orange-500 animate-bounce' : 'bg-[#3cffd0] animate-pulse'}`} />
+               <span className="verge-label-mono text-[10px] text-white font-black uppercase tracking-[0.2em]">
+                 {loading ? 'Receiving Data...' : 'Flux Live Analyst'}
+               </span>
+             </div>
+             <span className="verge-label-mono text-[9px] text-[#949494] bg-white/5 px-3 py-1 rounded-[2px] border border-white/5">
+               {filteredData.length.toLocaleString()} SELECTED / {data.length.toLocaleString()} TOTAL
+             </span>
+          </div>
+          <div className="flex-1 overflow-y-auto styled-scrollbar-verge bg-black/20">
+             {!loading && filteredData.length > 0 ? (
+               filteredData.slice(0, 100).map((e, i) => (
+                 <div key={i} className="flex items-center justify-between py-3 border-b border-white/[0.03] hover:bg-[#3cffd0]/5 transition-colors px-6 group">
+                   <div className="flex items-center gap-6">
+                     <span className="verge-label-mono text-[10px] text-[#3cffd0] font-black">{e.minute || '00'}'</span>
+                     <span className="verge-label-mono text-[10px] text-white uppercase font-black tracking-tight">{e.type}</span>
+                     <span className="verge-label-mono text-[10px] text-[#949494] group-hover:text-white transition-colors">{e.playerName}</span>
+                   </div>
+                   <div className="verge-label-mono text-[8px] text-[#2d2d2d] group-hover:text-[#3cffd0] transition-colors font-black">
+                     {e.id || `EVENT_${i}`}
+                   </div>
+                 </div>
+               ))
+             ) : (
+               <div className="h-full flex items-center justify-center opacity-10">
+                 <div className="text-center">
+                   {loading ? (
+                      <div className="verge-label-mono text-[10px] uppercase font-black tracking-[0.5em] animate-pulse">Streaming Jsonb...</div>
+                   ) : (
+                     <>
+                       <Database size={32} className="mx-auto mb-4" />
+                       <div className="verge-label-mono text-[10px] uppercase font-black tracking-widest">No Active Stream</div>
+                     </>
+                   )}
+                 </div>
+               </div>
+             )}
+          </div>
         </div>
       </div>
 
-      <div className="flex items-center justify-center gap-8 text-[#949494]">
-         <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-[#3cffd0] rounded-full" />
-            <span className="verge-label-mono text-[9px] uppercase font-black">Indicateur d'Impact (xT &gt; 0.03)</span>
-         </div>
-         <div className="flex items-center gap-2">
-            <TrendingUp size={12} className="text-[#3cffd0]" />
-            <span className="verge-label-mono text-[9px] uppercase font-black">Progression Verticale Validée</span>
-         </div>
+      {/* COLONNE DROITE : RANKING PERFORMANCE (Filtré) */}
+      <div className="w-[450px] flex flex-col gap-0 bg-[#1a1a1a] border border-white/10 rounded-[4px] overflow-hidden shadow-[0_40px_100px_rgba(0,0,0,0.4)]">
+        
+        {/* Header Ranking Section */}
+        <div className="p-8 border-b border-white/10 bg-[#2d2d2d]">
+          <div className="flex items-center gap-4 mb-8">
+            <Trophy className="text-[#3cffd0]" size={20} />
+            <h3 className="verge-h3 text-white uppercase tracking-tighter font-black">Ranking Performance</h3>
+          </div>
+
+          <div className="space-y-4">
+             <div className="flex items-center gap-4">
+                <div className="w-1 h-4 bg-[#3cffd0]" />
+                <span className="verge-label-mono text-[10px] font-black text-white uppercase tracking-widest">Order By</span>
+             </div>
+             
+             {/* Custom Select - Style Scouting */}
+             <div className="relative">
+                <button 
+                  onClick={() => setIsSelectOpen(!isSelectOpen)}
+                  className="w-full flex items-center justify-between px-6 py-4 bg-[#131313] border border-white/10 rounded-[2px] verge-label-mono text-[10px] text-white font-black hover:border-[#3cffd0]/50 transition-all text-left"
+                >
+                  <div className="flex items-center gap-4">
+                    {ACTION_TYPES.find(a => a.id === selectedAction)?.icon}
+                    <span className="uppercase tracking-widest">{ACTION_TYPES.find(a => a.id === selectedAction)?.label || 'SELECT METRIC...'}</span>
+                  </div>
+                  <ChevronDown className={`text-[#949494] transition-transform ${isSelectOpen ? 'rotate-180' : ''}`} size={16} />
+                </button>
+
+                <AnimatePresence>
+                  {isSelectOpen && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 10 }}
+                      className="absolute top-full left-0 right-0 mt-2 bg-[#1a1a1a] border border-white/10 rounded-[2px] shadow-2xl z-50 overflow-hidden"
+                    >
+                      {ACTION_TYPES.map(type => (
+                        <button
+                          key={type.id}
+                          onClick={() => {
+                            setSelectedAction(type.id);
+                            setIsSelectOpen(false);
+                          }}
+                          className={`w-full flex items-center gap-4 px-6 py-4 verge-label-mono text-[10px] font-black uppercase tracking-widest text-left transition-all border-b border-white/[0.03] ${
+                            selectedAction === type.id 
+                            ? 'bg-[#3cffd0] text-black' 
+                            : 'text-[#949494] hover:bg-white/5 hover:text-white'
+                          }`}
+                        >
+                          {type.icon}
+                          {type.label}
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+             </div>
+          </div>
+        </div>
+
+        {/* Ranking List Table-Style (Basé sur filteredData) */}
+        <div className="flex-1 overflow-hidden flex flex-col bg-[#131313]">
+          <div className="px-8 py-4 border-b border-white/5 flex items-center justify-between bg-black/40">
+             <span className="verge-label-mono text-[9px] text-[#949494] font-black uppercase tracking-widest">Leaderboard</span>
+             <button 
+                onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                className="flex items-center gap-2 text-[#949494] hover:text-[#3cffd0] transition-colors"
+             >
+                <ArrowUpDown size={12} />
+                <span className="verge-label-mono text-[8px] uppercase font-black">Sort</span>
+             </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto styled-scrollbar-verge divide-y divide-white/[0.03] flex flex-col">
+             {playerRanking.length > 0 ? (
+               <AnimatePresence mode="popLayout">
+                  {playerRanking.map((player, index) => (
+                    <motion.div
+                      key={player.name}
+                      layout
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      className="group flex items-center gap-6 p-6 hover:bg-[#3cffd0]/5 transition-all cursor-pointer relative"
+                    >
+                      <RankBadge rank={index + 1} />
+                      <div className="flex-1 min-w-0">
+                         <div className="verge-label-mono text-[13px] text-white font-black group-hover:text-[#3cffd0] transition-colors truncate uppercase tracking-tight">
+                           {player.name}
+                         </div>
+                         <div className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest mt-1 opacity-60">
+                           {player.team}
+                         </div>
+                      </div>
+                      <div className="text-right flex flex-col items-end">
+                         <span className="verge-label-mono text-3xl font-black text-[#3cffd0] leading-none tabular-nums tracking-tighter">
+                           {player.count}
+                         </span>
+                         <span className="verge-label-mono text-[7px] text-[#949494] uppercase font-black tracking-widest mt-1">
+                           {selectedAction}s
+                       </span>
+                      </div>
+                      <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-[#3cffd0] scale-y-0 group-hover:scale-y-100 transition-transform origin-center" />
+                    </motion.div>
+                  ))}
+               </AnimatePresence>
+             ) : (
+                <div className="flex-1 flex flex-col items-center justify-center p-20 text-center opacity-20">
+                  <BarChart2 size={48} className="mb-6" />
+                  <div className="verge-label-mono text-[11px] font-black uppercase tracking-[0.3em]">No Data Profile</div>
+                  <p className="verge-label-mono text-[8px] mt-4 uppercase tracking-[0.2em] opacity-50">Waiting for analyst stream...</p>
+                </div>
+             )}
+          </div>
+        </div>
       </div>
     </div>
   );

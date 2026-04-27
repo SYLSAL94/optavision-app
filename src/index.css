@@ -1,5 +1,5 @@
-@import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@700&family=Inter:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
 
 @theme {
   --color-canvas-black: #131313;
@@ -99,6 +99,14 @@ h1, h2, h3, .verge-display {
   text-transform: uppercase;
   letter-spacing: 1.5px;
   color: var(--secondary-text);
+}
+
+.verge-card {
+  background: var(--canvas-black);
+  border: 1px solid var(--hazard-white);
+  border-radius: var(--radius-4);
+  padding: 24px;
+  transition: border-color 150ms ease;
 }
 
 .scrollbar-verge::-webkit-scrollbar {
