@@ -21,7 +21,21 @@ import AccordionSection from './AccordionSection';
  * ExplorationFilterPanel - Version Dynamique (Auto-Discovery)
  * Hydrate automatiquement les filtres à partir de la prop eventsData.
  */
-const ExplorationFilterPanel = ({ matchesList = [], availableActionTypes = [], teamsList = [], playersList = [], filters, onFilterChange, onClose }) => {
+const ExplorationFilterPanel = ({ 
+  matchesList = [], 
+  availableActionTypes = [], 
+  competitionsList = [],
+  seasonsList = [],
+  weeksList = [],
+  countriesList = [],
+  phasesList = [],
+  stadiumsList = [],
+  teamsList = [], 
+  playersList = [], 
+  filters, 
+  onFilterChange, 
+  onClose 
+}) => {
   const [openSection, setOpenSection] = useState('primary');
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -53,7 +67,13 @@ const ExplorationFilterPanel = ({ matchesList = [], availableActionTypes = [], t
       outcome: null,
       period_id: null,
       location: null,
-      zone: null
+      zone: null,
+      competition: null,
+      season: null,
+      week: null,
+      country: null,
+      phase: null,
+      stadium: null
     };
     setPendingFilters(initial);
   };
@@ -102,25 +122,113 @@ const ExplorationFilterPanel = ({ matchesList = [], availableActionTypes = [], t
           icon={<Database size={18} />}
           isOpen={openSection === 'matches'}
           onToggle={() => setOpenSection(openSection === 'matches' ? null : 'matches')}
-          badge={pendingFilters.matches?.length || 0}
+          badge={(pendingFilters.matches?.length || 0) + (pendingFilters.competition ? 1 : 0) + (pendingFilters.season ? 1 : 0) + (pendingFilters.week ? 1 : 0) + (pendingFilters.country ? 1 : 0)}
         >
-          <div className="space-y-4">
-            <div className="verge-label-mono text-[8px] text-[#949494] uppercase mb-4 tracking-widest">SÉLECTIONNEZ LES MATCHS À ANALYSER</div>
-            <div className="space-y-1">
-              {matchesList.map(match => (
-                <button 
-                  key={match.id}
-                  onClick={() => toggleFilter('matches', match.id)}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-[2px] verge-label-mono text-[10px] font-black uppercase transition-all ${
-                    pendingFilters.matches.includes(match.id)
-                    ? 'bg-[#3cffd0]/10 text-[#3cffd0] border border-[#3cffd0]/20'
-                    : 'bg-white/5 text-[#949494] border border-transparent hover:bg-white/10'
-                  }`}
+          <div className="space-y-8">
+            <div className="grid grid-cols-2 gap-4">
+              {/* Filtre par Compétition */}
+              <div className="space-y-3">
+                <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Compétition</label>
+                <select 
+                  value={pendingFilters.competition || ''} 
+                  onChange={(e) => setPendingFilters({ ...pendingFilters, competition: e.target.value || null })}
+                  className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white outline-none focus:border-[#3cffd0]"
                 >
-                  {match.label || match.id}
-                  {pendingFilters.matches.includes(match.id) && <Check size={12} />}
-                </button>
-              ))}
+                  <option value="">TOUTES</option>
+                  {competitionsList.map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
+                </select>
+              </div>
+
+              {/* Filtre par Saison */}
+              <div className="space-y-3">
+                <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Saison</label>
+                <select 
+                  value={pendingFilters.season || ''} 
+                  onChange={(e) => setPendingFilters({ ...pendingFilters, season: e.target.value || null })}
+                  className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white outline-none focus:border-[#3cffd0]"
+                >
+                  <option value="">TOUTES</option>
+                  {seasonsList.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {/* Filtre par Semaine */}
+              <div className="space-y-3">
+                <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Semaine</label>
+                <select 
+                  value={pendingFilters.week || ''} 
+                  onChange={(e) => setPendingFilters({ ...pendingFilters, week: e.target.value || null })}
+                  className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white outline-none focus:border-[#3cffd0]"
+                >
+                  <option value="">TOUTES</option>
+                  {weeksList.map(w => <option key={w} value={w}>SEM {w}</option>)}
+                </select>
+              </div>
+
+              {/* Filtre par Pays */}
+              <div className="space-y-3">
+                <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Pays</label>
+                <select 
+                  value={pendingFilters.country || ''} 
+                  onChange={(e) => setPendingFilters({ ...pendingFilters, country: e.target.value || null })}
+                  className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white outline-none focus:border-[#3cffd0]"
+                >
+                  <option value="">TOUS</option>
+                  {countriesList.map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {/* Filtre par Phase */}
+              <div className="space-y-3">
+                <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Phase</label>
+                <select 
+                  value={pendingFilters.phase || ''} 
+                  onChange={(e) => setPendingFilters({ ...pendingFilters, phase: e.target.value || null })}
+                  className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white outline-none focus:border-[#3cffd0]"
+                >
+                  <option value="">TOUTES</option>
+                  {phasesList.map(p => <option key={p} value={p}>{p.toUpperCase()}</option>)}
+                </select>
+              </div>
+
+              {/* Filtre par Stade */}
+              <div className="space-y-3">
+                <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Stade</label>
+                <select 
+                  value={pendingFilters.stadium || ''} 
+                  onChange={(e) => setPendingFilters({ ...pendingFilters, stadium: e.target.value || null })}
+                  className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white outline-none focus:border-[#3cffd0]"
+                >
+                  <option value="">TOUS</option>
+                  {stadiumsList.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="h-px bg-white/5 my-4" />
+
+            <div className="space-y-4">
+              <div className="verge-label-mono text-[8px] text-[#949494] uppercase mb-4 tracking-widest">SÉLECTION INDIVIDUELLE</div>
+              <div className="space-y-1">
+                {matchesList.map(match => (
+                  <button 
+                    key={match.id}
+                    onClick={() => toggleFilter('matches', match.id)}
+                    className={`w-full flex items-center justify-between px-4 py-3 rounded-[2px] verge-label-mono text-[10px] font-black uppercase transition-all ${
+                      pendingFilters.matches.includes(match.id)
+                      ? 'bg-[#3cffd0]/10 text-[#3cffd0] border border-[#3cffd0]/20'
+                      : 'bg-white/5 text-[#949494] border border-transparent hover:bg-white/10'
+                    }`}
+                  >
+                    {match.label || match.id}
+                    {pendingFilters.matches.includes(match.id) && <Check size={12} />}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </AccordionSection>

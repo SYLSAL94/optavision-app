@@ -57,7 +57,13 @@ const OptaVisionDashboard = ({ user }) => {
     outcome: null,
     period_id: null,
     location: null,
-    zone: null
+    zone: null,
+    competition: null,
+    season: null,
+    week: null,
+    country: null,
+    phase: null,
+    stadium: null
   });
 
   const fetchEvents = async () => {
@@ -81,6 +87,12 @@ const OptaVisionDashboard = ({ user }) => {
     if (explorationFilters.period_id) params.append('period_id', explorationFilters.period_id.toString());
     if (explorationFilters.location) params.append('location', explorationFilters.location);
     if (explorationFilters.zone) params.append('zone', explorationFilters.zone);
+    if (explorationFilters.competition) params.append('competition', explorationFilters.competition);
+    if (explorationFilters.season) params.append('season', explorationFilters.season);
+    if (explorationFilters.week) params.append('week', explorationFilters.week);
+    if (explorationFilters.country) params.append('country', explorationFilters.country);
+    if (explorationFilters.phase) params.append('phase', explorationFilters.phase);
+    if (explorationFilters.stadium) params.append('stadium', explorationFilters.stadium);
 
     const url = `${OPTAVISION_API_URL}/api/optavision/events?${params.toString()}`;
     console.log("🌐 Appel de l'API OptaVision vers :", url);
@@ -113,9 +125,15 @@ const OptaVisionDashboard = ({ user }) => {
           fetch(`${OPTAVISION_API_URL}/api/optavision/players`).then(r => r.json())
         ]);
         
-        // Structure de meta : { matches: [{id, label}], action_types: [] }
+        // Structure de meta : { matches, action_types, competitions, seasons, weeks, countries, phases, stadiums }
         setMatchesList(meta.matches || []);
         setAvailableActionTypes(meta.action_types || []);
+        setCompetitionsList(meta.competitions || []);
+        setSeasonsList(meta.seasons || []);
+        setWeeksList(meta.weeks || []);
+        setCountriesList(meta.countries || []);
+        setPhasesList(meta.phases || []);
+        setStadiumsList(meta.stadiums || []);
         setTeamsList(t);
         setPlayersList(p);
         
@@ -131,6 +149,12 @@ const OptaVisionDashboard = ({ user }) => {
   }, []);
 
   const [availableActionTypes, setAvailableActionTypes] = useState([]);
+  const [competitionsList, setCompetitionsList] = useState([]);
+  const [seasonsList, setSeasonsList] = useState([]);
+  const [weeksList, setWeeksList] = useState([]);
+  const [countriesList, setCountriesList] = useState([]);
+  const [phasesList, setPhasesList] = useState([]);
+  const [stadiumsList, setStadiumsList] = useState([]);
 
   // Hydratation automatique
   useEffect(() => {
@@ -356,6 +380,12 @@ const OptaVisionDashboard = ({ user }) => {
                       <ExplorationFilterPanel 
                         matchesList={matchesList}
                         availableActionTypes={availableActionTypes}
+                        competitionsList={competitionsList}
+                        seasonsList={seasonsList}
+                        weeksList={weeksList}
+                        countriesList={countriesList}
+                        phasesList={phasesList}
+                        stadiumsList={stadiumsList}
                         teamsList={teamsList}
                         playersList={playersList}
                         filters={explorationFilters}
