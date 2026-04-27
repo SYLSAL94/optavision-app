@@ -12,7 +12,8 @@ import {
   ChevronDown,
   User,
   Target,
-  X
+  X,
+  Database
 } from 'lucide-react';
 import AccordionSection from './AccordionSection';
 
@@ -23,28 +24,46 @@ import AccordionSection from './AccordionSection';
 const ExplorationFilterPanel = ({ matchesList = [], teamsList = [], playersList = [], filters, onFilterChange, onClose }) => {
   const [openSection, setOpenSection] = useState('primary');
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // BOUCLIER ANTI-SPAM : État local pour les modifications en cours
+  const [pendingFilters, setPendingFilters] = useState({ ...filters });
 
   // Liste fixe des types d'actions (Contrat Opta)
   const actionTypes = ['Pass', 'Shot', 'Tackle', 'Interception', 'Clearance', 'Save', 'Carry'];
 
   const toggleFilter = (category, value) => {
-    // Si la valeur est un objet (player/team), on utilise son .id
     const filterValue = typeof value === 'object' ? value.id : value;
-    
-    const current = filters[category] || [];
+    const current = pendingFilters[category] || [];
     const updated = current.includes(filterValue)
       ? current.filter(v => v !== filterValue)
       : [...current, filterValue];
-    onFilterChange({ ...filters, [category]: updated });
+    setPendingFilters({ ...pendingFilters, [category]: updated });
+  };
+
+  const updateNumericFilter = (category, value) => {
+    setPendingFilters({ ...pendingFilters, [category]: value });
   };
 
   const resetFilters = () => {
-    onFilterChange({
+    const initial = {
+      matches: [],
       types: [],
       players: [],
-      xtMin: 0.0,
-      scoreMin: 0
-    });
+      teams: [],
+      min_xt: 0.0,
+      start_min: 0,
+      end_min: 95,
+      outcome: null,
+      period_id: null,
+      location: null,
+      zone: null
+    };
+    setPendingFilters(initial);
+  };
+
+  const applyAnalysis = () => {
+    onFilterChange(pendingFilters);
+    onClose();
   };
 
   const filteredPlayers = playersList.filter(p => 
@@ -60,7 +79,7 @@ const ExplorationFilterPanel = ({ matchesList = [], teamsList = [], playersList 
           <div className="flex flex-col">
             <h3 className="verge-h3 text-white flex items-center gap-4">
               <SlidersHorizontal size={22} className="text-[#3cffd0]" />
-              AUTO-DISCOVERY
+              FILTRAGE CONTEXTUEL
             </h3>
             <p className="verge-label-mono text-[9px] text-[#3cffd0] mt-2 uppercase tracking-[0.2em] font-black">
               {matchesList.length} MATCHS DÉTECTÉS
@@ -71,35 +90,52 @@ const ExplorationFilterPanel = ({ matchesList = [], teamsList = [], playersList 
             className="verge-label-mono text-[10px] text-[#949494] hover:text-white uppercase font-black transition-colors flex items-center gap-2"
           >
             <RotateCcw size={12} />
-            Reset
+            Réinitialiser
           </button>
-        </div>
-
-        {/* STATS RAPIDES */}
-        <div className="grid grid-cols-2 gap-4">
-           <div className="bg-[#2d2d2d] p-4 rounded-[2px] border border-white/5">
-              <div className="verge-label-mono text-[8px] text-[#949494] uppercase mb-1">Entités Joueurs</div>
-              <div className="verge-label-mono text-xl text-white font-black">{playersList.length}</div>
-           </div>
-           <div className="bg-[#2d2d2d] p-4 rounded-[2px] border border-white/5">
-              <div className="verge-label-mono text-[8px] text-[#949494] uppercase mb-1">Types d'Actions</div>
-              <div className="verge-label-mono text-xl text-white font-black">{actionTypes.length}</div>
-           </div>
         </div>
       </div>
 
       {/* CONTENT : ACCORDIONS */}
-      <div className="flex-1 overflow-y-auto p-10 pt-6 space-y-2 scrollbar-verge">
+      <div className="flex-1 overflow-y-auto p-10 pt-6 space-y-4 scrollbar-verge">
         
-        {/* SECTION 1 : ACTIONS */}
+        {/* SECTION 0 : SÉLECTION DES MATCHS (Cross-Match) */}
+        <AccordionSection 
+          id="matches" 
+          title="Silos de Données" 
+          icon={<Database size={18} />}
+          isOpen={openSection === 'matches'}
+          onToggle={() => setOpenSection(openSection === 'matches' ? null : 'matches')}
+          badge={pendingFilters.matches?.length || 0}
+        >
+          <div className="space-y-4">
+            <div className="verge-label-mono text-[8px] text-[#949494] uppercase mb-4 tracking-widest">SÉLECTIONNEZ LES MATCHS À ANALYSER</div>
+            <div className="space-y-1">
+              {matchesList.map(match => (
+                <button 
+                  key={match.match_id}
+                  onClick={() => toggleFilter('matches', match.match_id)}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-[2px] verge-label-mono text-[10px] font-black uppercase transition-all ${
+                    pendingFilters.matches.includes(match.match_id)
+                    ? 'bg-[#3cffd0]/10 text-[#3cffd0] border border-[#3cffd0]/20'
+                    : 'bg-white/5 text-[#949494] border border-transparent hover:bg-white/10'
+                  }`}
+                >
+                  {match.matchName || match.match_id}
+                  {pendingFilters.matches.includes(match.match_id) && <Check size={12} />}
+                </button>
+              ))}
+            </div>
+          </div>
+        </AccordionSection>
+
+        {/* SECTION 1 : ACTEURS & ACTIONS */}
         <AccordionSection 
           id="primary" 
-          title="Filtres Actions" 
+          title="Filtres Tactiques" 
           icon={<Activity size={18} />}
           isOpen={openSection === 'primary'}
           onToggle={() => setOpenSection(openSection === 'primary' ? null : 'primary')}
-          subtitle="CATÉGORIES DÉTECTÉES"
-          badge={filters.types.length}
+          badge={(pendingFilters.types?.length || 0) + (pendingFilters.players?.length || 0)}
         >
           <div className="space-y-10">
             <FilterGroup label="Types d'Actions">
@@ -109,7 +145,7 @@ const ExplorationFilterPanel = ({ matchesList = [], teamsList = [], playersList 
                     key={type} 
                     onClick={() => toggleFilter('types', type)}
                     className={`border py-3 verge-label-mono text-[9px] font-black uppercase transition-all ${
-                      filters.types.includes(type)
+                      pendingFilters.types.includes(type)
                       ? 'bg-[#3cffd0] text-black border-[#3cffd0]'
                       : 'bg-[#131313] border-white/5 text-[#949494] hover:border-[#3cffd0]/30'
                     }`}
@@ -120,14 +156,14 @@ const ExplorationFilterPanel = ({ matchesList = [], teamsList = [], playersList 
               </div>
             </FilterGroup>
 
-            <FilterGroup label="Recherche Joueur">
+            <FilterGroup label="Sélection des Joueurs">
               <div className="relative mb-4">
                 <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#949494]" />
                 <input 
                   type="text" 
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="NOM DU JOUEUR..." 
+                  placeholder="RECHERCHER UN NOM..." 
                   className="w-full bg-[#131313] border border-white/10 py-4 pl-12 pr-4 verge-label-mono text-[10px] text-white focus:border-[#3cffd0] outline-none transition-all uppercase"
                 />
               </div>
@@ -137,13 +173,13 @@ const ExplorationFilterPanel = ({ matchesList = [], teamsList = [], playersList 
                      key={player.id}
                      onClick={() => toggleFilter('players', player)}
                      className={`w-full flex items-center justify-between px-4 py-3 rounded-[2px] verge-label-mono text-[10px] font-black uppercase transition-all ${
-                       filters.players.includes(player.id)
+                       pendingFilters.players.includes(player.id)
                        ? 'bg-[#3cffd0]/10 text-[#3cffd0] border border-[#3cffd0]/20'
                        : 'bg-white/5 text-[#949494] border border-transparent hover:bg-white/10'
                      }`}
                    >
                      {player.name}
-                     {filters.players.includes(player.id) && <Check size={12} />}
+                     {pendingFilters.players.includes(player.id) && <Check size={12} />}
                    </button>
                  ))}
               </div>
@@ -151,30 +187,164 @@ const ExplorationFilterPanel = ({ matchesList = [], teamsList = [], playersList 
           </div>
         </AccordionSection>
 
-        {/* SECTION 2 : SPATIAL (Placeholder for now) */}
+        {/* SECTION 2 : CONTEXTE TACTIQUE (Période, Lieu, Zone) */}
         <AccordionSection 
-          id="spatial" 
-          title="Zones Terrain" 
-          icon={<MapIcon size={18} />}
-          isOpen={openSection === 'spatial'}
-          onToggle={() => setOpenSection(openSection === 'spatial' ? null : 'spatial')}
-          subtitle="DÉPART & ARRIVÉE"
+          id="context" 
+          title="Contexte & Espace" 
+          icon={<Target size={18} />}
+          isOpen={openSection === 'context'}
+          onToggle={() => setOpenSection(openSection === 'context' ? null : 'context')}
+          badge={(pendingFilters.period_id ? 1 : 0) + (pendingFilters.location ? 1 : 0) + (pendingFilters.zone ? 1 : 0)}
         >
-          <div className="p-8 border border-white/5 bg-[#2d2d2d]/30 text-center">
-             <MapIcon size={32} className="mx-auto mb-4 text-[#3cffd0]/20" />
-             <p className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest">Interactive Polygon Selection Coming in v2</p>
+          <div className="space-y-6">
+            {/* Lieu du match */}
+            <div className="space-y-3">
+              <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Lieu (Side)</label>
+              <div className="grid grid-cols-2 gap-2">
+                {['home', 'away'].map(loc => (
+                  <button
+                    key={loc}
+                    onClick={() => setPendingFilters({ ...pendingFilters, location: pendingFilters.location === loc ? null : loc })}
+                    className={`px-4 py-3 rounded-[2px] verge-label-mono text-[9px] font-black uppercase border transition-all ${
+                      pendingFilters.location === loc 
+                      ? 'bg-[#3cffd0] text-black border-[#3cffd0]' 
+                      : 'bg-white/5 text-[#949494] border-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    {loc === 'home' ? 'Domicile' : 'Extérieur'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Période */}
+            <div className="space-y-3">
+              <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Période</label>
+              <div className="grid grid-cols-2 gap-2">
+                {[1, 2].map(p => (
+                  <button
+                    key={p}
+                    onClick={() => setPendingFilters({ ...pendingFilters, period_id: pendingFilters.period_id === p ? null : p })}
+                    className={`px-4 py-3 rounded-[2px] verge-label-mono text-[9px] font-black uppercase border transition-all ${
+                      pendingFilters.period_id === p 
+                      ? 'bg-[#3cffd0] text-black border-[#3cffd0]' 
+                      : 'bg-white/5 text-[#949494] border-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    {p === 1 ? '1ère Mi-temps' : '2ème Mi-temps'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Zone de jeu */}
+            <div className="space-y-3">
+              <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Zone Tactique (JSONB)</label>
+              <div className="grid grid-cols-2 gap-2">
+                {['Center', 'Left', 'Right', 'Back'].map(z => (
+                  <button
+                    key={z}
+                    onClick={() => setPendingFilters({ ...pendingFilters, zone: pendingFilters.zone === z ? null : z })}
+                    className={`px-4 py-3 rounded-[2px] verge-label-mono text-[9px] font-black uppercase border transition-all ${
+                      pendingFilters.zone === z 
+                      ? 'bg-[#3cffd0] text-black border-[#3cffd0]' 
+                      : 'bg-white/5 text-[#949494] border-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    {z}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </AccordionSection>
+
+        {/* SECTION 3 : PERFORMANCE (xT, OUTCOME) */}
+        <AccordionSection 
+          id="performance" 
+          title="Indicateurs Clés" 
+          icon={<Zap size={18} />}
+          isOpen={openSection === 'performance'}
+          onToggle={() => setOpenSection(openSection === 'performance' ? null : 'performance')}
+        >
+          <div className="space-y-10">
+            <FilterGroup label={`Seuil de Menace (xT >= ${pendingFilters.min_xt})`}>
+              <input 
+                type="range" 
+                min="0" max="0.5" step="0.01" 
+                value={pendingFilters.min_xt}
+                onChange={(e) => updateNumericFilter('min_xt', parseFloat(e.target.value))}
+                className="w-full accent-[#3cffd0] bg-[#2d2d2d] h-1 rounded-full appearance-none cursor-pointer"
+              />
+              <div className="flex justify-between verge-label-mono text-[8px] text-[#949494]">
+                 <span>NEUTRE (0.0)</span>
+                 <span>DANGER (+0.5)</span>
+              </div>
+            </FilterGroup>
+
+            <FilterGroup label="Résultat de l'action">
+               <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: null, label: 'TOUS' },
+                    { id: 1, label: 'RÉUSSIS' },
+                    { id: 0, label: 'ÉCHECS' }
+                  ].map(opt => (
+                    <button
+                      key={opt.label}
+                      onClick={() => updateNumericFilter('outcome', opt.id)}
+                      className={`py-3 border verge-label-mono text-[9px] font-black uppercase transition-all ${
+                        pendingFilters.outcome === opt.id
+                        ? 'bg-[#5200ff] text-white border-[#5200ff]'
+                        : 'bg-[#131313] border-white/5 text-[#949494]'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+               </div>
+            </FilterGroup>
+          </div>
+        </AccordionSection>
+
+        {/* SECTION 3 : FENÊTRE TEMPORELLE */}
+        <AccordionSection 
+          id="time" 
+          title="Chronologie" 
+          icon={<RotateCcw size={18} />}
+          isOpen={openSection === 'time'}
+          onToggle={() => setOpenSection(openSection === 'time' ? null : 'time')}
+        >
+          <div className="space-y-8">
+            <div className="grid grid-cols-2 gap-4">
+              <FilterGroup label="Minute Début">
+                 <input 
+                   type="number" 
+                   value={pendingFilters.start_min}
+                   onChange={(e) => updateNumericFilter('start_min', parseInt(e.target.value))}
+                   className="w-full bg-[#131313] border border-white/10 p-4 verge-label-mono text-white text-xs outline-none"
+                 />
+              </FilterGroup>
+              <FilterGroup label="Minute Fin">
+                 <input 
+                   type="number" 
+                   value={pendingFilters.end_min}
+                   onChange={(e) => updateNumericFilter('end_min', parseInt(e.target.value))}
+                   className="w-full bg-[#131313] border border-white/10 p-4 verge-label-mono text-white text-xs outline-none"
+                 />
+              </FilterGroup>
+            </div>
           </div>
         </AccordionSection>
 
       </div>
 
-      {/* FOOTER : CLOSE */}
-      <div className="p-10 bg-[#131313] border-t border-white/10 flex gap-4">
+      {/* FOOTER : APPLY BUTTON (BOUCLIER ANTI-SPAM) */}
+      <div className="p-10 bg-[#131313] border-t border-white/10">
         <button 
-          onClick={onClose}
-          className="flex-1 bg-[#3cffd0] text-black py-6 rounded-[2px] verge-label-mono text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-4 hover:bg-white transition-all shadow-[0_20px_40px_rgba(60,255,208,0.1)]"
+          onClick={applyAnalysis}
+          className="w-full bg-[#3cffd0] text-black py-6 rounded-[2px] verge-label-mono text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-4 hover:bg-white transition-all shadow-[0_20px_40px_rgba(60,255,208,0.2)]"
         >
-          Appliquer
+          Appliquer l'Analyse
           <Check size={18} />
         </button>
       </div>

@@ -45,31 +45,17 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters }) => {
   const [sortOrder, setSortOrder] = useState('desc');
   const [isSelectOpen, setIsSelectOpen] = useState(false);
 
-  // FILTRAGE DYNAMIQUE DES DONNÉES (Binding avec le FilterPanel)
-  const filteredData = useMemo(() => {
-    return data.filter(event => {
-      // Filtrage par types d'actions (Auto-Discovery)
-      const matchesType = filters?.types?.length > 0 
-        ? filters.types.includes(event.type) 
-        : true;
-        
-      // Filtrage par joueurs
-      const matchesPlayer = filters?.players?.length > 0
-        ? filters.players.includes(event.playerName)
-        : true;
-
-      return matchesType && matchesPlayer;
-    });
-  }, [data, filters]);
+  // LE FILTRAGE EST DÉSORMAIS SERVEUR-SIDE (Dette technique purgée)
+  const displayData = data;
 
   // Calcul du classement des joueurs basé sur l'action sélectionnée dans le sélecteur DROIT
   const playerRanking = useMemo(() => {
-    if (!filteredData || filteredData.length === 0) return [];
+    if (!displayData || displayData.length === 0) return [];
 
     const counts = {};
     const playerTeams = {};
 
-    filteredData.forEach(event => {
+    displayData.forEach(event => {
       if (event.type === selectedAction) {
         const playerName = event.playerName || 'Unknown Player';
         counts[playerName] = (counts[playerName] || 0) + 1;
@@ -84,7 +70,7 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters }) => {
         team: playerTeams[name],
       }))
       .sort((a, b) => sortOrder === 'desc' ? b.count - a.count : a.count - b.count);
-  }, [filteredData, selectedAction, sortOrder]);
+  }, [displayData, selectedAction, sortOrder]);
 
   return (
     <div className="flex h-full w-full gap-8 animate-in fade-in zoom-in-95 duration-500 overflow-hidden">
@@ -104,7 +90,7 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters }) => {
               <div>
                 <h3 className="verge-h3 text-white uppercase tracking-tighter font-black">Visualisation Spatiale</h3>
                 <p className="verge-label-mono text-[9px] text-[#3cffd0] uppercase tracking-[0.3em] font-bold mt-1">
-                  Aperçu tactique des {selectedAction}s ({filteredData.length} sélectionnés)
+                  Aperçu tactique des {selectedAction}s ({displayData.length} sélectionnés)
                 </p>
               </div>
             </div>
@@ -124,21 +110,89 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters }) => {
                   style={{ grass: 'transparent', line: 'rgba(255,255,255,0.08)', background: 'transparent' }} 
                />
                
-               {/* Affichage des points (Events) sur le terrain avec SCALING CORRECT */}
-               {!loading && filteredData.length > 0 && (
-                 <svg viewBox="0 0 105 68" className="absolute inset-0 w-full h-full pointer-events-none">
-                   {filteredData.slice(0, 1000).map((event, i) => (
-                     <circle 
-                       key={i}
-                       cx={(event.x / 100) * 105} 
-                       cy={(event.y / 100) * 68} 
-                       r="0.6" 
-                       fill={event.type === 'Shot' ? '#ff4d4d' : '#3cffd0'}
-                       className="animate-in fade-in zoom-in duration-300"
-                     />
-                   ))}
-                 </svg>
-               )}
+                {/* Affichage des points (Events) sur le terrain avec SCALING CORRECT & RENDU CONDITIONNEL */}
+                {!loading && displayData.length > 0 && (
+                  <svg viewBox="0 0 105 68" className="absolute inset-0 w-full h-full">
+                    {displayData.slice(0, 1000).map((event, i) => {
+                      const cx = (event.x / 100) * 105;
+                      const cy = (event.y / 100) * 68;
+                      const isSuccess = event.outcome === 1;
+                      const color = isSuccess ? '#3cffd0' : '#ff4d4d'; // Vert/Cyan pour succès, Rouge pour échec
+                      const opacity = isSuccess ? 0.9 : 0.4;
+                      const tooltip = `${event.playerName || 'Joueur'}\nMinute: ${event.minute || '0'}'\nType: ${event.type}\nxT: ${event.xT?.toFixed(3) || '0.000'}`;
+
+                      // Extracteur Sécurisé de Coordonnées d'arrivée (Qualifiers 140/141)
+                      const getEndCoordinates = (ev) => {
+                        try {
+                          let quals = ev.qualifiers;
+                          if (typeof quals === 'string') quals = JSON.parse(quals);
+                          if (!Array.isArray(quals)) return null;
+
+                          const endXObj = quals.find(q => q.qualifierId === 140);
+                          const endYObj = quals.find(q => q.qualifierId === 141);
+
+                          if (endXObj && endYObj) {
+                            return {
+                              endX: parseFloat(endXObj.value),
+                              endY: parseFloat(endYObj.value)
+                            };
+                          }
+                        } catch (e) {
+                          return null;
+                        }
+                        return null;
+                      };
+
+                      const endCoords = getEndCoordinates(event);
+                      let endCx = null, endCy = null;
+                      if (endCoords) {
+                        endCx = (endCoords.endX / 100) * 105;
+                        endCy = (endCoords.endY / 100) * 68;
+                      }
+
+                      return (
+                        <g key={i} className="cursor-help pointer-events-auto">
+                          {/* Trajectoire (Ligne) */}
+                          {endCx !== null && endCy !== null && (
+                            <line 
+                              x1={cx} y1={cy} 
+                              x2={endCx} y2={endCy} 
+                              stroke={color} 
+                              strokeWidth="0.2" 
+                              strokeOpacity={opacity * 0.6}
+                              strokeDasharray={isSuccess ? "none" : "1,1"}
+                              className="animate-in fade-in duration-500"
+                            />
+                          )}
+
+                          {/* Forme de l'action */}
+                          {event.type === 'Shot' || event.type === 'Goal' ? (
+                            <circle 
+                              cx={cx} cy={cy} r="1.4" 
+                              fill={color} fillOpacity={opacity}
+                              stroke="white" strokeWidth="0.2"
+                              className="animate-in fade-in zoom-in duration-300"
+                            />
+                          ) : event.type === 'Carry' ? (
+                            <rect 
+                              x={cx - 0.7} y={cy - 0.7} width="1.4" height="1.4"
+                              fill={color} fillOpacity={opacity}
+                              transform={`rotate(45, ${cx}, ${cy})`}
+                              className="animate-in fade-in zoom-in duration-300"
+                            />
+                          ) : (
+                            <circle 
+                              cx={cx} cy={cy} r="0.7" 
+                              fill={color} fillOpacity={opacity}
+                              className="animate-in fade-in zoom-in duration-300"
+                            />
+                          )}
+                          <title>{tooltip}</title>
+                        </g>
+                      );
+                    })}
+                  </svg>
+                )}
              </div>
              
              {/* Overlay de message si chargement ou pas de données */}
@@ -173,13 +227,13 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters }) => {
                  {loading ? 'Receiving Data...' : 'Flux Live Analyst'}
                </span>
              </div>
-             <span className="verge-label-mono text-[9px] text-[#949494] bg-white/5 px-3 py-1 rounded-[2px] border border-white/5">
-               {filteredData.length.toLocaleString()} SELECTED / {data.length.toLocaleString()} TOTAL
-             </span>
+              <span className="verge-label-mono text-[9px] text-[#949494] bg-white/5 px-3 py-1 rounded-[2px] border border-white/5">
+                {displayData.length.toLocaleString()} SELECTED
+              </span>
           </div>
           <div className="flex-1 overflow-y-auto styled-scrollbar-verge bg-black/20">
-             {!loading && filteredData.length > 0 ? (
-               filteredData.slice(0, 100).map((e, i) => (
+             {!loading && displayData.length > 0 ? (
+               displayData.slice(0, 100).map((e, i) => (
                  <div key={i} className="flex items-center justify-between py-3 border-b border-white/[0.03] hover:bg-[#3cffd0]/5 transition-colors px-6 group">
                    <div className="flex items-center gap-6">
                      <span className="verge-label-mono text-[10px] text-[#3cffd0] font-black">{e.minute || '00'}'</span>

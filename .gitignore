@@ -26,3 +26,4 @@ optavision_backend
 node_modules
 .env
 Oldprojet/
+opta_pipeline/

@@ -31,7 +31,6 @@ import { API_BASE_URL, OPTAVISION_API_URL } from '../../config';
  * Aligné sur le Design System du projet Scouting.
  */
 const OptaVisionDashboard = ({ user }) => {
-  const [matchId, setMatchId] = useState("");
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -48,17 +47,42 @@ const OptaVisionDashboard = ({ user }) => {
   const [view, setView] = useState('DASHBOARD'); 
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [explorationFilters, setExplorationFilters] = useState({
+    matches: [],
     types: [],
     players: [],
-    xtMin: 0.0,
-    scoreMin: 0
+    teams: [],
+    min_xt: 0.0,
+    start_min: 0,
+    end_min: 95,
+    outcome: null,
+    period_id: null,
+    location: null,
+    zone: null
   });
 
-  const fetchMatchEvents = async (id) => {
-    if (!id) return;
+  const fetchEvents = async () => {
     setLoading(true);
     setError(null);
-    const url = `${OPTAVISION_API_URL}/api/optavision/matches/${id}/events?page=${page}&limit=${limit}`;
+    
+    // Construction dynamique des query params
+    const params = new URLSearchParams({
+      page: page.toString(),
+      limit: '20'
+    });
+    
+    if (explorationFilters.matches?.length > 0) params.append('match_ids', explorationFilters.matches.join(','));
+    if (explorationFilters.types?.length > 0) params.append('types', explorationFilters.types.join(','));
+    if (explorationFilters.players?.length > 0) params.append('player_ids', explorationFilters.players.join(','));
+    if (explorationFilters.teams?.length > 0) params.append('team_ids', explorationFilters.teams.join(','));
+    if (explorationFilters.min_xt > 0) params.append('min_xt', explorationFilters.min_xt.toString());
+    if (explorationFilters.start_min > 0) params.append('start_min', explorationFilters.start_min.toString());
+    if (explorationFilters.end_min < 95) params.append('end_min', explorationFilters.end_min.toString());
+    if (explorationFilters.outcome !== null) params.append('outcome', explorationFilters.outcome.toString());
+    if (explorationFilters.period_id) params.append('period_id', explorationFilters.period_id.toString());
+    if (explorationFilters.location) params.append('location', explorationFilters.location);
+    if (explorationFilters.zone) params.append('zone', explorationFilters.zone);
+
+    const url = `${OPTAVISION_API_URL}/api/optavision/events?${params.toString()}`;
     console.log("🌐 Appel de l'API OptaVision vers :", url);
     try {
       const response = await fetch(url);
@@ -93,9 +117,8 @@ const OptaVisionDashboard = ({ user }) => {
         setPlayersList(p);
         
         // Initialisation avec le premier match si vide
-        if (m.length > 0 && !matchId) {
-          const firstId = m[0].match_id;
-          setMatchId(firstId);
+        if (m.length > 0 && explorationFilters.matches.length === 0) {
+          setExplorationFilters(prev => ({ ...prev, matches: [m[0].match_id] }));
         }
       } catch (err) {
         console.error("META_FETCH_ERROR:", err);
@@ -104,14 +127,11 @@ const OptaVisionDashboard = ({ user }) => {
     fetchMeta();
   }, []);
 
-  // Hydratation automatique si matchId présent au montage ou changement
+  // Hydratation automatique
   useEffect(() => {
-    if (matchId && matchId.length > 5) {
-      fetchMatchEvents(matchId);
-    }
-  }, [matchId, page, limit]);
+    fetchEvents();
+  }, [page, limit, explorationFilters]);
 
-  console.log("🔥 Rendu Dashboard - matchId actuel :", matchId);
   return (
     <div className="min-h-screen bg-[#131313] text-white flex flex-col font-sans overflow-hidden">
       
@@ -136,38 +156,23 @@ const OptaVisionDashboard = ({ user }) => {
             {/* Recherche Centrale (Intelligence Hub) */}
             <div className="flex justify-center order-3 md:order-2 col-span-2 md:col-span-1 mt-4 md:mt-0 px-4">
               <div className="w-full max-w-[500px] relative group">
-                <div className="absolute inset-0 bg-[#3cffd0]/5 blur-xl opacity-0 group-focus-within:opacity-100 transition-opacity rounded-full" />
-                <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-[#949494] group-focus-within:text-[#3cffd0] transition-colors" size={16} />
-                <input 
-                  type="text" 
-                  placeholder="ENTER MATCH ID..."
-                  value={typeof matchId === 'string' ? matchId : matchId?.match_id || ''}
-                  onChange={(e) => setMatchId(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && fetchMatchEvents(matchId)}
-                  className="w-full bg-[#2d2d2d]/50 border border-white/10 rounded-full py-4 pl-14 pr-32 verge-label-mono text-[10px] text-white focus:border-[#3cffd0]/50 outline-none transition-all placeholder:text-[#949494]/40"
-                />
-                
-                {/* SELECTEUR DE MATCH (Auto-Discovery) */}
-                <div className="absolute right-32 top-1/2 -translate-y-1/2 flex items-center">
-                  <select 
-                    value={typeof matchId === 'string' ? matchId : matchId?.match_id || ''}
-                    onChange={(e) => setMatchId(e.target.value)}
-                    className="bg-black/40 border-l border-white/10 px-4 py-2 verge-label-mono text-[9px] text-[#3cffd0] outline-none cursor-pointer hover:bg-white/5 transition-all"
-                  >
-                    <option value="">SELECT MATCH...</option>
-                    {matchesList.map(m => (
-                      <option key={m.match_id} value={m.match_id}>
-                        {m.matchName || m.match_id}
-                      </option>
-                    ))}
-                  </select>
+                <div className="absolute left-6 top-1/2 -translate-y-1/2 flex items-center gap-2 text-[#3cffd0]">
+                  <Database size={16} />
+                  <span className="verge-label-mono text-[9px] font-black uppercase">CROSS-MATCH ENGINE</span>
                 </div>
-
+                <div className="w-full bg-[#2d2d2d]/50 border border-white/10 rounded-full py-4 pl-40 pr-32 verge-label-mono text-[10px] text-white flex items-center overflow-hidden whitespace-nowrap opacity-60">
+                  {explorationFilters.matches.length > 0 
+                    ? `${explorationFilters.matches.length} MATCHS SÉLECTIONNÉS`
+                    : "AUCUN MATCH SÉLECTIONNÉ - UTILISEZ LE PANEL DE FILTRAGE"
+                  }
+                </div>
+                
                 <button 
-                  onClick={() => fetchMatchEvents(matchId)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-[#3cffd0] text-black px-6 py-2 verge-label-mono text-[9px] font-black hover:bg-white transition-all rounded-full"
+                  onClick={() => setIsFilterOpen(true)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-[#3cffd0] text-black px-6 py-2 verge-label-mono text-[9px] font-black hover:bg-white transition-all rounded-full flex items-center gap-2"
                 >
-                  {loading ? 'SYNCING...' : 'ANALYZE'}
+                  <SlidersHorizontal size={14} />
+                  FILTRER L'INTELLIGENCE
                 </button>
               </div>
             </div>
@@ -236,8 +241,8 @@ const OptaVisionDashboard = ({ user }) => {
                   </nav>
 
                   <div className="flex items-center gap-4">
-                    <span className="verge-label-mono text-[10px] text-[#949494] opacity-40 uppercase tracking-[0.2em]">
-                      MATCH ID: {typeof matchId === 'string' ? matchId : matchId?.match_id || '---'}
+                    <span className="verge-label-mono text-[10px] text-[#3cffd0] uppercase tracking-[0.2em] font-black animate-pulse">
+                      GLOBAL DATA PLANE ACTIVE
                     </span>
                   </div>
                 </div>
@@ -302,7 +307,7 @@ const OptaVisionDashboard = ({ user }) => {
                           {/* HYDRATATION ET FILTRAGE DU JOURNAL DES ÉVÉNEMENTS */}
                           <EventExplorer 
                             data={data} 
-                            matchId={matchId} 
+                            matchId={explorationFilters.matches[0] || 'CROSS-MATCH'} 
                             loading={loading} 
                             filters={explorationFilters}
                           />
