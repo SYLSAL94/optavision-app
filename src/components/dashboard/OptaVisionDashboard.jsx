@@ -24,7 +24,7 @@ import ShotMapFilterPanel from './ShotMapFilterPanel';
 import EventExplorer from './EventExplorer';
 import BuildUpExplorer from './BuildUpExplorer';
 import ShotMapExplorer from './ShotMapExplorer';
-import { API_BASE_URL } from '../../config';
+import { API_BASE_URL, OPTAVISION_API_URL } from '../../config';
 
 /**
  * OptaVisionDashboard - Squelette UI/UX Premium (Style The Verge)
@@ -35,6 +35,14 @@ const OptaVisionDashboard = ({ user }) => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(50);
+  const [totalEvents, setTotalEvents] = useState(0);
+
+  // Auto-Discovery States
+  const [matchesList, setMatchesList] = useState([]);
+  const [teamsList, setTeamsList] = useState([]);
+  const [playersList, setPlayersList] = useState([]);
   const [activeTab, setActiveTab] = useState('exploration');
   const [activeTool, setActiveTool] = useState(null); // 'events', 'sequences', 'shots'
   const [view, setView] = useState('DASHBOARD'); 
@@ -50,27 +58,60 @@ const OptaVisionDashboard = ({ user }) => {
     if (!id) return;
     setLoading(true);
     setError(null);
+    const url = `${OPTAVISION_API_URL}/api/optavision/matches/${id}/events?page=${page}&limit=${limit}`;
+    console.log("🌐 Appel de l'API OptaVision vers :", url);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/optavision/matches/${id}/events`);
+      const response = await fetch(url);
       if (!response.ok) throw new Error(`MATCH_DATA_FAILURE: ${response.status}`);
       const json = await response.json();
-      setData(json);
+      console.log("🚨 RÉPONSE API BRUTE :", json);
+      
+      // Data Binding : items pour le flux, total pour la pagination
+      setData(json.items || []);
+      setTotalEvents(json.total || 0);
     } catch (err) {
-      console.error("API_SYNC_ERROR:", err);
+      console.error("❌ ERREUR DE FETCH :", err);
       setError(err.message);
       setData([]);
+      setTotalEvents(0);
     } finally {
       setLoading(false);
     }
   };
+
+  // Fetch Lookups (Auto-Discovery)
+  useEffect(() => {
+    const fetchMeta = async () => {
+      try {
+        const [m, t, p] = await Promise.all([
+          fetch(`${OPTAVISION_API_URL}/api/optavision/matches`).then(r => r.json()),
+          fetch(`${OPTAVISION_API_URL}/api/optavision/teams`).then(r => r.json()),
+          fetch(`${OPTAVISION_API_URL}/api/optavision/players`).then(r => r.json())
+        ]);
+        setMatchesList(m);
+        setTeamsList(t);
+        setPlayersList(p);
+        
+        // Initialisation avec le premier match si vide
+        if (m.length > 0 && !matchId) {
+          const firstId = m[0].match_id;
+          setMatchId(firstId);
+        }
+      } catch (err) {
+        console.error("META_FETCH_ERROR:", err);
+      }
+    };
+    fetchMeta();
+  }, []);
 
   // Hydratation automatique si matchId présent au montage ou changement
   useEffect(() => {
     if (matchId && matchId.length > 5) {
       fetchMatchEvents(matchId);
     }
-  }, [matchId]);
+  }, [matchId, page, limit]);
 
+  console.log("🔥 Rendu Dashboard - matchId actuel :", matchId);
   return (
     <div className="min-h-screen bg-[#131313] text-white flex flex-col font-sans overflow-hidden">
       
@@ -99,12 +140,29 @@ const OptaVisionDashboard = ({ user }) => {
                 <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-[#949494] group-focus-within:text-[#3cffd0] transition-colors" size={16} />
                 <input 
                   type="text" 
-                  placeholder="ENTER MATCH ID OR PLAYER NAME..."
-                  value={matchId}
+                  placeholder="ENTER MATCH ID..."
+                  value={typeof matchId === 'string' ? matchId : matchId?.match_id || ''}
                   onChange={(e) => setMatchId(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && fetchMatchEvents(matchId)}
                   className="w-full bg-[#2d2d2d]/50 border border-white/10 rounded-full py-4 pl-14 pr-32 verge-label-mono text-[10px] text-white focus:border-[#3cffd0]/50 outline-none transition-all placeholder:text-[#949494]/40"
                 />
+                
+                {/* SELECTEUR DE MATCH (Auto-Discovery) */}
+                <div className="absolute right-32 top-1/2 -translate-y-1/2 flex items-center">
+                  <select 
+                    value={typeof matchId === 'string' ? matchId : matchId?.match_id || ''}
+                    onChange={(e) => setMatchId(e.target.value)}
+                    className="bg-black/40 border-l border-white/10 px-4 py-2 verge-label-mono text-[9px] text-[#3cffd0] outline-none cursor-pointer hover:bg-white/5 transition-all"
+                  >
+                    <option value="">SELECT MATCH...</option>
+                    {matchesList.map(m => (
+                      <option key={m.match_id} value={m.match_id}>
+                        {m.matchName || m.match_id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <button 
                   onClick={() => fetchMatchEvents(matchId)}
                   className="absolute right-2 top-1/2 -translate-y-1/2 bg-[#3cffd0] text-black px-6 py-2 verge-label-mono text-[9px] font-black hover:bg-white transition-all rounded-full"
@@ -178,7 +236,9 @@ const OptaVisionDashboard = ({ user }) => {
                   </nav>
 
                   <div className="flex items-center gap-4">
-                    <span className="verge-label-mono text-[10px] text-[#949494] opacity-40 uppercase tracking-[0.2em]">MATCH ID: {matchId || '---'}</span>
+                    <span className="verge-label-mono text-[10px] text-[#949494] opacity-40 uppercase tracking-[0.2em]">
+                      MATCH ID: {typeof matchId === 'string' ? matchId : matchId?.match_id || '---'}
+                    </span>
                   </div>
                 </div>
               )}
@@ -284,7 +344,9 @@ const OptaVisionDashboard = ({ user }) => {
                   >
                     {activeTab === 'exploration' && (
                       <ExplorationFilterPanel 
-                        eventsData={data}
+                        matchesList={matchesList}
+                        teamsList={teamsList}
+                        playersList={playersList}
                         filters={explorationFilters}
                         onFilterChange={setExplorationFilters}
                         onClose={() => setIsFilterOpen(false)} 

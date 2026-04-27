@@ -111,7 +111,7 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters }) => {
             
             <div className="flex items-center gap-3">
               <div className="px-5 py-2.5 bg-black border border-white/10 rounded-[2px] verge-label-mono text-[10px] text-[#949494] font-black tracking-widest">
-                SESSION: <span className="text-[#3cffd0]">{matchId || 'ANALYST_PRO'}</span>
+                SESSION: <span className="text-[#3cffd0]">{typeof matchId === 'string' ? matchId : matchId?.match_id || 'ANALYST_PRO'}</span>
               </div>
             </div>
           </div>

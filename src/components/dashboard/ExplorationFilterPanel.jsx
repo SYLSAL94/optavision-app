@@ -20,31 +20,21 @@ import AccordionSection from './AccordionSection';
  * ExplorationFilterPanel - Version Dynamique (Auto-Discovery)
  * Hydrate automatiquement les filtres à partir de la prop eventsData.
  */
-const ExplorationFilterPanel = ({ eventsData = [], filters, onFilterChange, onClose }) => {
+const ExplorationFilterPanel = ({ matchesList = [], teamsList = [], playersList = [], filters, onFilterChange, onClose }) => {
   const [openSection, setOpenSection] = useState('primary');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // AUTO-DISCOVERY : Extraction des types d'actions et joueurs uniques
-  const { actionTypes, players } = useMemo(() => {
-    const types = new Set();
-    const playerList = new Set();
-    
-    eventsData.forEach(event => {
-      if (event.type) types.add(event.type);
-      if (event.playerName) playerList.add(event.playerName);
-    });
-
-    return {
-      actionTypes: Array.from(types).sort(),
-      players: Array.from(playerList).sort()
-    };
-  }, [eventsData]);
+  // Liste fixe des types d'actions (Contrat Opta)
+  const actionTypes = ['Pass', 'Shot', 'Tackle', 'Interception', 'Clearance', 'Save', 'Carry'];
 
   const toggleFilter = (category, value) => {
+    // Si la valeur est un objet (player/team), on utilise son .id
+    const filterValue = typeof value === 'object' ? value.id : value;
+    
     const current = filters[category] || [];
-    const updated = current.includes(value)
-      ? current.filter(v => v !== value)
-      : [...current, value];
+    const updated = current.includes(filterValue)
+      ? current.filter(v => v !== filterValue)
+      : [...current, filterValue];
     onFilterChange({ ...filters, [category]: updated });
   };
 
@@ -57,8 +47,8 @@ const ExplorationFilterPanel = ({ eventsData = [], filters, onFilterChange, onCl
     });
   };
 
-  const filteredPlayers = players.filter(p => 
-    p.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredPlayers = playersList.filter(p => 
+    p.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -73,7 +63,7 @@ const ExplorationFilterPanel = ({ eventsData = [], filters, onFilterChange, onCl
               AUTO-DISCOVERY
             </h3>
             <p className="verge-label-mono text-[9px] text-[#3cffd0] mt-2 uppercase tracking-[0.2em] font-black">
-              {eventsData.length.toLocaleString()} ACTIONS SCANÉES
+              {matchesList.length} MATCHS DÉTECTÉS
             </p>
           </div>
           <button 
@@ -89,7 +79,7 @@ const ExplorationFilterPanel = ({ eventsData = [], filters, onFilterChange, onCl
         <div className="grid grid-cols-2 gap-4">
            <div className="bg-[#2d2d2d] p-4 rounded-[2px] border border-white/5">
               <div className="verge-label-mono text-[8px] text-[#949494] uppercase mb-1">Entités Joueurs</div>
-              <div className="verge-label-mono text-xl text-white font-black">{players.length}</div>
+              <div className="verge-label-mono text-xl text-white font-black">{playersList.length}</div>
            </div>
            <div className="bg-[#2d2d2d] p-4 rounded-[2px] border border-white/5">
               <div className="verge-label-mono text-[8px] text-[#949494] uppercase mb-1">Types d'Actions</div>
@@ -144,16 +134,16 @@ const ExplorationFilterPanel = ({ eventsData = [], filters, onFilterChange, onCl
               <div className="max-h-48 overflow-y-auto scrollbar-verge space-y-1 pr-2">
                  {filteredPlayers.map(player => (
                    <button 
-                     key={player}
+                     key={player.id}
                      onClick={() => toggleFilter('players', player)}
                      className={`w-full flex items-center justify-between px-4 py-3 rounded-[2px] verge-label-mono text-[10px] font-black uppercase transition-all ${
-                       filters.players.includes(player)
+                       filters.players.includes(player.id)
                        ? 'bg-[#3cffd0]/10 text-[#3cffd0] border border-[#3cffd0]/20'
                        : 'bg-white/5 text-[#949494] border border-transparent hover:bg-white/10'
                      }`}
                    >
-                     {player}
-                     {filters.players.includes(player) && <Check size={12} />}
+                     {player.name}
+                     {filters.players.includes(player.id) && <Check size={12} />}
                    </button>
                  ))}
               </div>
