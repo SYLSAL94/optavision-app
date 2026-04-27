@@ -107,18 +107,21 @@ const OptaVisionDashboard = ({ user }) => {
   useEffect(() => {
     const fetchMeta = async () => {
       try {
-        const [m, t, p] = await Promise.all([
-          fetch(`${OPTAVISION_API_URL}/api/optavision/matches`).then(r => r.json()),
+        const [meta, t, p] = await Promise.all([
+          fetch(`${OPTAVISION_API_URL}/api/optavision/meta/summary`).then(r => r.json()),
           fetch(`${OPTAVISION_API_URL}/api/optavision/teams`).then(r => r.json()),
           fetch(`${OPTAVISION_API_URL}/api/optavision/players`).then(r => r.json())
         ]);
-        setMatchesList(m);
+        
+        // Structure de meta : { matches: [{id, label}], action_types: [] }
+        setMatchesList(meta.matches || []);
+        setAvailableActionTypes(meta.action_types || []);
         setTeamsList(t);
         setPlayersList(p);
         
         // Initialisation avec le premier match si vide
-        if (m.length > 0 && explorationFilters.matches.length === 0) {
-          setExplorationFilters(prev => ({ ...prev, matches: [m[0].match_id] }));
+        if (meta.matches?.length > 0 && explorationFilters.matches.length === 0) {
+          setExplorationFilters(prev => ({ ...prev, matches: [meta.matches[0].id] }));
         }
       } catch (err) {
         console.error("META_FETCH_ERROR:", err);
@@ -126,6 +129,8 @@ const OptaVisionDashboard = ({ user }) => {
     };
     fetchMeta();
   }, []);
+
+  const [availableActionTypes, setAvailableActionTypes] = useState([]);
 
   // Hydratation automatique
   useEffect(() => {
@@ -350,6 +355,7 @@ const OptaVisionDashboard = ({ user }) => {
                     {activeTab === 'exploration' && (
                       <ExplorationFilterPanel 
                         matchesList={matchesList}
+                        availableActionTypes={availableActionTypes}
                         teamsList={teamsList}
                         playersList={playersList}
                         filters={explorationFilters}

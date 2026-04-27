@@ -21,15 +21,12 @@ import AccordionSection from './AccordionSection';
  * ExplorationFilterPanel - Version Dynamique (Auto-Discovery)
  * Hydrate automatiquement les filtres à partir de la prop eventsData.
  */
-const ExplorationFilterPanel = ({ matchesList = [], teamsList = [], playersList = [], filters, onFilterChange, onClose }) => {
+const ExplorationFilterPanel = ({ matchesList = [], availableActionTypes = [], teamsList = [], playersList = [], filters, onFilterChange, onClose }) => {
   const [openSection, setOpenSection] = useState('primary');
   const [searchTerm, setSearchTerm] = useState('');
   
   // BOUCLIER ANTI-SPAM : État local pour les modifications en cours
   const [pendingFilters, setPendingFilters] = useState({ ...filters });
-
-  // Liste fixe des types d'actions (Contrat Opta)
-  const actionTypes = ['Pass', 'Shot', 'Tackle', 'Interception', 'Clearance', 'Save', 'Carry'];
 
   const toggleFilter = (category, value) => {
     const filterValue = typeof value === 'object' ? value.id : value;
@@ -112,16 +109,16 @@ const ExplorationFilterPanel = ({ matchesList = [], teamsList = [], playersList 
             <div className="space-y-1">
               {matchesList.map(match => (
                 <button 
-                  key={match.match_id}
-                  onClick={() => toggleFilter('matches', match.match_id)}
+                  key={match.id}
+                  onClick={() => toggleFilter('matches', match.id)}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-[2px] verge-label-mono text-[10px] font-black uppercase transition-all ${
-                    pendingFilters.matches.includes(match.match_id)
+                    pendingFilters.matches.includes(match.id)
                     ? 'bg-[#3cffd0]/10 text-[#3cffd0] border border-[#3cffd0]/20'
                     : 'bg-white/5 text-[#949494] border border-transparent hover:bg-white/10'
                   }`}
                 >
-                  {match.matchName || match.match_id}
-                  {pendingFilters.matches.includes(match.match_id) && <Check size={12} />}
+                  {match.label || match.id}
+                  {pendingFilters.matches.includes(match.id) && <Check size={12} />}
                 </button>
               ))}
             </div>
@@ -140,7 +137,7 @@ const ExplorationFilterPanel = ({ matchesList = [], teamsList = [], playersList 
           <div className="space-y-10">
             <FilterGroup label="Types d'Actions">
               <div className="grid grid-cols-2 gap-2">
-                {actionTypes.map(type => (
+                {availableActionTypes.map(type => (
                   <button 
                     key={type} 
                     onClick={() => toggleFilter('types', type)}
