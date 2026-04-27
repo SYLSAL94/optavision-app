@@ -119,17 +119,43 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters }) => {
                       const isSuccess = event.outcome === 1;
                       const color = isSuccess ? '#3cffd0' : '#ff4d4d'; // Vert/Cyan pour succès, Rouge pour échec
                       const opacity = isSuccess ? 0.9 : 0.4;
-                      const tooltip = `${event.playerName || 'Joueur'}\nMinute: ${event.minute || '0'}'\nType: ${event.type}\nxT: ${event.xT?.toFixed(3) || '0.000'}`;
+                      let parsedMetrics = event.advanced_metrics;
+                      if (typeof parsedMetrics === 'string') {
+                        try { parsedMetrics = JSON.parse(parsedMetrics); } catch(e) { parsedMetrics = {}; }
+                      }
+                      
+                      const displayType = parsedMetrics?.type_name || event.type || event.type_id;
+                      const tooltip = `${event.playerName || 'Joueur'}\nMinute: ${event.minute || '0'}'\nType: ${displayType}\nxT: ${event.xT?.toFixed(3) || '0.000'}`;
 
-                      // Extracteur Sécurisé de Coordonnées d'arrivée (Qualifiers 140/141)
+
+                      // Extracteur Sécurisé de Coordonnées d'arrivée (Multi-Source & Polymorphique)
                       const getEndCoordinates = (ev) => {
                         try {
+                          // 1. Priorité aux Métriques Avancées (Supporte String JSON ou Object)
+                          if (ev.advanced_metrics) {
+                            let metrics = ev.advanced_metrics;
+                            if (typeof metrics === 'string') {
+                              try { metrics = JSON.parse(metrics); } catch(e) { metrics = {}; }
+                            }
+                            
+                            if (metrics.endX !== undefined && metrics.endY !== undefined) {
+                              return {
+                                endX: parseFloat(metrics.endX),
+                                endY: parseFloat(metrics.endY)
+                              };
+                            }
+                          }
+
+                          // 2. Fallback aux Qualifiers Opta Standards
                           let quals = ev.qualifiers;
-                          if (typeof quals === 'string') quals = JSON.parse(quals);
+                          if (typeof quals === 'string') {
+                            try { quals = JSON.parse(quals); } catch(e) { quals = []; }
+                          }
                           if (!Array.isArray(quals)) return null;
 
-                          const endXObj = quals.find(q => q.qualifierId === 140);
-                          const endYObj = quals.find(q => q.qualifierId === 141);
+                          // Recherche sur les IDs 140/141 (Passes/Tirs) OU 212/213 (Carries Natifs)
+                          const endXObj = quals.find(q => q.qualifierId === 140 || q.qualifierId === 212);
+                          const endYObj = quals.find(q => q.qualifierId === 141 || q.qualifierId === 213);
 
                           if (endXObj && endYObj) {
                             return {

@@ -44,11 +44,11 @@ const AccordionSection = ({ id, title, icon, isOpen, onToggle, badge, subtitle, 
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
+            initial={{ height: 0, opacity: 0, overflow: 'hidden' }}
+            animate={{ height: 'auto', opacity: 1, transitionEnd: { overflow: 'visible' } }}
+            exit={{ height: 0, opacity: 0, overflow: 'hidden' }}
             transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
-            className="overflow-hidden"
+            className="w-full"
           >
             <div className="pt-4 pb-8 space-y-8 pl-[72px]">
               {children}

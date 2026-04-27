@@ -55,15 +55,16 @@ const OptaVisionDashboard = ({ user }) => {
     start_min: 0,
     end_min: 95,
     outcome: null,
-    period_id: null,
-    location: null,
-    zone: null,
-    competition: null,
-    season: null,
-    week: null,
-    country: null,
-    phase: null,
-    stadium: null
+    period_id: [],
+    location: [],
+    zone: [],
+    competition: [],
+    season: [],
+    week: [],
+    country: [],
+    phase: [],
+    stadium: [],
+    advanced_tactics: []
   });
 
   const fetchEvents = async () => {
@@ -84,15 +85,16 @@ const OptaVisionDashboard = ({ user }) => {
     if (explorationFilters.start_min > 0) params.append('start_min', explorationFilters.start_min.toString());
     if (explorationFilters.end_min < 95) params.append('end_min', explorationFilters.end_min.toString());
     if (explorationFilters.outcome !== null) params.append('outcome', explorationFilters.outcome.toString());
-    if (explorationFilters.period_id) params.append('period_id', explorationFilters.period_id.toString());
-    if (explorationFilters.location) params.append('location', explorationFilters.location);
-    if (explorationFilters.zone) params.append('zone', explorationFilters.zone);
-    if (explorationFilters.competition) params.append('competition', explorationFilters.competition);
-    if (explorationFilters.season) params.append('season', explorationFilters.season);
-    if (explorationFilters.week) params.append('week', explorationFilters.week);
-    if (explorationFilters.country) params.append('country', explorationFilters.country);
-    if (explorationFilters.phase) params.append('phase', explorationFilters.phase);
-    if (explorationFilters.stadium) params.append('stadium', explorationFilters.stadium);
+    if (explorationFilters.period_id?.length > 0) params.append('period_id', explorationFilters.period_id.join(','));
+    if (explorationFilters.location?.length > 0) params.append('location', explorationFilters.location.join(','));
+    if (explorationFilters.zone?.length > 0) params.append('zone', explorationFilters.zone.join(','));
+    if (explorationFilters.competition?.length > 0) params.append('competition', explorationFilters.competition.join(','));
+    if (explorationFilters.season?.length > 0) params.append('season', explorationFilters.season.join(','));
+    if (explorationFilters.week?.length > 0) params.append('week', explorationFilters.week.join(','));
+    if (explorationFilters.country?.length > 0) params.append('country', explorationFilters.country.join(','));
+    if (explorationFilters.phase?.length > 0) params.append('phase', explorationFilters.phase.join(','));
+    if (explorationFilters.stadium?.length > 0) params.append('stadium', explorationFilters.stadium.join(','));
+    if (explorationFilters.advanced_tactics?.length > 0) params.append('advanced_tactics', explorationFilters.advanced_tactics.join(','));
 
     const url = `${OPTAVISION_API_URL}/api/optavision/events?${params.toString()}`;
     console.log("🌐 Appel de l'API OptaVision vers :", url);

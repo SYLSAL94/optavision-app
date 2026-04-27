@@ -65,15 +65,16 @@ const ExplorationFilterPanel = ({
       start_min: 0,
       end_min: 95,
       outcome: null,
-      period_id: null,
-      location: null,
-      zone: null,
-      competition: null,
-      season: null,
-      week: null,
-      country: null,
-      phase: null,
-      stadium: null
+      period_id: [],
+      location: [],
+      zone: [],
+      competition: [],
+      season: [],
+      week: [],
+      country: [],
+      phase: [],
+      stadium: [],
+      advanced_tactics: []
     };
     setPendingFilters(initial);
   };
@@ -129,27 +130,23 @@ const ExplorationFilterPanel = ({
               {/* Filtre par Compétition */}
               <div className="space-y-3">
                 <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Compétition</label>
-                <select 
-                  value={pendingFilters.competition || ''} 
-                  onChange={(e) => setPendingFilters({ ...pendingFilters, competition: e.target.value || null })}
-                  className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white outline-none focus:border-[#3cffd0]"
-                >
-                  <option value="">TOUTES</option>
-                  {competitionsList.map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
-                </select>
+                <MultiSelectDropdown 
+                  options={competitionsList.map(c => ({ value: c, label: c.toUpperCase() }))}
+                  selectedValues={pendingFilters.competition || []}
+                  onChange={(vals) => setPendingFilters({ ...pendingFilters, competition: vals })}
+                  placeholder="TOUTES COMPÉTITIONS"
+                />
               </div>
 
               {/* Filtre par Saison */}
               <div className="space-y-3">
                 <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Saison</label>
-                <select 
-                  value={pendingFilters.season || ''} 
-                  onChange={(e) => setPendingFilters({ ...pendingFilters, season: e.target.value || null })}
-                  className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white outline-none focus:border-[#3cffd0]"
-                >
-                  <option value="">TOUTES</option>
-                  {seasonsList.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
+                <MultiSelectDropdown 
+                  options={seasonsList.map(s => ({ value: s, label: String(s) }))}
+                  selectedValues={pendingFilters.season || []}
+                  onChange={(vals) => setPendingFilters({ ...pendingFilters, season: vals })}
+                  placeholder="TOUTES SAISONS"
+                />
               </div>
             </div>
 
@@ -157,27 +154,23 @@ const ExplorationFilterPanel = ({
               {/* Filtre par Semaine */}
               <div className="space-y-3">
                 <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Semaine</label>
-                <select 
-                  value={pendingFilters.week || ''} 
-                  onChange={(e) => setPendingFilters({ ...pendingFilters, week: e.target.value || null })}
-                  className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white outline-none focus:border-[#3cffd0]"
-                >
-                  <option value="">TOUTES</option>
-                  {weeksList.map(w => <option key={w} value={w}>SEM {w}</option>)}
-                </select>
+                <MultiSelectDropdown 
+                  options={weeksList.map(w => ({ value: w, label: `SEM ${w}` }))}
+                  selectedValues={pendingFilters.week || []}
+                  onChange={(vals) => setPendingFilters({ ...pendingFilters, week: vals })}
+                  placeholder="TOUTES SEMAINES"
+                />
               </div>
 
               {/* Filtre par Pays */}
               <div className="space-y-3">
                 <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Pays</label>
-                <select 
-                  value={pendingFilters.country || ''} 
-                  onChange={(e) => setPendingFilters({ ...pendingFilters, country: e.target.value || null })}
-                  className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white outline-none focus:border-[#3cffd0]"
-                >
-                  <option value="">TOUS</option>
-                  {countriesList.map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
-                </select>
+                <MultiSelectDropdown 
+                  options={countriesList.map(c => ({ value: c, label: c.toUpperCase() }))}
+                  selectedValues={pendingFilters.country || []}
+                  onChange={(vals) => setPendingFilters({ ...pendingFilters, country: vals })}
+                  placeholder="TOUS PAYS"
+                />
               </div>
             </div>
 
@@ -185,50 +178,36 @@ const ExplorationFilterPanel = ({
               {/* Filtre par Phase */}
               <div className="space-y-3">
                 <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Phase</label>
-                <select 
-                  value={pendingFilters.phase || ''} 
-                  onChange={(e) => setPendingFilters({ ...pendingFilters, phase: e.target.value || null })}
-                  className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white outline-none focus:border-[#3cffd0]"
-                >
-                  <option value="">TOUTES</option>
-                  {phasesList.map(p => <option key={p} value={p}>{p.toUpperCase()}</option>)}
-                </select>
+                <MultiSelectDropdown 
+                  options={phasesList.map(p => ({ value: p, label: p.toUpperCase() }))}
+                  selectedValues={pendingFilters.phase || []}
+                  onChange={(vals) => setPendingFilters({ ...pendingFilters, phase: vals })}
+                  placeholder="TOUTES PHASES"
+                />
               </div>
 
               {/* Filtre par Stade */}
               <div className="space-y-3">
                 <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Stade</label>
-                <select 
-                  value={pendingFilters.stadium || ''} 
-                  onChange={(e) => setPendingFilters({ ...pendingFilters, stadium: e.target.value || null })}
-                  className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white outline-none focus:border-[#3cffd0]"
-                >
-                  <option value="">TOUS</option>
-                  {stadiumsList.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
+                <MultiSelectDropdown 
+                  options={stadiumsList.map(s => ({ value: s, label: s }))}
+                  selectedValues={pendingFilters.stadium || []}
+                  onChange={(vals) => setPendingFilters({ ...pendingFilters, stadium: vals })}
+                  placeholder="TOUS STADES"
+                />
               </div>
             </div>
 
             <div className="h-px bg-white/5 my-4" />
 
-            <div className="space-y-4">
-              <div className="verge-label-mono text-[8px] text-[#949494] uppercase mb-4 tracking-widest">SÉLECTION INDIVIDUELLE</div>
-              <div className="space-y-1">
-                {matchesList.map(match => (
-                  <button 
-                    key={match.id}
-                    onClick={() => toggleFilter('matches', match.id)}
-                    className={`w-full flex items-center justify-between px-4 py-3 rounded-[2px] verge-label-mono text-[10px] font-black uppercase transition-all ${
-                      pendingFilters.matches.includes(match.id)
-                      ? 'bg-[#3cffd0]/10 text-[#3cffd0] border border-[#3cffd0]/20'
-                      : 'bg-white/5 text-[#949494] border border-transparent hover:bg-white/10'
-                    }`}
-                  >
-                    {match.label || match.id}
-                    {pendingFilters.matches.includes(match.id) && <Check size={12} />}
-                  </button>
-                ))}
-              </div>
+            <div className="space-y-3">
+              <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">SÉLECTION INDIVIDUELLE (MATCH)</label>
+              <MultiSelectDropdown 
+                options={matchesList.map(match => ({ value: match.id, label: match.label || match.id }))}
+                selectedValues={pendingFilters.matches || []}
+                onChange={(vals) => setPendingFilters({ ...pendingFilters, matches: vals })}
+                placeholder="TOUS LES MATCHS (CROSS-MATCH)"
+              />
             </div>
           </div>
         </AccordionSection>
@@ -244,21 +223,12 @@ const ExplorationFilterPanel = ({
         >
           <div className="space-y-10">
             <FilterGroup label="Types d'Actions">
-              <div className="grid grid-cols-2 gap-2">
-                {availableActionTypes.map(type => (
-                  <button 
-                    key={type} 
-                    onClick={() => toggleFilter('types', type)}
-                    className={`border py-3 verge-label-mono text-[9px] font-black uppercase transition-all ${
-                      pendingFilters.types.includes(type)
-                      ? 'bg-[#3cffd0] text-black border-[#3cffd0]'
-                      : 'bg-[#131313] border-white/5 text-[#949494] hover:border-[#3cffd0]/30'
-                    }`}
-                  >
-                    {type}
-                  </button>
-                ))}
-              </div>
+              <MultiSelectDropdown 
+                options={availableActionTypes.map(type => ({ value: type, label: type }))}
+                selectedValues={pendingFilters.types || []}
+                onChange={(vals) => setPendingFilters({ ...pendingFilters, types: vals })}
+                placeholder="TOUTES ACTIONS"
+              />
             </FilterGroup>
 
             <FilterGroup label="Sélection des Joueurs">
@@ -305,61 +275,45 @@ const ExplorationFilterPanel = ({
             {/* Lieu du match */}
             <div className="space-y-3">
               <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Lieu (Side)</label>
-              <div className="grid grid-cols-2 gap-2">
-                {['home', 'away'].map(loc => (
-                  <button
-                    key={loc}
-                    onClick={() => setPendingFilters({ ...pendingFilters, location: pendingFilters.location === loc ? null : loc })}
-                    className={`px-4 py-3 rounded-[2px] verge-label-mono text-[9px] font-black uppercase border transition-all ${
-                      pendingFilters.location === loc 
-                      ? 'bg-[#3cffd0] text-black border-[#3cffd0]' 
-                      : 'bg-white/5 text-[#949494] border-white/10 hover:border-white/20'
-                    }`}
-                  >
-                    {loc === 'home' ? 'Domicile' : 'Extérieur'}
-                  </button>
-                ))}
-              </div>
+              <MultiSelectDropdown 
+                options={[
+                  { value: 'home', label: 'Domicile' },
+                  { value: 'away', label: 'Extérieur' }
+                ]}
+                selectedValues={pendingFilters.location || []}
+                onChange={(vals) => setPendingFilters({ ...pendingFilters, location: vals })}
+                placeholder="TOUS LES LIEUX"
+              />
             </div>
 
             {/* Période */}
             <div className="space-y-3">
               <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Période</label>
-              <div className="grid grid-cols-2 gap-2">
-                {[1, 2].map(p => (
-                  <button
-                    key={p}
-                    onClick={() => setPendingFilters({ ...pendingFilters, period_id: pendingFilters.period_id === p ? null : p })}
-                    className={`px-4 py-3 rounded-[2px] verge-label-mono text-[9px] font-black uppercase border transition-all ${
-                      pendingFilters.period_id === p 
-                      ? 'bg-[#3cffd0] text-black border-[#3cffd0]' 
-                      : 'bg-white/5 text-[#949494] border-white/10 hover:border-white/20'
-                    }`}
-                  >
-                    {p === 1 ? '1ère Mi-temps' : '2ème Mi-temps'}
-                  </button>
-                ))}
-              </div>
+              <MultiSelectDropdown 
+                options={[
+                  { value: 1, label: '1ère Mi-temps' },
+                  { value: 2, label: '2ème Mi-temps' }
+                ]}
+                selectedValues={pendingFilters.period_id || []}
+                onChange={(vals) => setPendingFilters({ ...pendingFilters, period_id: vals })}
+                placeholder="TOUTES LES PÉRIODES"
+              />
             </div>
 
             {/* Zone de jeu */}
             <div className="space-y-3">
               <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Zone Tactique (JSONB)</label>
-              <div className="grid grid-cols-2 gap-2">
-                {['Center', 'Left', 'Right', 'Back'].map(z => (
-                  <button
-                    key={z}
-                    onClick={() => setPendingFilters({ ...pendingFilters, zone: pendingFilters.zone === z ? null : z })}
-                    className={`px-4 py-3 rounded-[2px] verge-label-mono text-[9px] font-black uppercase border transition-all ${
-                      pendingFilters.zone === z 
-                      ? 'bg-[#3cffd0] text-black border-[#3cffd0]' 
-                      : 'bg-white/5 text-[#949494] border-white/10 hover:border-white/20'
-                    }`}
-                  >
-                    {z}
-                  </button>
-                ))}
-              </div>
+              <MultiSelectDropdown 
+                options={[
+                  { value: 'Center', label: 'Centre' },
+                  { value: 'Left', label: 'Gauche' },
+                  { value: 'Right', label: 'Droite' },
+                  { value: 'Back', label: 'Arrière' }
+                ]}
+                selectedValues={pendingFilters.zone || []}
+                onChange={(vals) => setPendingFilters({ ...pendingFilters, zone: vals })}
+                placeholder="TOUTES LES ZONES"
+              />
             </div>
           </div>
         </AccordionSection>
@@ -407,6 +361,25 @@ const ExplorationFilterPanel = ({
                     </button>
                   ))}
                </div>
+            </FilterGroup>
+
+            <FilterGroup label="Tactique Avancée (JSONB)">
+              <MultiSelectDropdown 
+                options={[
+                  { value: 'is_gegenpressing', label: 'Gegenpressing' },
+                  { value: 'is_through_ball', label: 'Passes Profondes' },
+                  { value: 'is_cross', label: 'Centres' },
+                  { value: 'is_key_pass', label: 'Passes Clés / Assists' },
+                  { value: 'is_long_ball', label: 'Jeu Long' },
+                  { value: 'is_shot_big_chance', label: 'Grosses Occasions' },
+                  { value: 'is_takeon_offensive', label: 'Dribbles Offensifs' },
+                  { value: 'is_error_lead_to_goal', label: 'Erreurs menant au But' },
+                  { value: 'is_save_diving', label: 'Arrêts Plongeons' }
+                ]}
+                selectedValues={pendingFilters.advanced_tactics || []}
+                onChange={(vals) => setPendingFilters({ ...pendingFilters, advanced_tactics: vals })}
+                placeholder="TOUTES TACTIQUES"
+              />
             </FilterGroup>
           </div>
         </AccordionSection>
@@ -465,5 +438,44 @@ const FilterGroup = ({ label, children }) => (
     {children}
   </div>
 );
+
+const MultiSelectDropdown = ({ options, selectedValues, onChange, placeholder }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  return (
+    <div className="relative w-full">
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white flex justify-between items-center cursor-pointer hover:border-[#3cffd0] transition-colors"
+      >
+        <span className="truncate pr-4">
+          {selectedValues.length === 0 ? placeholder : 
+           selectedValues.length === 1 ? options.find(o => String(o.value) === String(selectedValues[0]))?.label || placeholder :
+           `${selectedValues.length} SÉLECTION(S)`}
+        </span>
+        <ChevronDown size={14} className={`flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </div>
+      {isOpen && (
+        <div className="absolute top-full left-0 w-full mt-1 bg-[#131313] border border-white/10 z-50 max-h-48 overflow-y-auto styled-scrollbar-verge shadow-2xl">
+          {options.map(opt => {
+            const isSelected = selectedValues.some(v => String(v) === String(opt.value));
+            return (
+              <div 
+                key={opt.value}
+                onClick={() => {
+                  if (isSelected) onChange(selectedValues.filter(v => String(v) !== String(opt.value)));
+                  else onChange([...selectedValues, opt.value]);
+                }}
+                className={`p-3 border-b border-white/5 verge-label-mono text-[9px] uppercase cursor-pointer flex justify-between items-center hover:bg-white/5 transition-colors ${isSelected ? 'text-[#3cffd0] bg-[#3cffd0]/5' : 'text-[#949494]'}`}
+              >
+                {opt.label}
+                {isSelected && <Check size={12} />}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export default ExplorationFilterPanel;
