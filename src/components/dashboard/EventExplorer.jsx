@@ -17,10 +17,12 @@ import { FootballPitch } from './FootballPitch';
 
 const ACTION_TYPES = [
   { id: 'Pass', label: 'Passes', icon: <Activity size={14} />, color: '#3cffd0' },
+  { id: 'BallReceipt', label: 'Réceptions', icon: <ChevronRight size={14} />, color: '#ffd03c' },
   { id: 'Shot', label: 'Tirs', icon: <Target size={14} />, color: '#ff4d4d' },
   { id: 'Duel', label: 'Duels', icon: <Layers size={14} />, color: '#5200ff' },
   { id: 'Interception', label: 'Interceptions', icon: <Database size={14} />, color: '#ffd03c' },
 ];
+
 
 const RankBadge = ({ rank }) => {
   if (rank === 1) return (
@@ -47,6 +49,8 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedM
   const [page, setPage] = useState(1);
   const itemsPerPage = 10;
 
+
+
   const combinedActions = useMemo(() => {
     const advanced = advancedMetricsList.map(tag => ({
       id: tag,
@@ -58,7 +62,59 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedM
   }, [advancedMetricsList]);
 
   // LE FILTRAGE EST DÉSORMAIS SERVEUR-SIDE (Dette technique purgée)
-  const displayData = data;
+  // Ajout du filtre de purge visuelle anti-pollution (Out events)
+  // LE FILTRAGE EST DÉSORMAIS SERVEUR-SIDE (Dette technique purgée)
+  // Ajout du filtre de purge visuelle anti-pollution (Out events)
+  // LE FILTRAGE EST DÉSORMAIS SERVEUR-SIDE (Dette technique purgée)
+  // Ajout du filtre de purge visuelle anti-pollution (Out events)
+  const displayData = useMemo(() => {
+    let filtered = data.filter(e => e.type !== 'Out' && e.type_id !== 5);
+    
+    const { localTeam, localOpponent } = filters || {};
+    
+    if (localTeam && localTeam !== 'ALL') {
+      filtered = filtered.filter(e => e.team_id === localTeam);
+    }
+    
+    if (localOpponent && localOpponent !== 'ALL') {
+      // Logique Adversaire : On affiche les actions de l'autre équipe
+      filtered = filtered.filter(e => e.team_id !== localOpponent);
+    }
+    
+    return filtered;
+  }, [data, filters]);
+
+
+
+  // DICTIONNAIRES DE MAPPING DYNAMIQUE (Auto-résolution des IDs en noms explicites)
+  const playerMap = useMemo(() => {
+    const map = {};
+    data.forEach(e => {
+      if (e.player_id && e.playerName) map[e.player_id] = e.playerName;
+    });
+    return map;
+  }, [data]);
+
+  const matchMap = useMemo(() => {
+    const map = {};
+    data.forEach(e => {
+      const mId = e.match_id || e.matchId;
+      if (mId && e.matchName) map[mId] = e.matchName;
+    });
+    return map;
+  }, [data]);
+
+
+
+  const teamMap = useMemo(() => {
+    const map = {};
+    data.forEach(e => {
+      if (e.team_id) map[e.team_id] = e.teamName || `Team ${e.team_id}`;
+    });
+    return map;
+  }, [data]);
+
+  const teamList = Object.keys(teamMap);
 
   // Calcul du classement des joueurs basé sur l'action sélectionnée dans le sélecteur DROIT
   const playerRanking = useMemo(() => {
@@ -96,6 +152,7 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedM
       .sort((a, b) => sortOrder === 'desc' ? b.count - a.count : a.count - b.count);
   }, [displayData, selectedAction, sortOrder]);
 
+
   // Reset de la pagination en cas de changement de filtre
   React.useEffect(() => {
     setPage(1);
@@ -132,6 +189,8 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedM
                 SESSION: <span className="text-[#3cffd0]">{typeof matchId === 'string' ? matchId : matchId?.match_id || 'ANALYST_PRO'}</span>
               </div>
             </div>
+
+
           </div>
 
           {/* Terrain Svg */}
@@ -157,64 +216,28 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedM
                     }
                     
                     const displayType = parsedMetrics?.type_name || event.type || event.type_id;
-                    const tooltip = `${event.playerName || 'Joueur'}\nMinute: ${event.minute || '0'}'\nType: ${displayType}\nxT: ${event.xT?.toFixed(3) || '0.000'}`;
+                    const receiverId = parsedMetrics?.receiver || event.receiver || event.receiverName || 'N/A';
+                    
+                    // Résolution des noms explicites
+                    const receiverName = playerMap[receiverId] || receiverId;
+                    const currentMatchId = event.match_id || (typeof matchId === 'string' ? matchId : matchId?.match_id);
+                    const finalMatchName = matchMap[currentMatchId] || currentMatchId || 'ANALYST_PRO';
+                    
+                    // 3. Vérification de type stricte (Mission Lead Data)
+                    const endX = parsedMetrics?.end_x;
+                    const endY = parsedMetrics?.end_y;
+                    const hasValidEnd = typeof endX === 'number' && typeof endY === 'number';
 
-
-                    // Extracteur Sécurisé de Coordonnées d'arrivée (Multi-Source & Polymorphique)
-                    const getEndCoordinates = (ev) => {
-                      try {
-                        // 1. Priorité aux Métriques Avancées (Supporte String JSON ou Object)
-                        if (ev.advanced_metrics) {
-                          let metrics = ev.advanced_metrics;
-                          if (typeof metrics === 'string') {
-                            try { metrics = JSON.parse(metrics); } catch(e) { metrics = {}; }
-                          }
-                          
-                          if (metrics.endX !== undefined && metrics.endY !== undefined) {
-                            return {
-                              endX: parseFloat(metrics.endX),
-                              endY: parseFloat(metrics.endY)
-                            };
-                          }
-                        }
-
-                        // 2. Fallback aux Qualifiers Opta Standards
-                        let quals = ev.qualifiers;
-                        if (typeof quals === 'string') {
-                          try { quals = JSON.parse(quals); } catch(e) { quals = []; }
-                        }
-                        if (!Array.isArray(quals)) return null;
-
-                        // Recherche sur les IDs 140/141 (Passes/Tirs) OU 212/213 (Carries Natifs)
-                        const endXObj = quals.find(q => q.qualifierId === 140 || q.qualifierId === 212);
-                        const endYObj = quals.find(q => q.qualifierId === 141 || q.qualifierId === 213);
-
-                        if (endXObj && endYObj) {
-                          return {
-                            endX: parseFloat(endXObj.value),
-                            endY: parseFloat(endYObj.value)
-                          };
-                        }
-                      } catch (e) {
-                        return null;
-                      }
-                      return null;
-                    };
-
-                    const endCoords = getEndCoordinates(event);
-                    let endCx = null, endCy = null;
-                    if (endCoords) {
-                      endCx = (endCoords.endX / 100) * 105;
-                      endCy = ((100 - endCoords.endY) / 100) * 68; // Inversion Y cohérente
-                    }
+                    const tooltip = `Match: ${finalMatchName}\nActeur: ${event.playerName || 'Joueur'}\nReceveur: ${receiverName}\nType: ${displayType}\nDépart: [X: ${event.x}, Y: ${event.y}] | Fin: [X: ${hasValidEnd ? endX : 'N/A'}, Y: ${hasValidEnd ? endY : 'N/A'}]`;
 
                       return (
                         <g key={i} className="cursor-help pointer-events-auto">
-                          {/* Trajectoire (Ligne) */}
-                          {endCx !== null && endCy !== null && (
+                          {/* Trajectoire (Ligne) - Rendu Conditionnel Strict */}
+                          {hasValidEnd && (
                             <line 
                               x1={cx} y1={cy} 
-                              x2={endCx} y2={endCy} 
+                              x2={(endX / 100) * 105} 
+                              y2={((100 - endY) / 100) * 68} 
                               stroke={color} 
                               strokeWidth="0.2" 
                               strokeOpacity={opacity * 0.6}
@@ -298,9 +321,9 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedM
                      <span className="verge-label-mono text-[10px] text-white uppercase font-black tracking-tight">{e.type}</span>
                      <span className="verge-label-mono text-[10px] text-[#949494] group-hover:text-white transition-colors">{e.playerName}</span>
                    </div>
-                   <div className="verge-label-mono text-[8px] text-[#2d2d2d] group-hover:text-[#3cffd0] transition-colors font-black">
-                     {e.id || `EVENT_${i}`}
-                   </div>
+                    <div className="verge-label-mono text-[8px] text-[#2d2d2d] group-hover:text-[#3cffd0] transition-colors font-black">
+                      {/* NETTOYAGE : Suppression de l'affichage de l'ID brut polluant */}
+                    </div>
                  </div>
                ))
              ) : (
