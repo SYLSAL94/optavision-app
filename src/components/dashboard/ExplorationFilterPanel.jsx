@@ -30,6 +30,7 @@ const ExplorationFilterPanel = ({
   countriesList = [],
   phasesList = [],
   stadiumsList = [],
+  advancedMetricsList = [],
   teamsList = [], 
   playersList = [], 
   filters, 
@@ -365,17 +366,10 @@ const ExplorationFilterPanel = ({
 
             <FilterGroup label="Tactique Avancée (JSONB)">
               <MultiSelectDropdown 
-                options={[
-                  { value: 'is_gegenpressing', label: 'Gegenpressing' },
-                  { value: 'is_through_ball', label: 'Passes Profondes' },
-                  { value: 'is_cross', label: 'Centres' },
-                  { value: 'is_key_pass', label: 'Passes Clés / Assists' },
-                  { value: 'is_long_ball', label: 'Jeu Long' },
-                  { value: 'is_shot_big_chance', label: 'Grosses Occasions' },
-                  { value: 'is_takeon_offensive', label: 'Dribbles Offensifs' },
-                  { value: 'is_error_lead_to_goal', label: 'Erreurs menant au But' },
-                  { value: 'is_save_diving', label: 'Arrêts Plongeons' }
-                ]}
+                options={advancedMetricsList.map(tag => ({
+                  value: tag,
+                  label: tag.replace(/^(is_|seq_)/, '').replace(/_/g, ' ').toUpperCase()
+                }))}
                 selectedValues={pendingFilters.advanced_tactics || []}
                 onChange={(vals) => setPendingFilters({ ...pendingFilters, advanced_tactics: vals })}
                 placeholder="TOUTES TACTIQUES"

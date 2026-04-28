@@ -136,6 +136,7 @@ const OptaVisionDashboard = ({ user }) => {
         setCountriesList(meta.countries || []);
         setPhasesList(meta.phases || []);
         setStadiumsList(meta.stadiums || []);
+        setAdvancedMetricsList(meta.advanced_metrics_keys || []);
         setTeamsList(t);
         setPlayersList(p);
         
@@ -157,6 +158,7 @@ const OptaVisionDashboard = ({ user }) => {
   const [countriesList, setCountriesList] = useState([]);
   const [phasesList, setPhasesList] = useState([]);
   const [stadiumsList, setStadiumsList] = useState([]);
+  const [advancedMetricsList, setAdvancedMetricsList] = useState([]);
 
   // Hydratation automatique
   useEffect(() => {
@@ -388,6 +390,7 @@ const OptaVisionDashboard = ({ user }) => {
                         countriesList={countriesList}
                         phasesList={phasesList}
                         stadiumsList={stadiumsList}
+                        advancedMetricsList={advancedMetricsList}
                         teamsList={teamsList}
                         playersList={playersList}
                         filters={explorationFilters}

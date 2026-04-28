@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Lock, User, Terminal } from 'lucide-react';
+import { API_BASE_URL } from '../../config';
 
 const LoginScreen = ({ onLoginSuccess }) => {
   const [username, setUsername] = useState('');
@@ -15,7 +16,7 @@ const LoginScreen = ({ onLoginSuccess }) => {
 
     try {
       // SSO Centralisé via API Scouting
-      const response = await fetch('https://api-scouting.theanalyst.cloud/api/login', {
+      const response = await fetch(`${API_BASE_URL}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
