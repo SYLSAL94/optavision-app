@@ -74,7 +74,7 @@ const OptaVisionDashboard = ({ user }) => {
     // Construction dynamique des query params
     const params = new URLSearchParams({
       page: page.toString(),
-      limit: '20'
+      limit: '1000'
     });
     
     if (explorationFilters.matches?.length > 0) params.append('match_ids', explorationFilters.matches.join(','));
@@ -343,6 +343,7 @@ const OptaVisionDashboard = ({ user }) => {
                             matchId={explorationFilters.matches[0] || 'CROSS-MATCH'} 
                             loading={loading} 
                             filters={explorationFilters}
+                            advancedMetricsList={advancedMetricsList}
                           />
                         </div>
                       ) : activeTool === 'sequences' ? (

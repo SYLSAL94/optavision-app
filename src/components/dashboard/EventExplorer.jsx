@@ -40,10 +40,22 @@ const RankBadge = ({ rank }) => {
   );
 };
 
-const EventExplorer = ({ data = [], matchId, loading = false, filters }) => {
+const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedMetricsList = [] }) => {
   const [selectedAction, setSelectedAction] = useState('Pass');
   const [sortOrder, setSortOrder] = useState('desc');
   const [isSelectOpen, setIsSelectOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const itemsPerPage = 10;
+
+  const combinedActions = useMemo(() => {
+    const advanced = advancedMetricsList.map(tag => ({
+      id: tag,
+      label: tag.replace(/^(is_|seq_)/, '').replace(/_/g, ' ').toUpperCase(),
+      icon: <Activity size={14} />,
+      color: '#949494'
+    }));
+    return [...ACTION_TYPES, ...advanced];
+  }, [advancedMetricsList]);
 
   // LE FILTRAGE EST DÉSORMAIS SERVEUR-SIDE (Dette technique purgée)
   const displayData = data;
@@ -56,7 +68,19 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters }) => {
     const playerTeams = {};
 
     displayData.forEach(event => {
-      if (event.type === selectedAction) {
+      let isMatch = false;
+      
+      if (selectedAction.startsWith('is_') || selectedAction.startsWith('seq_')) {
+        let parsedMetrics = event.advanced_metrics;
+        if (typeof parsedMetrics === 'string') {
+          try { parsedMetrics = JSON.parse(parsedMetrics); } catch(e) { parsedMetrics = {}; }
+        }
+        isMatch = parsedMetrics?.[selectedAction] === true || parsedMetrics?.[selectedAction] === 'true';
+      } else {
+        isMatch = event.type === selectedAction || event.type_id === selectedAction;
+      }
+
+      if (isMatch) {
         const playerName = event.playerName || 'Unknown Player';
         counts[playerName] = (counts[playerName] || 0) + 1;
         playerTeams[playerName] = event.teamName || 'Unknown Team';
@@ -71,6 +95,14 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters }) => {
       }))
       .sort((a, b) => sortOrder === 'desc' ? b.count - a.count : a.count - b.count);
   }, [displayData, selectedAction, sortOrder]);
+
+  // Reset de la pagination en cas de changement de filtre
+  React.useEffect(() => {
+    setPage(1);
+  }, [selectedAction, sortOrder, displayData]);
+
+  const totalPages = Math.ceil(playerRanking.length / itemsPerPage);
+  const paginatedRanking = playerRanking.slice((page - 1) * itemsPerPage, page * itemsPerPage);
 
   return (
     <div className="flex h-full w-full gap-8 animate-in fade-in zoom-in-95 duration-500 overflow-hidden">
@@ -312,8 +344,10 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters }) => {
                   className="w-full flex items-center justify-between px-6 py-4 bg-[#131313] border border-white/10 rounded-[2px] verge-label-mono text-[10px] text-white font-black hover:border-[#3cffd0]/50 transition-all text-left"
                 >
                   <div className="flex items-center gap-4">
-                    {ACTION_TYPES.find(a => a.id === selectedAction)?.icon}
-                    <span className="uppercase tracking-widest">{ACTION_TYPES.find(a => a.id === selectedAction)?.label || 'SELECT METRIC...'}</span>
+                    {combinedActions.find(a => a.id === selectedAction)?.icon}
+                    <span className="uppercase tracking-widest truncate max-w-[200px]">
+                      {combinedActions.find(a => a.id === selectedAction)?.label || 'SELECT METRIC...'}
+                    </span>
                   </div>
                   <ChevronDown className={`text-[#949494] transition-transform ${isSelectOpen ? 'rotate-180' : ''}`} size={16} />
                 </button>
@@ -324,9 +358,9 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters }) => {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 10 }}
-                      className="absolute top-full left-0 right-0 mt-2 bg-[#1a1a1a] border border-white/10 rounded-[2px] shadow-2xl z-50 overflow-hidden"
+                      className="absolute top-full left-0 right-0 mt-2 bg-[#1a1a1a] border border-white/10 rounded-[2px] shadow-2xl z-[100] max-h-[300px] overflow-y-auto styled-scrollbar-verge"
                     >
-                      {ACTION_TYPES.map(type => (
+                      {combinedActions.map(type => (
                         <button
                           key={type.id}
                           onClick={() => {
@@ -340,7 +374,7 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters }) => {
                           }`}
                         >
                           {type.icon}
-                          {type.label}
+                          <span className="truncate">{type.label}</span>
                         </button>
                       ))}
                     </motion.div>
@@ -364,9 +398,9 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters }) => {
           </div>
 
           <div className="flex-1 overflow-y-auto styled-scrollbar-verge divide-y divide-white/[0.03] flex flex-col">
-             {playerRanking.length > 0 ? (
+             {paginatedRanking.length > 0 ? (
                <AnimatePresence mode="popLayout">
-                  {playerRanking.map((player, index) => (
+                  {paginatedRanking.map((player, index) => (
                     <motion.div
                       key={player.name}
                       layout
@@ -375,7 +409,7 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters }) => {
                       exit={{ opacity: 0, x: -20 }}
                       className="group flex items-center gap-6 p-6 hover:bg-[#3cffd0]/5 transition-all cursor-pointer relative"
                     >
-                      <RankBadge rank={index + 1} />
+                      <RankBadge rank={(page - 1) * itemsPerPage + index + 1} />
                       <div className="flex-1 min-w-0">
                          <div className="verge-label-mono text-[13px] text-white font-black group-hover:text-[#3cffd0] transition-colors truncate uppercase tracking-tight">
                            {player.name}
@@ -404,6 +438,29 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters }) => {
                 </div>
              )}
           </div>
+
+          {/* Contrôles de Pagination */}
+          {totalPages > 1 && (
+            <div className="p-4 border-t border-white/10 bg-[#131313] flex items-center justify-between">
+              <button 
+                disabled={page === 1}
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                className="px-4 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-30 rounded-[2px] verge-label-mono text-[10px] text-white font-black uppercase transition-colors"
+              >
+                Précédent
+              </button>
+              <div className="verge-label-mono text-[9px] text-[#949494] font-black tracking-widest">
+                PAGE <span className="text-[#3cffd0]">{page}</span> SUR {totalPages}
+              </div>
+              <button 
+                disabled={page === totalPages}
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                className="px-4 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-30 rounded-[2px] verge-label-mono text-[10px] text-white font-black uppercase transition-colors"
+              >
+                Suivant
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
