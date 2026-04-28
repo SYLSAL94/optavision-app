@@ -146,67 +146,67 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedM
                 {!loading && displayData.length > 0 && (
                   <svg viewBox="0 0 105 68" className="absolute inset-0 w-full h-full">
                     {displayData.slice(0, 1000).map((event, i) => {
-                      const cx = (event.x / 100) * 105;
-                      const cy = (event.y / 100) * 68;
-                      const isSuccess = event.outcome === 1;
-                      const color = isSuccess ? '#3cffd0' : '#ff4d4d'; // Vert/Cyan pour succès, Rouge pour échec
-                      const opacity = isSuccess ? 0.9 : 0.4;
-                      let parsedMetrics = event.advanced_metrics;
-                      if (typeof parsedMetrics === 'string') {
-                        try { parsedMetrics = JSON.parse(parsedMetrics); } catch(e) { parsedMetrics = {}; }
-                      }
-                      
-                      const displayType = parsedMetrics?.type_name || event.type || event.type_id;
-                      const tooltip = `${event.playerName || 'Joueur'}\nMinute: ${event.minute || '0'}'\nType: ${displayType}\nxT: ${event.xT?.toFixed(3) || '0.000'}`;
+                    const cx = (event.x / 100) * 105;
+                    const cy = ((100 - event.y) / 100) * 68; // Inversion Y pour standard Opta (y=0 à droite/bas)
+                    const isSuccess = event.outcome === 1;
+                    const color = isSuccess ? '#3cffd0' : '#ff4d4d'; // Vert/Cyan pour succès, Rouge pour échec
+                    const opacity = isSuccess ? 0.9 : 0.4;
+                    let parsedMetrics = event.advanced_metrics;
+                    if (typeof parsedMetrics === 'string') {
+                      try { parsedMetrics = JSON.parse(parsedMetrics); } catch(e) { parsedMetrics = {}; }
+                    }
+                    
+                    const displayType = parsedMetrics?.type_name || event.type || event.type_id;
+                    const tooltip = `${event.playerName || 'Joueur'}\nMinute: ${event.minute || '0'}'\nType: ${displayType}\nxT: ${event.xT?.toFixed(3) || '0.000'}`;
 
 
-                      // Extracteur Sécurisé de Coordonnées d'arrivée (Multi-Source & Polymorphique)
-                      const getEndCoordinates = (ev) => {
-                        try {
-                          // 1. Priorité aux Métriques Avancées (Supporte String JSON ou Object)
-                          if (ev.advanced_metrics) {
-                            let metrics = ev.advanced_metrics;
-                            if (typeof metrics === 'string') {
-                              try { metrics = JSON.parse(metrics); } catch(e) { metrics = {}; }
-                            }
-                            
-                            if (metrics.endX !== undefined && metrics.endY !== undefined) {
-                              return {
-                                endX: parseFloat(metrics.endX),
-                                endY: parseFloat(metrics.endY)
-                              };
-                            }
+                    // Extracteur Sécurisé de Coordonnées d'arrivée (Multi-Source & Polymorphique)
+                    const getEndCoordinates = (ev) => {
+                      try {
+                        // 1. Priorité aux Métriques Avancées (Supporte String JSON ou Object)
+                        if (ev.advanced_metrics) {
+                          let metrics = ev.advanced_metrics;
+                          if (typeof metrics === 'string') {
+                            try { metrics = JSON.parse(metrics); } catch(e) { metrics = {}; }
                           }
-
-                          // 2. Fallback aux Qualifiers Opta Standards
-                          let quals = ev.qualifiers;
-                          if (typeof quals === 'string') {
-                            try { quals = JSON.parse(quals); } catch(e) { quals = []; }
-                          }
-                          if (!Array.isArray(quals)) return null;
-
-                          // Recherche sur les IDs 140/141 (Passes/Tirs) OU 212/213 (Carries Natifs)
-                          const endXObj = quals.find(q => q.qualifierId === 140 || q.qualifierId === 212);
-                          const endYObj = quals.find(q => q.qualifierId === 141 || q.qualifierId === 213);
-
-                          if (endXObj && endYObj) {
+                          
+                          if (metrics.endX !== undefined && metrics.endY !== undefined) {
                             return {
-                              endX: parseFloat(endXObj.value),
-                              endY: parseFloat(endYObj.value)
+                              endX: parseFloat(metrics.endX),
+                              endY: parseFloat(metrics.endY)
                             };
                           }
-                        } catch (e) {
-                          return null;
                         }
-                        return null;
-                      };
 
-                      const endCoords = getEndCoordinates(event);
-                      let endCx = null, endCy = null;
-                      if (endCoords) {
-                        endCx = (endCoords.endX / 100) * 105;
-                        endCy = (endCoords.endY / 100) * 68;
+                        // 2. Fallback aux Qualifiers Opta Standards
+                        let quals = ev.qualifiers;
+                        if (typeof quals === 'string') {
+                          try { quals = JSON.parse(quals); } catch(e) { quals = []; }
+                        }
+                        if (!Array.isArray(quals)) return null;
+
+                        // Recherche sur les IDs 140/141 (Passes/Tirs) OU 212/213 (Carries Natifs)
+                        const endXObj = quals.find(q => q.qualifierId === 140 || q.qualifierId === 212);
+                        const endYObj = quals.find(q => q.qualifierId === 141 || q.qualifierId === 213);
+
+                        if (endXObj && endYObj) {
+                          return {
+                            endX: parseFloat(endXObj.value),
+                            endY: parseFloat(endYObj.value)
+                          };
+                        }
+                      } catch (e) {
+                        return null;
                       }
+                      return null;
+                    };
+
+                    const endCoords = getEndCoordinates(event);
+                    let endCx = null, endCy = null;
+                    if (endCoords) {
+                      endCx = (endCoords.endX / 100) * 105;
+                      endCy = ((100 - endCoords.endY) / 100) * 68; // Inversion Y cohérente
+                    }
 
                       return (
                         <g key={i} className="cursor-help pointer-events-auto">
