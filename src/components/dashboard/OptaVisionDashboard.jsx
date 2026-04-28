@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Activity, 
-  TrendingUp, 
-  Target, 
-  Search, 
+import {
+  Activity,
+  TrendingUp,
+  Target,
+  Search,
   ChevronRight,
   Database,
   ShieldAlert,
@@ -44,7 +44,7 @@ const OptaVisionDashboard = ({ user }) => {
   const [playersList, setPlayersList] = useState([]);
   const [activeTab, setActiveTab] = useState('exploration');
   const [activeTool, setActiveTool] = useState(null); // 'events', 'sequences', 'shots'
-  const [view, setView] = useState('DASHBOARD'); 
+  const [view, setView] = useState('DASHBOARD');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [explorationFilters, setExplorationFilters] = useState({
     matches: [],
@@ -64,19 +64,25 @@ const OptaVisionDashboard = ({ user }) => {
     country: [],
     phase: [],
     stadium: [],
-    advanced_tactics: []
+    stadium: [],
+    advanced_tactics: [],
+    startDate: '',
+    endDate: ''
   });
 
   const fetchEvents = async () => {
     setLoading(true);
     setError(null);
-    
+
     // Construction dynamique des query params
     const params = new URLSearchParams({
       page: page.toString(),
       limit: '1000'
     });
-    
+
+    if (explorationFilters.startDate) params.append('start_date', explorationFilters.startDate);
+    if (explorationFilters.endDate) params.append('end_date', explorationFilters.endDate);
+
     if (explorationFilters.matches?.length > 0) params.append('match_ids', explorationFilters.matches.join(','));
     if (explorationFilters.types?.length > 0) params.append('types', explorationFilters.types.join(','));
     if (explorationFilters.players?.length > 0) params.append('player_ids', explorationFilters.players.join(','));
@@ -103,7 +109,7 @@ const OptaVisionDashboard = ({ user }) => {
       if (!response.ok) throw new Error(`MATCH_DATA_FAILURE: ${response.status}`);
       const json = await response.json();
       console.log("🚨 RÉPONSE API BRUTE :", json);
-      
+
       // Data Binding : items pour le flux, total pour la pagination
       setData(json.items || []);
       setTotalEvents(json.total || 0);
@@ -126,8 +132,8 @@ const OptaVisionDashboard = ({ user }) => {
           fetch(`${OPTAVISION_API_URL}/api/optavision/teams`).then(r => r.json()),
           fetch(`${OPTAVISION_API_URL}/api/optavision/players`).then(r => r.json())
         ]);
-        
-        // Structure de meta : { matches, action_types, competitions, seasons, weeks, countries, phases, stadiums }
+
+        // Structure de meta enrichie : { matches, teams, action_types, ... }
         setMatchesList(meta.matches || []);
         setAvailableActionTypes(meta.action_types || []);
         setCompetitionsList(meta.competitions || []);
@@ -137,9 +143,15 @@ const OptaVisionDashboard = ({ user }) => {
         setPhasesList(meta.phases || []);
         setStadiumsList(meta.stadiums || []);
         setAdvancedMetricsList(meta.advanced_metrics_keys || []);
-        setTeamsList(t);
-        setPlayersList(p);
         
+        // Unification du dictionnaire des équipes (ID -> Name)
+        const teamObjects = meta.teams 
+          ? Object.entries(meta.teams).map(([id, name]) => ({ id, name }))
+          : t;
+        setTeamsList(teamObjects);
+        setPlayersList(p);
+
+
         // Initialisation avec le premier match si vide
         if (meta.matches?.length > 0 && explorationFilters.matches.length === 0) {
           setExplorationFilters(prev => ({ ...prev, matches: [meta.matches[0].id] }));
@@ -167,12 +179,12 @@ const OptaVisionDashboard = ({ user }) => {
 
   return (
     <div className="min-h-screen bg-[#131313] text-white flex flex-col font-sans overflow-hidden">
-      
+
       {/* HEADER : SCOUTING STYLE (3 COLS) - MASQUÉ SI OUTIL ACTIF */}
       {!activeTool && (
         <header className="sticky top-0 z-[100] w-full px-8 bg-[#131313] border-b border-white/10 h-24 flex items-center shadow-2xl animate-in fade-in slide-in-from-top-4 duration-500">
           <div className="w-full max-w-[1700px] mx-auto grid grid-cols-2 md:grid-cols-3 items-center">
-            
+
             {/* Logo - Colonne Gauche */}
             <div className="flex items-center gap-8">
               <div className="flex items-center gap-4 cursor-pointer group w-fit" onClick={() => { setView('DASHBOARD'); setActiveTool(null); setIsFilterOpen(false); }}>
@@ -194,13 +206,13 @@ const OptaVisionDashboard = ({ user }) => {
                   <span className="verge-label-mono text-[9px] font-black uppercase">CROSS-MATCH ENGINE</span>
                 </div>
                 <div className="w-full bg-[#2d2d2d]/50 border border-white/10 rounded-full py-4 pl-40 pr-32 verge-label-mono text-[10px] text-white flex items-center overflow-hidden whitespace-nowrap opacity-60">
-                  {explorationFilters.matches.length > 0 
+                  {explorationFilters.matches.length > 0
                     ? `${explorationFilters.matches.length} MATCHS SÉLECTIONNÉS`
                     : "AUCUN MATCH SÉLECTIONNÉ - UTILISEZ LE PANEL DE FILTRAGE"
                   }
                 </div>
-                
-                <button 
+
+                <button
                   onClick={() => setIsFilterOpen(true)}
                   className="absolute right-2 top-1/2 -translate-y-1/2 bg-[#3cffd0] text-black px-6 py-2 verge-label-mono text-[9px] font-black hover:bg-white transition-all rounded-full flex items-center gap-2"
                 >
@@ -235,7 +247,7 @@ const OptaVisionDashboard = ({ user }) => {
                 <ChevronDown size={14} className="text-[#949494] mr-2" />
               </div>
             </div>
-            
+
           </div>
         </header>
       )}
@@ -246,9 +258,9 @@ const OptaVisionDashboard = ({ user }) => {
         {/* DASHBOARD VIEW */}
         {view === 'DASHBOARD' && (
           <div className="flex-1 flex overflow-hidden relative">
-            
+
             <div className={`flex-1 flex flex-col animate-in fade-in duration-500 overflow-hidden ${activeTool ? '' : 'space-y-12 pr-4'}`}>
-              
+
               {/* TABS NAVIGATION - MASQUÉ SI OUTIL ACTIF */}
               {!activeTool && (
                 <div className="flex items-center justify-between">
@@ -261,11 +273,10 @@ const OptaVisionDashboard = ({ user }) => {
                       <button
                         key={tab.id}
                         onClick={() => { setActiveTab(tab.id); setActiveTool(null); setIsFilterOpen(false); }}
-                        className={`flex items-center gap-3 px-8 py-3 rounded-full verge-label-mono text-[10px] font-black transition-all ${
-                          activeTab === tab.id 
-                          ? 'bg-[#3cffd0] text-black' 
-                          : 'text-[#949494] hover:text-white'
-                        }`}
+                        className={`flex items-center gap-3 px-8 py-3 rounded-full verge-label-mono text-[10px] font-black transition-all ${activeTab === tab.id
+                            ? 'bg-[#3cffd0] text-black'
+                            : 'text-[#949494] hover:text-white'
+                          }`}
                       >
                         <tab.icon size={14} />
                         {tab.label}
@@ -285,7 +296,7 @@ const OptaVisionDashboard = ({ user }) => {
               <main className={`flex-1 overflow-y-auto scrollbar-verge ${activeTool ? '' : 'pb-32'}`}>
                 <AnimatePresence mode="wait">
                   {!activeTool ? (
-                    <motion.div 
+                    <motion.div
                       key={activeTab}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -293,28 +304,28 @@ const OptaVisionDashboard = ({ user }) => {
                       className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
                     >
                       {activeTab === 'exploration' && (
-                        <TileSkeleton 
-                          title="Journal des Événements" 
-                          desc="Flux brut enrichi de métriques AI (xT, Prog, Angles)." 
-                          icon={<Activity />} 
+                        <TileSkeleton
+                          title="Journal des Événements"
+                          desc="Flux brut enrichi de métriques AI (xT, Prog, Angles)."
+                          icon={<Activity />}
                           onClick={() => setActiveTool('events')}
                         />
                       )}
                       {activeTab === 'buildup' && (
-                        <TileSkeleton 
-                          title="Chaînes de Possession" 
-                          desc="Regroupement des événements en séquences tactiques." 
-                          icon={<TrendingUp />} 
-                          color="text-[#5200ff]" 
+                        <TileSkeleton
+                          title="Chaînes de Possession"
+                          desc="Regroupement des événements en séquences tactiques."
+                          icon={<TrendingUp />}
+                          color="text-[#5200ff]"
                           onClick={() => setActiveTool('sequences')}
                         />
                       )}
                       {activeTab === 'shots' && (
-                        <TileSkeleton 
-                          title="Shot Map Analytique" 
-                          desc="Visualisation spatiale des tirs et probabilités xG." 
-                          icon={<Target />} 
-                          color="text-red-500" 
+                        <TileSkeleton
+                          title="Shot Map Analytique"
+                          desc="Visualisation spatiale des tirs et probabilités xG."
+                          icon={<Target />}
+                          color="text-red-500"
                           onClick={() => setActiveTool('shots')}
                         />
                       )}
@@ -327,7 +338,7 @@ const OptaVisionDashboard = ({ user }) => {
                       className="w-full h-full bg-[#131313] relative overflow-hidden"
                     >
                       {/* CLOSE BUTTON */}
-                      <button 
+                      <button
                         onClick={() => { setActiveTool(null); setIsFilterOpen(false); }}
                         className="absolute top-10 right-10 z-[250] w-12 h-12 bg-white/5 border border-white/10 rounded-full flex items-center justify-center text-[#949494] hover:text-white hover:bg-red-500 transition-all group"
                       >
@@ -338,10 +349,10 @@ const OptaVisionDashboard = ({ user }) => {
                       {activeTool === 'events' ? (
                         <div className="w-full h-full p-8 overflow-hidden bg-[#131313] animate-in fade-in duration-700">
                           {/* HYDRATATION ET FILTRAGE DU JOURNAL DES ÉVÉNEMENTS */}
-                          <EventExplorer 
-                            data={data} 
-                            matchId={explorationFilters.matches[0] || 'CROSS-MATCH'} 
-                            loading={loading} 
+                          <EventExplorer
+                            data={data}
+                            matchId={explorationFilters.matches[0] || 'CROSS-MATCH'}
+                            loading={loading}
                             filters={explorationFilters}
                             advancedMetricsList={advancedMetricsList}
                           />
@@ -367,9 +378,9 @@ const OptaVisionDashboard = ({ user }) => {
             <AnimatePresence>
               {isFilterOpen && (
                 <>
-                  <motion.div 
-                    initial={{ opacity: 0 }} 
-                    animate={{ opacity: 1 }} 
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     onClick={() => setIsFilterOpen(false)}
                     className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200]"
@@ -382,7 +393,7 @@ const OptaVisionDashboard = ({ user }) => {
                     className="fixed top-0 left-0 h-full z-[201]"
                   >
                     {activeTab === 'exploration' && (
-                      <ExplorationFilterPanel 
+                      <ExplorationFilterPanel
                         matchesList={matchesList}
                         availableActionTypes={availableActionTypes}
                         competitionsList={competitionsList}
@@ -396,7 +407,7 @@ const OptaVisionDashboard = ({ user }) => {
                         playersList={playersList}
                         filters={explorationFilters}
                         onFilterChange={setExplorationFilters}
-                        onClose={() => setIsFilterOpen(false)} 
+                        onClose={() => setIsFilterOpen(false)}
                       />
                     )}
                     {activeTab === 'buildup' && <BuildUpFilterPanel onClose={() => setIsFilterOpen(false)} />}
@@ -428,7 +439,7 @@ const OptaVisionDashboard = ({ user }) => {
 };
 
 const TileSkeleton = ({ title, desc, icon, dataCount, onClick, color = "text-[#3cffd0]" }) => (
-  <div 
+  <div
     onClick={onClick}
     className="verge-card group cursor-pointer hover:border-[#3cffd0]/50 transition-all duration-300"
   >
@@ -440,12 +451,12 @@ const TileSkeleton = ({ title, desc, icon, dataCount, onClick, color = "text-[#3
         <span className="verge-label-mono text-[9px] bg-white/5 px-3 py-1 rounded-[2px]">{dataCount} RECORDS</span>
       )}
     </div>
-    
+
     <div className="space-y-4">
       <h3 className="text-3xl font-black text-white uppercase leading-none tracking-tighter group-hover:text-[#3cffd0] transition-colors">{title}</h3>
       <p className="verge-label-mono text-[10px] text-[#949494] lowercase italic opacity-60 leading-relaxed">{desc}</p>
     </div>
-    
+
     <div className="mt-12 pt-8 border-t border-white/5 flex justify-between items-center">
       <span className="verge-label-mono text-[8px] text-[#949494]">READY FOR RENDERING</span>
       <ChevronRight size={14} className="text-[#949494] group-hover:text-white transition-all group-hover:translate-x-1" />

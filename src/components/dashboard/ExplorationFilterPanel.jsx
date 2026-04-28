@@ -16,6 +16,9 @@ import {
   Database
 } from 'lucide-react';
 import AccordionSection from './AccordionSection';
+import MultiSelectWithChips from '../ui/MultiSelectWithChips';
+import TacticalPositionPicker from './TacticalPositionPicker';
+import DualRangeSlider from '../ui/DualRangeSlider';
 
 /**
  * ExplorationFilterPanel - Version Dynamique (Auto-Discovery)
@@ -38,7 +41,14 @@ const ExplorationFilterPanel = ({
   onClose 
 }) => {
   const [openSection, setOpenSection] = useState('primary');
-  const [searchTerm, setSearchTerm] = useState('');
+
+  // Règle d'Or : Mapping des noms explicites (Résolution des IDs en labels lisibles)
+  const teamMap = useMemo(() => {
+    const map = {};
+    teamsList.forEach(t => { map[t.id] = t.name; });
+    return map;
+  }, [teamsList]);
+
   
   // BOUCLIER ANTI-SPAM : État local pour les modifications en cours
   const [pendingFilters, setPendingFilters] = useState({ ...filters });
@@ -75,7 +85,10 @@ const ExplorationFilterPanel = ({
       country: [],
       phase: [],
       stadium: [],
-      advanced_tactics: []
+      stadium: [],
+      advanced_tactics: [],
+      startDate: '',
+      endDate: ''
     };
     setPendingFilters(initial);
   };
@@ -85,12 +98,9 @@ const ExplorationFilterPanel = ({
     onClose();
   };
 
-  const filteredPlayers = playersList.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   return (
-    <aside className="w-[450px] h-full flex flex-col bg-[#131313] border-l border-white/10 shadow-2xl relative">
+    <aside className="w-[450px] h-full flex flex-col bg-[#131313]/95 backdrop-blur-xl border-l border-white/10 shadow-2xl relative">
       
       {/* HEADER SECTION */}
       <div className="p-10 pb-6 border-b border-white/10">
@@ -115,7 +125,8 @@ const ExplorationFilterPanel = ({
       </div>
 
       {/* CONTENT : ACCORDIONS */}
-      <div className="flex-1 overflow-y-auto p-10 pt-6 space-y-4 scrollbar-verge">
+      <div className="flex-1 overflow-y-auto p-10 pt-6 space-y-4 scrollbar-verge relative">
+
         
         {/* SECTION 0 : SÉLECTION DES MATCHS (Cross-Match) */}
         <AccordionSection 
@@ -127,88 +138,93 @@ const ExplorationFilterPanel = ({
           badge={(pendingFilters.matches?.length || 0) + (pendingFilters.competition ? 1 : 0) + (pendingFilters.season ? 1 : 0) + (pendingFilters.week ? 1 : 0) + (pendingFilters.country ? 1 : 0)}
         >
           <div className="space-y-8">
-            <div className="grid grid-cols-2 gap-4">
-              {/* Filtre par Compétition */}
-              <div className="space-y-3">
-                <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Compétition</label>
-                <MultiSelectDropdown 
-                  options={competitionsList.map(c => ({ value: c, label: c.toUpperCase() }))}
-                  selectedValues={pendingFilters.competition || []}
-                  onChange={(vals) => setPendingFilters({ ...pendingFilters, competition: vals })}
-                  placeholder="TOUTES COMPÉTITIONS"
-                />
-              </div>
-
-              {/* Filtre par Saison */}
-              <div className="space-y-3">
-                <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Saison</label>
-                <MultiSelectDropdown 
-                  options={seasonsList.map(s => ({ value: s, label: String(s) }))}
-                  selectedValues={pendingFilters.season || []}
-                  onChange={(vals) => setPendingFilters({ ...pendingFilters, season: vals })}
-                  placeholder="TOUTES SAISONS"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              {/* Filtre par Semaine */}
-              <div className="space-y-3">
-                <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Semaine</label>
-                <MultiSelectDropdown 
-                  options={weeksList.map(w => ({ value: w, label: `SEM ${w}` }))}
-                  selectedValues={pendingFilters.week || []}
-                  onChange={(vals) => setPendingFilters({ ...pendingFilters, week: vals })}
-                  placeholder="TOUTES SEMAINES"
-                />
-              </div>
-
-              {/* Filtre par Pays */}
-              <div className="space-y-3">
-                <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Pays</label>
-                <MultiSelectDropdown 
-                  options={countriesList.map(c => ({ value: c, label: c.toUpperCase() }))}
-                  selectedValues={pendingFilters.country || []}
-                  onChange={(vals) => setPendingFilters({ ...pendingFilters, country: vals })}
-                  placeholder="TOUS PAYS"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              {/* Filtre par Phase */}
-              <div className="space-y-3">
-                <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Phase</label>
-                <MultiSelectDropdown 
-                  options={phasesList.map(p => ({ value: p, label: p.toUpperCase() }))}
-                  selectedValues={pendingFilters.phase || []}
-                  onChange={(vals) => setPendingFilters({ ...pendingFilters, phase: vals })}
-                  placeholder="TOUTES PHASES"
-                />
-              </div>
-
-              {/* Filtre par Stade */}
-              <div className="space-y-3">
-                <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Stade</label>
-                <MultiSelectDropdown 
-                  options={stadiumsList.map(s => ({ value: s, label: s }))}
-                  selectedValues={pendingFilters.stadium || []}
-                  onChange={(vals) => setPendingFilters({ ...pendingFilters, stadium: vals })}
-                  placeholder="TOUS STADES"
-                />
-              </div>
+            <div className="space-y-8">
+              <MultiSelectWithChips 
+                label="Compétitions" 
+                options={competitionsList} 
+                selected={pendingFilters.competition || []} 
+                onChange={(vals) => setPendingFilters({ ...pendingFilters, competition: vals })} 
+                placeholder="Sélectionner..." 
+              />
+              <MultiSelectWithChips 
+                label="Saisons" 
+                options={seasonsList.map(String)} 
+                selected={(pendingFilters.season || []).map(String)} 
+                onChange={(vals) => setPendingFilters({ ...pendingFilters, season: vals })} 
+                placeholder="Sélectionner..." 
+              />
+              <MultiSelectWithChips 
+                label="Journées" 
+                options={weeksList.map(String)} 
+                selected={(pendingFilters.week || []).map(String)} 
+                onChange={(vals) => setPendingFilters({ ...pendingFilters, week: vals })} 
+                placeholder="Sélectionner..." 
+              />
+              <MultiSelectWithChips 
+                label="Pays" 
+                options={countriesList} 
+                selected={pendingFilters.country || []} 
+                onChange={(vals) => setPendingFilters({ ...pendingFilters, country: vals })} 
+                placeholder="Sélectionner..." 
+              />
+              <MultiSelectWithChips 
+                label="Phases" 
+                options={phasesList} 
+                selected={pendingFilters.phase || []} 
+                onChange={(vals) => setPendingFilters({ ...pendingFilters, phase: vals })} 
+                placeholder="Sélectionner..." 
+              />
+              <MultiSelectWithChips 
+                label="Stades" 
+                options={stadiumsList} 
+                selected={pendingFilters.stadium || []} 
+                onChange={(vals) => setPendingFilters({ ...pendingFilters, stadium: vals })} 
+                placeholder="Sélectionner..." 
+              />
             </div>
 
             <div className="h-px bg-white/5 my-4" />
 
-            <div className="space-y-3">
-              <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">SÉLECTION INDIVIDUELLE (MATCH)</label>
-              <MultiSelectDropdown 
-                options={matchesList.map(match => ({ value: match.id, label: match.label || match.id }))}
-                selectedValues={pendingFilters.matches || []}
-                onChange={(vals) => setPendingFilters({ ...pendingFilters, matches: vals })}
-                placeholder="TOUS LES MATCHS (CROSS-MATCH)"
-              />
+            <MultiSelectWithChips 
+              label="Sélection Individuelle (Match)" 
+              options={matchesList.map(m => m.label || m.id)} 
+              selected={(pendingFilters.matches || []).map(id => matchesList.find(m => m.id === id)?.label || id)} 
+              onChange={(vals) => {
+                const selectedIds = vals.map(val => matchesList.find(m => m.label === val || m.id === val)?.id);
+                setPendingFilters({ ...pendingFilters, matches: selectedIds });
+              }} 
+              placeholder="Sélectionner des matchs..." 
+            />
+
+            <div className="h-px bg-white/5 my-4" />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-3">
+                <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Équipe (Focus)</label>
+                <select 
+                  value={pendingFilters.localTeam || 'ALL'} 
+                  onChange={(e) => setPendingFilters({ ...pendingFilters, localTeam: e.target.value })}
+                  className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white focus:border-[#3cffd0] outline-none transition-all cursor-pointer rounded-[2px]"
+                >
+                  <option value="ALL">TOUTES ÉQUIPES</option>
+                  {teamsList.map(team => (
+                    <option key={team.id} value={team.id}>{teamMap[team.id]?.toUpperCase() || team.id}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-3">
+                <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Opposition</label>
+                <select 
+                  value={pendingFilters.localOpponent || 'ALL'} 
+                  onChange={(e) => setPendingFilters({ ...pendingFilters, localOpponent: e.target.value })}
+                  className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white focus:border-[#ff4d4d] outline-none transition-all cursor-pointer rounded-[2px]"
+                >
+                  <option value="ALL">SANS FILTRE</option>
+                  {teamsList.map(team => (
+                    <option key={team.id} value={team.id}>VS {teamMap[team.id]?.toUpperCase() || team.id}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
         </AccordionSection>
@@ -223,43 +239,26 @@ const ExplorationFilterPanel = ({
           badge={(pendingFilters.types?.length || 0) + (pendingFilters.players?.length || 0)}
         >
           <div className="space-y-10">
-            <FilterGroup label="Types d'Actions">
-              <MultiSelectDropdown 
-                options={availableActionTypes.map(type => ({ value: type, label: type }))}
-                selectedValues={pendingFilters.types || []}
-                onChange={(vals) => setPendingFilters({ ...pendingFilters, types: vals })}
-                placeholder="TOUTES ACTIONS"
-              />
-            </FilterGroup>
+            <MultiSelectWithChips 
+              label="Types d'Actions" 
+              options={availableActionTypes} 
+              selected={pendingFilters.types || []} 
+              onChange={(vals) => setPendingFilters({ ...pendingFilters, types: vals })} 
+              placeholder="Sélectionner des actions..." 
+            />
 
-            <FilterGroup label="Sélection des Joueurs">
-              <div className="relative mb-4">
-                <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#949494]" />
-                <input 
-                  type="text" 
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="RECHERCHER UN NOM..." 
-                  className="w-full bg-[#131313] border border-white/10 py-4 pl-12 pr-4 verge-label-mono text-[10px] text-white focus:border-[#3cffd0] outline-none transition-all uppercase"
-                />
-              </div>
-              <div className="max-h-48 overflow-y-auto scrollbar-verge space-y-1 pr-2">
-                 {filteredPlayers.map(player => (
-                   <button 
-                     key={player.id}
-                     onClick={() => toggleFilter('players', player)}
-                     className={`w-full flex items-center justify-between px-4 py-3 rounded-[2px] verge-label-mono text-[10px] font-black uppercase transition-all ${
-                       pendingFilters.players.includes(player.id)
-                       ? 'bg-[#3cffd0]/10 text-[#3cffd0] border border-[#3cffd0]/20'
-                       : 'bg-white/5 text-[#949494] border border-transparent hover:bg-white/10'
-                     }`}
-                   >
-                     {player.name}
-                     {pendingFilters.players.includes(player.id) && <Check size={12} />}
-                   </button>
-                 ))}
-              </div>
-            </FilterGroup>
+
+
+            <MultiSelectWithChips 
+              label="Sélection des Joueurs" 
+              options={playersList.map(p => p.name)} 
+              selected={(pendingFilters.players || []).map(id => playersList.find(p => p.id === id)?.name).filter(Boolean)} 
+              onChange={(selectedNames) => {
+                const selectedIds = selectedNames.map(name => playersList.find(p => p.name === name)?.id).filter(Boolean);
+                setPendingFilters({ ...pendingFilters, players: selectedIds });
+              }} 
+              placeholder="Rechercher des joueurs..." 
+            />
           </div>
         </AccordionSection>
 
@@ -272,48 +271,28 @@ const ExplorationFilterPanel = ({
           onToggle={() => setOpenSection(openSection === 'context' ? null : 'context')}
           badge={(pendingFilters.period_id ? 1 : 0) + (pendingFilters.location ? 1 : 0) + (pendingFilters.zone ? 1 : 0)}
         >
-          <div className="space-y-6">
-            {/* Lieu du match */}
-            <div className="space-y-3">
-              <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Lieu (Side)</label>
-              <MultiSelectDropdown 
-                options={[
-                  { value: 'home', label: 'Domicile' },
-                  { value: 'away', label: 'Extérieur' }
-                ]}
-                selectedValues={pendingFilters.location || []}
-                onChange={(vals) => setPendingFilters({ ...pendingFilters, location: vals })}
-                placeholder="TOUS LES LIEUX"
-              />
-            </div>
+          <div className="space-y-10">
+            <MultiSelectWithChips 
+              label="Lieu (Side)" 
+              options={['Domicile', 'Extérieur']} 
+              selected={(pendingFilters.location || []).map(l => l === 'home' ? 'Domicile' : 'Extérieur')} 
+              onChange={(vals) => setPendingFilters({ ...pendingFilters, location: vals.map(v => v === 'Domicile' ? 'home' : 'away') })} 
+              placeholder="Sélectionner..." 
+            />
 
-            {/* Période */}
-            <div className="space-y-3">
-              <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Période</label>
-              <MultiSelectDropdown 
-                options={[
-                  { value: 1, label: '1ère Mi-temps' },
-                  { value: 2, label: '2ème Mi-temps' }
-                ]}
-                selectedValues={pendingFilters.period_id || []}
-                onChange={(vals) => setPendingFilters({ ...pendingFilters, period_id: vals })}
-                placeholder="TOUTES LES PÉRIODES"
-              />
-            </div>
+            <MultiSelectWithChips 
+              label="Période" 
+              options={['1ère Mi-temps', '2ème Mi-temps']} 
+              selected={(pendingFilters.period_id || []).map(p => p === 1 ? '1ère Mi-temps' : '2ème Mi-temps')} 
+              onChange={(vals) => setPendingFilters({ ...pendingFilters, period_id: vals.map(v => v === '1ère Mi-temps' ? 1 : 2) })} 
+              placeholder="Sélectionner..." 
+            />
 
-            {/* Zone de jeu */}
-            <div className="space-y-3">
-              <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Zone Tactique (JSONB)</label>
-              <MultiSelectDropdown 
-                options={[
-                  { value: 'Center', label: 'Centre' },
-                  { value: 'Left', label: 'Gauche' },
-                  { value: 'Right', label: 'Droite' },
-                  { value: 'Back', label: 'Arrière' }
-                ]}
-                selectedValues={pendingFilters.zone || []}
+            <div className="space-y-4">
+              <label className="verge-label-mono text-[10px] text-hazard-white/40 mb-4 block uppercase tracking-widest font-black group-hover:text-hazard-white transition-colors">Zone Tactique (Visual)</label>
+              <TacticalPositionPicker 
+                selectedPositions={pendingFilters.zone || []}
                 onChange={(vals) => setPendingFilters({ ...pendingFilters, zone: vals })}
-                placeholder="TOUTES LES ZONES"
               />
             </div>
           </div>
@@ -364,17 +343,13 @@ const ExplorationFilterPanel = ({
                </div>
             </FilterGroup>
 
-            <FilterGroup label="Tactique Avancée (JSONB)">
-              <MultiSelectDropdown 
-                options={advancedMetricsList.map(tag => ({
-                  value: tag,
-                  label: tag.replace(/^(is_|seq_)/, '').replace(/_/g, ' ').toUpperCase()
-                }))}
-                selectedValues={pendingFilters.advanced_tactics || []}
-                onChange={(vals) => setPendingFilters({ ...pendingFilters, advanced_tactics: vals })}
-                placeholder="TOUTES TACTIQUES"
-              />
-            </FilterGroup>
+            <MultiSelectWithChips 
+              label="Tactique Avancée (JSONB)" 
+              options={advancedMetricsList} 
+              selected={pendingFilters.advanced_tactics || []} 
+              onChange={(vals) => setPendingFilters({ ...pendingFilters, advanced_tactics: vals })} 
+              placeholder="Sélectionner..." 
+            />
           </div>
         </AccordionSection>
 
@@ -387,6 +362,27 @@ const ExplorationFilterPanel = ({
           onToggle={() => setOpenSection(openSection === 'time' ? null : 'time')}
         >
           <div className="space-y-8">
+            <div className="grid grid-cols-2 gap-4">
+              <FilterGroup label="Plage de Dates (Début)">
+                <input 
+                  type="date" 
+                  value={pendingFilters.startDate || ''}
+                  onChange={(e) => setPendingFilters({ ...pendingFilters, startDate: e.target.value })}
+                  className="w-full bg-[#131313] border border-white/10 p-4 verge-label-mono text-white text-[10px] outline-none focus:border-[#3cffd0] transition-all"
+                />
+              </FilterGroup>
+              <FilterGroup label="Plage de Dates (Fin)">
+                <input 
+                  type="date" 
+                  value={pendingFilters.endDate || ''}
+                  onChange={(e) => setPendingFilters({ ...pendingFilters, endDate: e.target.value })}
+                  className="w-full bg-[#131313] border border-white/10 p-4 verge-label-mono text-white text-[10px] outline-none focus:border-[#3cffd0] transition-all"
+                />
+              </FilterGroup>
+            </div>
+
+            <div className="h-px bg-white/5 my-4" />
+
             <div className="grid grid-cols-2 gap-4">
               <FilterGroup label="Minute Début">
                  <input 
@@ -449,7 +445,8 @@ const MultiSelectDropdown = ({ options, selectedValues, onChange, placeholder })
         <ChevronDown size={14} className={`flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </div>
       {isOpen && (
-        <div className="absolute top-full left-0 w-full mt-1 bg-[#131313] border border-white/10 z-50 max-h-48 overflow-y-auto styled-scrollbar-verge shadow-2xl">
+        <div className="absolute top-full left-0 w-full mt-1 bg-[#1a1a1a] border border-[#3cffd0]/30 z-[999] max-h-64 overflow-y-auto styled-scrollbar-verge shadow-[0_20px_50px_rgba(0,0,0,0.8)]">
+
           {options.map(opt => {
             const isSelected = selectedValues.some(v => String(v) === String(opt.value));
             return (
