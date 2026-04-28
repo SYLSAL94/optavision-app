@@ -67,7 +67,10 @@ const OptaVisionDashboard = ({ user }) => {
     stadium: [],
     advanced_tactics: [],
     startDate: '',
-    endDate: ''
+    endDate: '',
+    player_id: [],
+    receiver_id: [],
+    opponent_id: []
   });
 
   const fetchEvents = async () => {
@@ -86,6 +89,9 @@ const OptaVisionDashboard = ({ user }) => {
     if (explorationFilters.matches?.length > 0) params.append('match_ids', explorationFilters.matches.join(','));
     if (explorationFilters.types?.length > 0) params.append('types', explorationFilters.types.join(','));
     if (explorationFilters.players?.length > 0) params.append('player_ids', explorationFilters.players.join(','));
+    if (explorationFilters.player_id?.length > 0) params.append('player_id', explorationFilters.player_id.join(','));
+    if (explorationFilters.receiver_id?.length > 0) params.append('receiver_id', explorationFilters.receiver_id.join(','));
+    if (explorationFilters.opponent_id?.length > 0) params.append('opponent_id', explorationFilters.opponent_id.join(','));
     if (explorationFilters.teams?.length > 0) params.append('team_ids', explorationFilters.teams.join(','));
     if (explorationFilters.min_xt > 0) params.append('min_xt', explorationFilters.min_xt.toString());
     if (explorationFilters.start_min > 0) params.append('start_min', explorationFilters.start_min.toString());
@@ -355,6 +361,7 @@ const OptaVisionDashboard = ({ user }) => {
                             loading={loading}
                             filters={explorationFilters}
                             advancedMetricsList={advancedMetricsList}
+                            playersList={playersList}
                           />
                         </div>
                       ) : activeTool === 'sequences' ? (

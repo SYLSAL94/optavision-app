@@ -88,7 +88,10 @@ const ExplorationFilterPanel = ({
       stadium: [],
       advanced_tactics: [],
       startDate: '',
-      endDate: ''
+      endDate: '',
+      player_id: [],
+      receiver_id: [],
+      opponent_id: []
     };
     setPendingFilters(initial);
   };
@@ -258,6 +261,51 @@ const ExplorationFilterPanel = ({
                 setPendingFilters({ ...pendingFilters, players: selectedIds });
               }} 
               placeholder="Rechercher des joueurs..." 
+            />
+          </div>
+        </AccordionSection>
+
+        {/* SECTION 1.5 : RELATIONS TACTIQUES */}
+        <AccordionSection 
+          id="relations" 
+          title="Acteurs & Relations Tactiques" 
+          icon={<User size={18} />}
+          isOpen={openSection === 'relations'}
+          onToggle={() => setOpenSection(openSection === 'relations' ? null : 'relations')}
+          badge={(pendingFilters.player_id?.length || 0) + (pendingFilters.receiver_id?.length || 0) + (pendingFilters.opponent_id?.length || 0)}
+        >
+          <div className="space-y-10">
+            <MultiSelectWithChips 
+              label="Joueur Focus / Passeur" 
+              options={playersList.map(p => p.name)} 
+              selected={(pendingFilters.player_id || []).map(id => playersList.find(p => p.id === id)?.name).filter(Boolean)} 
+              onChange={(selectedNames) => {
+                const selectedIds = selectedNames.map(name => playersList.find(p => p.name === name)?.id).filter(Boolean);
+                setPendingFilters({ ...pendingFilters, player_id: selectedIds });
+              }} 
+              placeholder="Rechercher des joueurs..." 
+            />
+
+            <MultiSelectWithChips 
+              label="Receveur" 
+              options={playersList.map(p => p.name)} 
+              selected={(pendingFilters.receiver_id || []).map(id => playersList.find(p => p.id === id)?.name).filter(Boolean)} 
+              onChange={(selectedNames) => {
+                const selectedIds = selectedNames.map(name => playersList.find(p => p.name === name)?.id).filter(Boolean);
+                setPendingFilters({ ...pendingFilters, receiver_id: selectedIds });
+              }} 
+              placeholder="Rechercher des receveurs..." 
+            />
+
+            <MultiSelectWithChips 
+              label="Adversaire de Duel" 
+              options={playersList.map(p => p.name)} 
+              selected={(pendingFilters.opponent_id || []).map(id => playersList.find(p => p.id === id)?.name).filter(Boolean)} 
+              onChange={(selectedNames) => {
+                const selectedIds = selectedNames.map(name => playersList.find(p => p.name === name)?.id).filter(Boolean);
+                setPendingFilters({ ...pendingFilters, opponent_id: selectedIds });
+              }} 
+              placeholder="Rechercher des adversaires..." 
             />
           </div>
         </AccordionSection>

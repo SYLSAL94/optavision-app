@@ -42,12 +42,16 @@ const RankBadge = ({ rank }) => {
   );
 };
 
-const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedMetricsList = [] }) => {
+const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedMetricsList = [], playersList = [] }) => {
   const [selectedAction, setSelectedAction] = useState('Pass');
   const [sortOrder, setSortOrder] = useState('desc');
   const [isSelectOpen, setIsSelectOpen] = useState(false);
   const [page, setPage] = useState(1);
   const itemsPerPage = 10;
+
+  // États pour le Tooltip Premium
+  const [hoveredEvent, setHoveredEvent] = useState(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
 
 
@@ -87,13 +91,15 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedM
 
 
   // DICTIONNAIRES DE MAPPING DYNAMIQUE (Auto-résolution des IDs en noms explicites)
-  const playerMap = useMemo(() => {
+  const globalPlayerMap = useMemo(() => {
     const map = {};
-    data.forEach(e => {
-      if (e.player_id && e.playerName) map[e.player_id] = e.playerName;
-    });
+    if (playersList && Array.isArray(playersList)) {
+      playersList.forEach(p => { 
+        map[String(p.id || p.player_id)] = p.name || p.shortName || p.id; 
+      });
+    }
     return map;
-  }, [data]);
+  }, [playersList]);
 
   const matchMap = useMemo(() => {
     const map = {};
@@ -186,7 +192,7 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedM
             
             <div className="flex items-center gap-3">
               <div className="px-5 py-2.5 bg-black border border-white/10 rounded-[2px] verge-label-mono text-[10px] text-[#949494] font-black tracking-widest">
-                SESSION: <span className="text-[#3cffd0]">{typeof matchId === 'string' ? matchId : matchId?.match_id || 'ANALYST_PRO'}</span>
+                SESSION: <span className="text-[#3cffd0]">{matchMap[matchId] || matchId || 'ANALYST_PRO'}</span>
               </div>
             </div>
 
@@ -219,7 +225,7 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedM
                     const receiverId = parsedMetrics?.receiver || event.receiver || event.receiverName || 'N/A';
                     
                     // Résolution des noms explicites
-                    const receiverName = playerMap[receiverId] || receiverId;
+                    const receiverName = globalPlayerMap[receiverId] || receiverId;
                     const currentMatchId = event.match_id || (typeof matchId === 'string' ? matchId : matchId?.match_id);
                     const finalMatchName = matchMap[currentMatchId] || currentMatchId || 'ANALYST_PRO';
                     
@@ -228,10 +234,16 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedM
                     const endY = parsedMetrics?.end_y;
                     const hasValidEnd = typeof endX === 'number' && typeof endY === 'number';
 
-                    const tooltip = `Match: ${finalMatchName}\nActeur: ${event.playerName || 'Joueur'}\nReceveur: ${receiverName}\nType: ${displayType}\nDépart: [X: ${event.x}, Y: ${event.y}] | Fin: [X: ${hasValidEnd ? endX : 'N/A'}, Y: ${hasValidEnd ? endY : 'N/A'}]`;
-
                       return (
-                        <g key={i} className="cursor-help pointer-events-auto">
+                        <g 
+                          key={i} 
+                          className="cursor-help pointer-events-auto"
+                          onMouseMove={(e) => {
+                            setHoveredEvent(event);
+                            setMousePos({ x: e.clientX, y: e.clientY });
+                          }}
+                          onMouseLeave={() => setHoveredEvent(null)}
+                        >
                           {/* Trajectoire (Ligne) - Rendu Conditionnel Strict */}
                           {hasValidEnd && (
                             <line 
@@ -268,7 +280,6 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedM
                               className="animate-in fade-in zoom-in duration-300"
                             />
                           )}
-                          <title>{tooltip}</title>
                         </g>
                       );
                     })}
@@ -276,6 +287,120 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedM
                 )}
              </div>
              
+             {/* Tooltip Premium (HTML flottant) */}
+             {hoveredEvent && (
+               <div 
+                 style={{ left: mousePos.x + 15, top: mousePos.y + 15 }} 
+                 className="fixed z-50 w-64 p-3 rounded-lg shadow-2xl backdrop-blur-xl bg-[#131313]/95 border border-slate-700 text-white pointer-events-none text-xs flex flex-col gap-2"
+               >
+                 {(() => {
+                    let parsed = hoveredEvent.advanced_metrics;
+                    if (typeof parsed === 'string') {
+                      try { parsed = JSON.parse(parsed); } catch(e) { parsed = {}; }
+                    }
+                    const typeName = parsed?.type_name || hoveredEvent.type || hoveredEvent.type_id;
+                    const typeStr = String(typeName);
+                    
+                    const getPlayerName = (id) => {
+                      if (!id) return null;
+                      const strId = String(id);
+                      const mapped = globalPlayerMap[strId];
+                      return mapped?.name || mapped?.shortName || mapped || strId;
+                    };
+
+                    const opponentName = getPlayerName(parsed?.opponent_id);
+                    const receiverId = parsed?.receiver || hoveredEvent.receiver || hoveredEvent.receiverName;
+                    const receiverNameTooltip = getPlayerName(receiverId);
+                    
+                    const isProgressive = parsed?.is_progressive;
+                    const duelWon = parsed?.duel_won;
+                    const hasDuelResult = typeof duelWon !== 'undefined';
+                    
+                    const isPass = typeStr === 'Pass';
+                    const isDuel = ['TakeOn', 'Tackle', 'Aerial', 'Challenge'].includes(typeStr);
+                    const isShot = ['Shot', 'Goal', 'SavedShot', 'MissedShots'].includes(typeStr);
+
+                    return (
+                      <>
+                        <div className="font-bold border-b border-white/10 pb-1 mb-1">
+                          {hoveredEvent.playerName || 'Joueur inconnu'} <span className="text-[#949494]">| {typeStr}</span>
+                        </div>
+                        
+                        {/* 1. Mode Passe */}
+                        {isPass && (
+                          <>
+                            {receiverNameTooltip && receiverNameTooltip !== 'N/A' && (
+                              <div className="flex justify-between">
+                                <span className="text-[#949494]">Receveur :</span>
+                                <span>{receiverNameTooltip}</span>
+                              </div>
+                            )}
+                            {(parsed?.xT !== undefined && parsed?.xT !== null) && (
+                              <div className="flex justify-between">
+                                <span className="text-[#949494]">xT :</span>
+                                <span className={parsed.xT > 0 ? "text-[#3cffd0]" : ""}>
+                                  {Number(parsed.xT).toFixed(4)}
+                                </span>
+                              </div>
+                            )}
+                            {(parsed?.prog_dist !== undefined && parsed?.prog_dist !== null) && (
+                              <div className="flex justify-between">
+                                <span className="text-[#949494]">Progression :</span>
+                                <span>{Number(parsed.prog_dist).toFixed(1)}m</span>
+                              </div>
+                            )}
+                          </>
+                        )}
+                        
+                        {/* 2. Mode Duel/Défense */}
+                        {isDuel && (
+                          <>
+                            {opponentName && (
+                              <div className="flex justify-between">
+                                <span className="text-[#949494]">Adversaire :</span>
+                                <span>{opponentName}</span>
+                              </div>
+                            )}
+                          </>
+                        )}
+
+                        {/* 3. Mode Tir */}
+                        {isShot && (
+                          <>
+                            {(parsed?.xG !== undefined && parsed?.xG !== null) && (
+                              <div className="flex justify-between">
+                                <span className="text-[#949494]">xG :</span>
+                                <span>{Number(parsed.xG).toFixed(2)}</span>
+                              </div>
+                            )}
+                            {parsed?.shot_status && (
+                              <div className="flex justify-between">
+                                <span className="text-[#949494]">Statut :</span>
+                                <span>{parsed.shot_status}</span>
+                              </div>
+                            )}
+                          </>
+                        )}
+                        
+                        {/* Badges Dynamiques */}
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {isProgressive && (
+                            <span className="bg-[#3cffd0] text-black px-1.5 py-0.5 rounded-[2px] font-black text-[9px] uppercase tracking-wider">
+                              Progressif
+                            </span>
+                          )}
+                          {isDuel && hasDuelResult && (
+                            <span className={`px-1.5 py-0.5 rounded-[2px] font-black text-[9px] uppercase tracking-wider text-black ${duelWon ? 'bg-[#3cffd0]' : 'bg-[#ff4d4d]'}`}>
+                              Duel {duelWon ? 'Gagné' : 'Perdu'}
+                            </span>
+                          )}
+                        </div>
+                      </>
+                    );
+                 })()}
+               </div>
+             )}
+
              {/* Overlay de message si chargement ou pas de données */}
              {(loading || data.length === 0) && (
                <div className="absolute inset-0 flex items-center justify-center backdrop-blur-[1px] z-50">
@@ -446,7 +571,7 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedM
                            {player.count}
                          </span>
                          <span className="verge-label-mono text-[7px] text-[#949494] uppercase font-black tracking-widest mt-1">
-                           {selectedAction}s
+                           {combinedActions.find(a => a.id === selectedAction)?.label || selectedAction}S
                        </span>
                       </div>
                       <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-[#3cffd0] scale-y-0 group-hover:scale-y-100 transition-transform origin-center" />
