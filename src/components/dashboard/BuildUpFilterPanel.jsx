@@ -11,15 +11,26 @@ import {
   Layout
 } from 'lucide-react';
 import AccordionSection from './AccordionSection';
+import MultiSelectWithChips from '../ui/MultiSelectWithChips';
 
 /**
  * BuildUpFilterPanel - Squelette du panneau de filtrage latéral pour les séquences
  */
-const BuildUpFilterPanel = ({ onClose }) => {
+const BuildUpFilterPanel = ({ matchId, playersList = [], onApply, onClose }) => {
   const [openSection, setOpenSection] = useState('sequential');
+  const [pendingFilters, setPendingFilters] = useState({
+    min_passes: 0,
+    min_score: 0.0,
+    has_shot: false,
+    is_fast_break: false
+  });
 
   const toggleSection = (id) => {
     setOpenSection(openSection === id ? null : id);
+  };
+
+  const updateFilter = (key, value) => {
+    setPendingFilters(prev => ({ ...prev, [key]: value }));
   };
 
   return (
@@ -35,7 +46,10 @@ const BuildUpFilterPanel = ({ onClose }) => {
             </h3>
             <p className="verge-label-mono text-[9px] text-[#949494] mt-2 uppercase tracking-widest">Analyse du Build-up collectif</p>
           </div>
-          <button className="verge-label-mono text-[10px] text-[#949494] hover:text-white uppercase font-black transition-colors flex items-center gap-2">
+          <button 
+            onClick={() => setPendingFilters({ min_passes: 0, min_score: 0.0, has_shot: false, is_fast_break: false })}
+            className="verge-label-mono text-[10px] text-[#949494] hover:text-white uppercase font-black transition-colors flex items-center gap-2"
+          >
             <RotateCcw size={12} />
             Reset
           </button>
@@ -55,23 +69,56 @@ const BuildUpFilterPanel = ({ onClose }) => {
           subtitle="VOLUME & DÉBIT"
         >
           <div className="space-y-8">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="verge-label-mono text-[8px] text-[#949494]">Min. Passes</label>
-                <input type="number" placeholder="5" className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white" />
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <label className="verge-label-mono text-[9px] text-[#949494]">Min. Passes</label>
+                <span className="verge-label-mono text-[10px] text-white font-black">{pendingFilters.min_passes}</span>
               </div>
-              <div className="space-y-2">
-                <label className="verge-label-mono text-[8px] text-[#949494]">Min. Actions</label>
-                <input type="number" placeholder="8" className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white" />
-              </div>
+              <input 
+                type="range" min="0" max="30" step="1" 
+                value={pendingFilters.min_passes} 
+                onChange={(e) => updateFilter('min_passes', parseInt(e.target.value))}
+                className="w-full h-1 bg-white/10 appearance-none cursor-pointer accent-[#5200ff]" 
+              />
             </div>
             
             <div className="space-y-4">
               <div className="flex justify-between items-center">
-                <label className="verge-label-mono text-[9px] text-white uppercase font-black">Score xT Séquence</label>
-                <span className="verge-label-mono text-[10px] text-[#5200ff] font-black">0.250+</span>
+                <label className="verge-label-mono text-[9px] text-[#949494]">Min. Actions</label>
+                <span className="verge-label-mono text-[10px] text-white font-black">{pendingFilters.min_actions}</span>
               </div>
-              <input type="range" className="w-full h-1 bg-white/10 appearance-none cursor-pointer accent-[#5200ff]" />
+              <input 
+                type="range" min="0" max="30" step="1" 
+                value={pendingFilters.min_actions} 
+                onChange={(e) => updateFilter('min_actions', parseInt(e.target.value))}
+                className="w-full h-1 bg-white/10 appearance-none cursor-pointer accent-[#5200ff]" 
+              />
+            </div>
+            
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <label className="verge-label-mono text-[9px] text-[#949494]">Min. Actions Progressives</label>
+                <span className="verge-label-mono text-[10px] text-white font-black">{pendingFilters.min_prog}</span>
+              </div>
+              <input 
+                type="range" min="0" max="15" step="1" 
+                value={pendingFilters.min_prog} 
+                onChange={(e) => updateFilter('min_prog', parseInt(e.target.value))}
+                className="w-full h-1 bg-white/10 appearance-none cursor-pointer accent-[#5200ff]" 
+              />
+            </div>
+            
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <label className="verge-label-mono text-[9px] text-white uppercase font-black">Score xT Séquence (Min)</label>
+                <span className="verge-label-mono text-[10px] text-[#5200ff] font-black">{pendingFilters.min_score.toFixed(1)}</span>
+              </div>
+              <input 
+                type="range" min="0" max="50" step="0.5" 
+                value={pendingFilters.min_score} 
+                onChange={(e) => updateFilter('min_score', parseFloat(e.target.value))}
+                className="w-full h-1 bg-white/10 appearance-none cursor-pointer accent-[#5200ff]" 
+              />
             </div>
           </div>
         </AccordionSection>
@@ -86,17 +133,49 @@ const BuildUpFilterPanel = ({ onClose }) => {
           subtitle="PHASES DE JEU"
         >
           <div className="space-y-4">
-             {[
-               'Départ Zone Défensive',
-               'Atteint Zone Offensive',
-               'Séquence avec Tir',
-               'Contre-attaques'
-             ].map(opt => (
-               <div key={opt} className="flex items-center justify-between p-4 bg-[#2d2d2d]/30 border border-white/5 rounded-[2px] group cursor-pointer hover:border-[#5200ff]/30 transition-all">
-                 <span className="verge-label-mono text-[10px] text-white uppercase">{opt}</span>
-                 <div className="w-4 h-4 border border-white/20 rounded-[2px] group-hover:border-[#5200ff]" />
+             {/* Séquence avec Tir Toggle */}
+             <div 
+               onClick={() => updateFilter('has_shot', !pendingFilters.has_shot)}
+               className={`flex items-center justify-between p-4 border rounded-[2px] cursor-pointer transition-all ${pendingFilters.has_shot ? 'bg-[#5200ff]/20 border-[#5200ff]' : 'bg-[#2d2d2d]/30 border-white/5 hover:border-white/20'}`}
+             >
+               <span className="verge-label-mono text-[10px] text-white uppercase">Séquence avec Tir / But</span>
+               <div className={`w-4 h-4 border rounded-[2px] flex items-center justify-center ${pendingFilters.has_shot ? 'bg-[#5200ff] border-[#5200ff]' : 'border-white/20'}`}>
+                 {pendingFilters.has_shot && <Check size={12} className="text-white" />}
                </div>
-             ))}
+             </div>
+             
+             {/* Départ Zone Défensive Toggle */}
+             <div 
+               onClick={() => updateFilter('starts_own', !pendingFilters.starts_own)}
+               className={`flex items-center justify-between p-4 border rounded-[2px] cursor-pointer transition-all ${pendingFilters.starts_own ? 'bg-[#5200ff]/20 border-[#5200ff]' : 'bg-[#2d2d2d]/30 border-white/5 hover:border-white/20'}`}
+             >
+               <span className="verge-label-mono text-[10px] text-white uppercase">Départ Zone Défensive</span>
+               <div className={`w-4 h-4 border rounded-[2px] flex items-center justify-center ${pendingFilters.starts_own ? 'bg-[#5200ff] border-[#5200ff]' : 'border-white/20'}`}>
+                 {pendingFilters.starts_own && <Check size={12} className="text-white" />}
+               </div>
+             </div>
+             
+             {/* Atteint Zone Offensive Toggle */}
+             <div 
+               onClick={() => updateFilter('reaches_opp', !pendingFilters.reaches_opp)}
+               className={`flex items-center justify-between p-4 border rounded-[2px] cursor-pointer transition-all ${pendingFilters.reaches_opp ? 'bg-[#5200ff]/20 border-[#5200ff]' : 'bg-[#2d2d2d]/30 border-white/5 hover:border-white/20'}`}
+             >
+               <span className="verge-label-mono text-[10px] text-white uppercase">Atteint Zone Offensive</span>
+               <div className={`w-4 h-4 border rounded-[2px] flex items-center justify-center ${pendingFilters.reaches_opp ? 'bg-[#5200ff] border-[#5200ff]' : 'border-white/20'}`}>
+                 {pendingFilters.reaches_opp && <Check size={12} className="text-white" />}
+               </div>
+             </div>
+             
+             {/* Contre-attaques Toggle */}
+             <div 
+               onClick={() => updateFilter('is_fast_break', !pendingFilters.is_fast_break)}
+               className={`flex items-center justify-between p-4 border rounded-[2px] cursor-pointer transition-all ${pendingFilters.is_fast_break ? 'bg-[#5200ff]/20 border-[#5200ff]' : 'bg-[#2d2d2d]/30 border-white/5 hover:border-white/20'}`}
+             >
+               <span className="verge-label-mono text-[10px] text-white uppercase">Contre-attaques Rapides</span>
+               <div className={`w-4 h-4 border rounded-[2px] flex items-center justify-center ${pendingFilters.is_fast_break ? 'bg-[#5200ff] border-[#5200ff]' : 'border-white/20'}`}>
+                 {pendingFilters.is_fast_break && <Check size={12} className="text-white" />}
+               </div>
+             </div>
           </div>
         </AccordionSection>
 
@@ -110,22 +189,33 @@ const BuildUpFilterPanel = ({ onClose }) => {
           subtitle="RÔLES INDIVIDUELS"
         >
           <div className="space-y-6">
-            <div className="relative">
-              <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#949494]" />
-              <input type="text" placeholder="JOUEURS IMPLIQUÉS..." className="w-full bg-[#131313] border border-white/10 py-4 pl-12 pr-4 verge-label-mono text-[10px] text-white outline-none" />
-            </div>
-            <div className="relative">
-              <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#949494]" />
-              <input type="text" placeholder="JOUEURS EXCLUS..." className="w-full bg-[#131313] border border-white/10 py-4 pl-12 pr-4 verge-label-mono text-[10px] text-white outline-none" />
-            </div>
+            <MultiSelectWithChips 
+              label="Joueurs Impliqués" 
+              options={playersList} 
+              selected={pendingFilters.involved_player_id || []} 
+              onChange={(vals) => updateFilter('involved_player_id', vals)} 
+              placeholder="Chercher joueur..." 
+            />
+            <MultiSelectWithChips 
+              label="Joueurs Exclus" 
+              options={playersList} 
+              selected={pendingFilters.excluded_player_id || []} 
+              onChange={(vals) => updateFilter('excluded_player_id', vals)} 
+              placeholder="Chercher joueur..." 
+            />
           </div>
         </AccordionSection>
-
       </div>
 
       {/* FOOTER : APPLY BUTTON */}
       <div className="p-10 bg-[#131313] border-t border-white/10">
-        <button className="w-full bg-[#5200ff] text-white py-6 rounded-[2px] verge-label-mono text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-4 hover:bg-white hover:text-black transition-all">
+        <button 
+          onClick={() => {
+            if (onApply) onApply(pendingFilters);
+            if (onClose) onClose();
+          }}
+          className="w-full bg-[#5200ff] text-white py-6 rounded-[2px] verge-label-mono text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-4 hover:bg-white hover:text-black transition-all"
+        >
           Analyser les séquences
           <Check size={18} />
         </button>

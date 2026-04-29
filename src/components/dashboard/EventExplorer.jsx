@@ -42,7 +42,7 @@ const RankBadge = ({ rank }) => {
   );
 };
 
-const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedMetricsList = [], playersList = [] }) => {
+const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedMetricsList = [], playersList = [], selectedSequence }) => {
   const [selectedAction, setSelectedAction] = useState('Pass');
   const [sortOrder, setSortOrder] = useState('desc');
   const [isSelectOpen, setIsSelectOpen] = useState(false);
@@ -65,14 +65,15 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedM
     return [...ACTION_TYPES, ...advanced];
   }, [advancedMetricsList]);
 
-  // LE FILTRAGE EST DÉSORMAIS SERVEUR-SIDE (Dette technique purgée)
-  // Ajout du filtre de purge visuelle anti-pollution (Out events)
-  // LE FILTRAGE EST DÉSORMAIS SERVEUR-SIDE (Dette technique purgée)
-  // Ajout du filtre de purge visuelle anti-pollution (Out events)
-  // LE FILTRAGE EST DÉSORMAIS SERVEUR-SIDE (Dette technique purgée)
-  // Ajout du filtre de purge visuelle anti-pollution (Out events)
+  const isSequenceMode = data && Array.isArray(data.sequences);
+
   const displayData = useMemo(() => {
-    let filtered = data.filter(e => e.type !== 'Out' && e.type_id !== 5);
+    if (isSequenceMode) {
+      if (!selectedSequence) return [];
+      return data.sequences.filter(seq => seq.sub_sequence_id === selectedSequence);
+    }
+
+    let filtered = (data || []).filter(e => e.type !== 'Out' && e.type_id !== 5);
     
     const { localTeam, localOpponent } = filters || {};
     
@@ -86,7 +87,7 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedM
     }
     
     return filtered;
-  }, [data, filters]);
+  }, [data, filters, isSequenceMode, selectedSequence]);
 
 
 
@@ -103,28 +104,32 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedM
 
   const matchMap = useMemo(() => {
     const map = {};
-    data.forEach(e => {
-      const mId = e.match_id || e.matchId;
-      if (mId && e.matchName) map[mId] = e.matchName;
-    });
+    if (!isSequenceMode && Array.isArray(data)) {
+      data.forEach(e => {
+        const mId = e.match_id || e.matchId;
+        if (mId && e.matchName) map[mId] = e.matchName;
+      });
+    }
     return map;
-  }, [data]);
+  }, [data, isSequenceMode]);
 
 
 
   const teamMap = useMemo(() => {
     const map = {};
-    data.forEach(e => {
-      if (e.team_id) map[e.team_id] = e.teamName || `Team ${e.team_id}`;
-    });
+    if (!isSequenceMode && Array.isArray(data)) {
+      data.forEach(e => {
+        if (e.team_id) map[e.team_id] = e.teamName || `Team ${e.team_id}`;
+      });
+    }
     return map;
-  }, [data]);
+  }, [data, isSequenceMode]);
 
   const teamList = Object.keys(teamMap);
 
   // Calcul du classement des joueurs basé sur l'action sélectionnée dans le sélecteur DROIT
   const playerRanking = useMemo(() => {
-    if (!displayData || displayData.length === 0) return [];
+    if (isSequenceMode || !displayData || displayData.length === 0) return [];
 
     const counts = {};
     const playerTeams = {};
@@ -155,17 +160,17 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedM
         count,
         team: playerTeams[name],
       }))
-      .sort((a, b) => sortOrder === 'desc' ? b.count - a.count : a.count - b.count);
-  }, [displayData, selectedAction, sortOrder]);
+      .sort((a, b) => sortOrder === 'desc' ? b.count - a.count : a.count - b.count)
+      .map(p => ({ ...p, count: typeof p.count === 'number' && !Number.isInteger(p.count) ? p.count.toFixed(3) : p.count }));
+  }, [displayData, selectedAction, sortOrder, isSequenceMode]);
 
+  const totalPages = isSequenceMode ? 0 : Math.ceil(playerRanking.length / itemsPerPage);
+  const paginatedRanking = isSequenceMode ? [] : playerRanking.slice((page - 1) * itemsPerPage, page * itemsPerPage);
 
   // Reset de la pagination en cas de changement de filtre
   React.useEffect(() => {
     setPage(1);
   }, [selectedAction, sortOrder, displayData]);
-
-  const totalPages = Math.ceil(playerRanking.length / itemsPerPage);
-  const paginatedRanking = playerRanking.slice((page - 1) * itemsPerPage, page * itemsPerPage);
 
   return (
     <div className="flex h-full w-full gap-8 animate-in fade-in zoom-in-95 duration-500 overflow-hidden">
@@ -210,7 +215,102 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedM
                 {/* Affichage des points (Events) sur le terrain avec SCALING CORRECT & RENDU CONDITIONNEL */}
                 {!loading && displayData.length > 0 && (
                   <svg viewBox="0 0 105 68" className="absolute inset-0 w-full h-full">
-                    {displayData.slice(0, 1000).map((event, i) => {
+                    {isSequenceMode ? (
+                      displayData.map((seq, seqIdx) => (
+                        <g key={`seq-${seq.sub_sequence_id || seqIdx}`}>
+                          {seq.events.map((event, i) => {
+                            const cx = (event.x / 100) * 105;
+                            const cy = ((100 - event.y) / 100) * 68; // Inversion Y pour standard Opta (y=0 à droite/bas)
+                            const isSuccess = event.outcome === 1 || event.outcome === 'Successful';
+                            const color = isSuccess ? '#3cffd0' : '#ff4d4d'; // Vert/Cyan pour succès, Rouge pour échec
+                            const opacity = isSuccess ? 0.9 : 0.4;
+                            let parsedMetrics = event.advanced_metrics;
+                            if (typeof parsedMetrics === 'string') {
+                              try { parsedMetrics = JSON.parse(parsedMetrics); } catch(e) { parsedMetrics = {}; }
+                            }
+                            
+                            // Ligne vers le PROCHAIN événement de la possession
+                            let nextEvent = seq.events[i+1];
+                            let hasNext = false;
+                            let nx = 0, ny = 0;
+                            if (nextEvent && nextEvent.x !== null && nextEvent.y !== null) {
+                                hasNext = true;
+                                nx = (nextEvent.x / 100) * 105;
+                                ny = ((100 - nextEvent.y) / 100) * 68;
+                            }
+
+                            const endX = parsedMetrics?.end_x || event.end_x;
+                            const endY = parsedMetrics?.end_y || event.end_y;
+                            const hasValidEnd = typeof endX === 'number' && typeof endY === 'number';
+
+                            return (
+                              <g 
+                                key={`ev-${event.id || i}`} 
+                                className="cursor-help pointer-events-auto animate-in fade-in fill-mode-backwards"
+                                style={{ animationDelay: `${i * 0.4}s` }}
+                                onMouseMove={(e) => {
+                                  setHoveredEvent(event);
+                                  setMousePos({ x: e.clientX, y: e.clientY });
+                                }}
+                                onMouseLeave={() => setHoveredEvent(null)}
+                              >
+                                {/* Vecteur vers événement suivant (Continuité de Possession) */}
+                                {hasNext && (
+                                  <line 
+                                    x1={cx} y1={cy} x2={nx} y2={ny} 
+                                    stroke="rgba(255,255,255,0.25)" strokeWidth="0.4" strokeDasharray="1,1" 
+                                    className="animate-in fade-in fill-mode-backwards"
+                                    style={{ animationDelay: `${i * 0.4 + 0.2}s` }}
+                                  />
+                                )}
+                                
+                                {/* Trajectoire (Ligne) - Rendu Conditionnel Strict */}
+                                {hasValidEnd && (
+                                  <line 
+                                    x1={cx} y1={cy} 
+                                    x2={(endX / 100) * 105} 
+                                    y2={((100 - endY) / 100) * 68} 
+                                    stroke={color} 
+                                    strokeWidth="0.2" 
+                                    strokeOpacity={opacity * 0.6}
+                                    strokeDasharray={isSuccess ? "none" : "1,1"}
+                                    className="animate-in fade-in duration-500 fill-mode-backwards"
+                                    style={{ animationDelay: `${i * 0.4 + 0.1}s` }}
+                                  />
+                                )}
+
+                                {/* Forme de l'action */}
+                                {event.type === 'Shot' || event.type === 'Goal' ? (
+                                  <circle 
+                                    cx={cx} cy={cy} r="1.4" 
+                                    fill={color} fillOpacity={opacity}
+                                    stroke="white" strokeWidth="0.2"
+                                    className="animate-in fade-in zoom-in duration-300 fill-mode-backwards"
+                                    style={{ animationDelay: `${i * 0.4}s` }}
+                                  />
+                                ) : event.type === 'Carry' ? (
+                                  <rect 
+                                    x={cx - 0.7} y={cy - 0.7} width="1.4" height="1.4"
+                                    fill={color} fillOpacity={opacity}
+                                    transform={`rotate(45, ${cx}, ${cy})`}
+                                    className="animate-in fade-in zoom-in duration-300 fill-mode-backwards"
+                                    style={{ animationDelay: `${i * 0.4}s` }}
+                                  />
+                                ) : (
+                                  <circle 
+                                    cx={cx} cy={cy} r="0.7" 
+                                    fill={color} fillOpacity={opacity}
+                                    className="animate-in fade-in zoom-in duration-300 fill-mode-backwards"
+                                    style={{ animationDelay: `${i * 0.4}s` }}
+                                  />
+                                )}
+                              </g>
+                            );
+                          })}
+                        </g>
+                      ))
+                    ) : (
+                    displayData.slice(0, 1000).map((event, i) => {
                     const cx = (event.x / 100) * 105;
                     const cy = ((100 - event.y) / 100) * 68; // Inversion Y pour standard Opta (y=0 à droite/bas)
                     const isSuccess = event.outcome === 1;
@@ -282,7 +382,7 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedM
                           )}
                         </g>
                       );
-                    })}
+                    }))}
                   </svg>
                 )}
              </div>
@@ -469,148 +569,150 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedM
         </div>
       </div>
 
-      {/* COLONNE DROITE : RANKING PERFORMANCE (Filtré) */}
-      <div className="w-[450px] flex flex-col gap-0 bg-[#1a1a1a] border border-white/10 rounded-[4px] overflow-hidden shadow-[0_40px_100px_rgba(0,0,0,0.4)]">
-        
-        {/* Header Ranking Section */}
-        <div className="p-8 border-b border-white/10 bg-[#2d2d2d]">
-          <div className="flex items-center gap-4 mb-8">
-            <Trophy className="text-[#3cffd0]" size={20} />
-            <h3 className="verge-h3 text-white uppercase tracking-tighter font-black">Ranking Performance</h3>
-          </div>
-
-          <div className="space-y-4">
-             <div className="flex items-center gap-4">
-                <div className="w-1 h-4 bg-[#3cffd0]" />
-                <span className="verge-label-mono text-[10px] font-black text-white uppercase tracking-widest">Order By</span>
-             </div>
-             
-             {/* Custom Select - Style Scouting */}
-             <div className="relative">
-                <button 
-                  onClick={() => setIsSelectOpen(!isSelectOpen)}
-                  className="w-full flex items-center justify-between px-6 py-4 bg-[#131313] border border-white/10 rounded-[2px] verge-label-mono text-[10px] text-white font-black hover:border-[#3cffd0]/50 transition-all text-left"
-                >
-                  <div className="flex items-center gap-4">
-                    {combinedActions.find(a => a.id === selectedAction)?.icon}
-                    <span className="uppercase tracking-widest truncate max-w-[200px]">
-                      {combinedActions.find(a => a.id === selectedAction)?.label || 'SELECT METRIC...'}
-                    </span>
-                  </div>
-                  <ChevronDown className={`text-[#949494] transition-transform ${isSelectOpen ? 'rotate-180' : ''}`} size={16} />
-                </button>
-
-                <AnimatePresence>
-                  {isSelectOpen && (
-                    <motion.div 
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 10 }}
-                      className="absolute top-full left-0 right-0 mt-2 bg-[#1a1a1a] border border-white/10 rounded-[2px] shadow-2xl z-[100] max-h-[300px] overflow-y-auto styled-scrollbar-verge"
-                    >
-                      {combinedActions.map(type => (
-                        <button
-                          key={type.id}
-                          onClick={() => {
-                            setSelectedAction(type.id);
-                            setIsSelectOpen(false);
-                          }}
-                          className={`w-full flex items-center gap-4 px-6 py-4 verge-label-mono text-[10px] font-black uppercase tracking-widest text-left transition-all border-b border-white/[0.03] ${
-                            selectedAction === type.id 
-                            ? 'bg-[#3cffd0] text-black' 
-                            : 'text-[#949494] hover:bg-white/5 hover:text-white'
-                          }`}
-                        >
-                          {type.icon}
-                          <span className="truncate">{type.label}</span>
-                        </button>
-                      ))}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-             </div>
-          </div>
-        </div>
-
-        {/* Ranking List Table-Style (Basé sur filteredData) */}
-        <div className="flex-1 overflow-hidden flex flex-col bg-[#131313]">
-          <div className="px-8 py-4 border-b border-white/5 flex items-center justify-between bg-black/40">
-             <span className="verge-label-mono text-[9px] text-[#949494] font-black uppercase tracking-widest">Leaderboard</span>
-             <button 
-                onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
-                className="flex items-center gap-2 text-[#949494] hover:text-[#3cffd0] transition-colors"
-             >
-                <ArrowUpDown size={12} />
-                <span className="verge-label-mono text-[8px] uppercase font-black">Sort</span>
-             </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto styled-scrollbar-verge divide-y divide-white/[0.03] flex flex-col">
-             {paginatedRanking.length > 0 ? (
-               <AnimatePresence mode="popLayout">
-                  {paginatedRanking.map((player, index) => (
-                    <motion.div
-                      key={player.name}
-                      layout
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -20 }}
-                      className="group flex items-center gap-6 p-6 hover:bg-[#3cffd0]/5 transition-all cursor-pointer relative"
-                    >
-                      <RankBadge rank={(page - 1) * itemsPerPage + index + 1} />
-                      <div className="flex-1 min-w-0">
-                         <div className="verge-label-mono text-[13px] text-white font-black group-hover:text-[#3cffd0] transition-colors truncate uppercase tracking-tight">
-                           {player.name}
-                         </div>
-                         <div className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest mt-1 opacity-60">
-                           {player.team}
-                         </div>
-                      </div>
-                      <div className="text-right flex flex-col items-end">
-                         <span className="verge-label-mono text-3xl font-black text-[#3cffd0] leading-none tabular-nums tracking-tighter">
-                           {player.count}
-                         </span>
-                         <span className="verge-label-mono text-[7px] text-[#949494] uppercase font-black tracking-widest mt-1">
-                           {combinedActions.find(a => a.id === selectedAction)?.label || selectedAction}S
-                       </span>
-                      </div>
-                      <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-[#3cffd0] scale-y-0 group-hover:scale-y-100 transition-transform origin-center" />
-                    </motion.div>
-                  ))}
-               </AnimatePresence>
-             ) : (
-                <div className="flex-1 flex flex-col items-center justify-center p-20 text-center opacity-20">
-                  <BarChart2 size={48} className="mb-6" />
-                  <div className="verge-label-mono text-[11px] font-black uppercase tracking-[0.3em]">No Data Profile</div>
-                  <p className="verge-label-mono text-[8px] mt-4 uppercase tracking-[0.2em] opacity-50">Waiting for analyst stream...</p>
-                </div>
-             )}
-          </div>
-
-          {/* Contrôles de Pagination */}
-          {totalPages > 1 && (
-            <div className="p-4 border-t border-white/10 bg-[#131313] flex items-center justify-between">
-              <button 
-                disabled={page === 1}
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                className="px-4 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-30 rounded-[2px] verge-label-mono text-[10px] text-white font-black uppercase transition-colors"
-              >
-                Précédent
-              </button>
-              <div className="verge-label-mono text-[9px] text-[#949494] font-black tracking-widest">
-                PAGE <span className="text-[#3cffd0]">{page}</span> SUR {totalPages}
-              </div>
-              <button 
-                disabled={page === totalPages}
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                className="px-4 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-30 rounded-[2px] verge-label-mono text-[10px] text-white font-black uppercase transition-colors"
-              >
-                Suivant
-              </button>
+      {/* COLONNE DROITE : RANKING PERFORMANCE (Filtré) - Masqué en mode Build-Up */}
+      {!isSequenceMode && (
+        <div className="w-[450px] flex flex-col gap-0 bg-[#1a1a1a] border border-white/10 rounded-[4px] overflow-hidden shadow-[0_40px_100px_rgba(0,0,0,0.4)]">
+          
+          {/* Header Ranking Section */}
+          <div className="p-8 border-b border-white/10 bg-[#2d2d2d]">
+            <div className="flex items-center gap-4 mb-8">
+              <Trophy className="text-[#3cffd0]" size={20} />
+              <h3 className="verge-h3 text-white uppercase tracking-tighter font-black">Ranking Performance</h3>
             </div>
-          )}
+
+            <div className="space-y-4">
+               <div className="flex items-center gap-4">
+                  <div className="w-1 h-4 bg-[#3cffd0]" />
+                  <span className="verge-label-mono text-[10px] font-black text-white uppercase tracking-widest">Order By</span>
+               </div>
+               
+               {/* Custom Select - Style Scouting */}
+               <div className="relative">
+                  <button 
+                    onClick={() => setIsSelectOpen(!isSelectOpen)}
+                    className="w-full flex items-center justify-between px-6 py-4 bg-[#131313] border border-white/10 rounded-[2px] verge-label-mono text-[10px] text-white font-black hover:border-[#3cffd0]/50 transition-all text-left"
+                  >
+                    <div className="flex items-center gap-4">
+                      {combinedActions.find(a => a.id === selectedAction)?.icon}
+                      <span className="uppercase tracking-widest truncate max-w-[200px]">
+                        {combinedActions.find(a => a.id === selectedAction)?.label || 'SELECT METRIC...'}
+                      </span>
+                    </div>
+                    <ChevronDown className={`text-[#949494] transition-transform ${isSelectOpen ? 'rotate-180' : ''}`} size={16} />
+                  </button>
+
+                  <AnimatePresence>
+                    {isSelectOpen && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 10 }}
+                        className="absolute top-full left-0 right-0 mt-2 bg-[#1a1a1a] border border-white/10 rounded-[2px] shadow-2xl z-[100] max-h-[300px] overflow-y-auto styled-scrollbar-verge"
+                      >
+                        {combinedActions.map(type => (
+                          <button
+                            key={type.id}
+                            onClick={() => {
+                              setSelectedAction(type.id);
+                              setIsSelectOpen(false);
+                            }}
+                            className={`w-full flex items-center gap-4 px-6 py-4 verge-label-mono text-[10px] font-black uppercase tracking-widest text-left transition-all border-b border-white/[0.03] ${
+                              selectedAction === type.id 
+                              ? 'bg-[#3cffd0] text-black' 
+                              : 'text-[#949494] hover:bg-white/5 hover:text-white'
+                            }`}
+                          >
+                            {type.icon}
+                            <span className="truncate">{type.label}</span>
+                          </button>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+               </div>
+            </div>
+          </div>
+
+          {/* Ranking List Table-Style (Basé sur filteredData) */}
+          <div className="flex-1 overflow-hidden flex flex-col bg-[#131313]">
+            <div className="px-8 py-4 border-b border-white/5 flex items-center justify-between bg-black/40">
+               <span className="verge-label-mono text-[9px] text-[#949494] font-black uppercase tracking-widest">Leaderboard</span>
+               <button 
+                  onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                  className="flex items-center gap-2 text-[#949494] hover:text-[#3cffd0] transition-colors"
+               >
+                  <ArrowUpDown size={12} />
+                  <span className="verge-label-mono text-[8px] uppercase font-black">Sort</span>
+               </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto styled-scrollbar-verge divide-y divide-white/[0.03] flex flex-col">
+               {paginatedRanking.length > 0 ? (
+                 <AnimatePresence mode="popLayout">
+                    {paginatedRanking.map((player, index) => (
+                      <motion.div
+                        key={player.name}
+                        layout
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -20 }}
+                        className="group flex items-center gap-6 p-6 hover:bg-[#3cffd0]/5 transition-all cursor-pointer relative"
+                      >
+                        <RankBadge rank={(page - 1) * itemsPerPage + index + 1} />
+                        <div className="flex-1 min-w-0">
+                           <div className="verge-label-mono text-[13px] text-white font-black group-hover:text-[#3cffd0] transition-colors truncate uppercase tracking-tight">
+                             {player.name}
+                           </div>
+                           <div className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest mt-1 opacity-60">
+                             {player.team}
+                           </div>
+                        </div>
+                        <div className="text-right flex flex-col items-end">
+                           <span className="verge-label-mono text-3xl font-black text-[#3cffd0] leading-none tabular-nums tracking-tighter">
+                             {player.count}
+                           </span>
+                           <span className="verge-label-mono text-[7px] text-[#949494] uppercase font-black tracking-widest mt-1">
+                             {combinedActions.find(a => a.id === selectedAction)?.label || selectedAction}S
+                         </span>
+                        </div>
+                        <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-[#3cffd0] scale-y-0 group-hover:scale-y-100 transition-transform origin-center" />
+                      </motion.div>
+                    ))}
+                 </AnimatePresence>
+               ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center p-20 text-center opacity-20">
+                    <BarChart2 size={48} className="mb-6" />
+                    <div className="verge-label-mono text-[11px] font-black uppercase tracking-[0.3em]">No Data Profile</div>
+                    <p className="verge-label-mono text-[8px] mt-4 uppercase tracking-[0.2em] opacity-50">Waiting for analyst stream...</p>
+                  </div>
+               )}
+            </div>
+
+            {/* Contrôles de Pagination */}
+            {totalPages > 1 && (
+              <div className="p-4 border-t border-white/10 bg-[#131313] flex items-center justify-between">
+                <button 
+                  disabled={page === 1}
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  className="px-4 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-30 rounded-[2px] verge-label-mono text-[10px] text-white font-black uppercase transition-colors"
+                >
+                  Précédent
+                </button>
+                <div className="verge-label-mono text-[9px] text-[#949494] font-black tracking-widest">
+                  PAGE <span className="text-[#3cffd0]">{page}</span> SUR {totalPages}
+                </div>
+                <button 
+                  disabled={page === totalPages}
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  className="px-4 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-30 rounded-[2px] verge-label-mono text-[10px] text-white font-black uppercase transition-colors"
+                >
+                  Suivant
+                </button>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

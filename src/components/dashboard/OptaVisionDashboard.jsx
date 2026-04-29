@@ -129,6 +129,44 @@ const OptaVisionDashboard = ({ user }) => {
     }
   };
 
+  const fetchBuildup = async (filters) => {
+    if (!explorationFilters.matches?.length) {
+      console.warn("Aucun match sélectionné pour l'analyse des séquences.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+
+    const params = new URLSearchParams();
+    params.append('match_id', explorationFilters.matches[0]);
+    if (filters.min_passes) params.append('min_passes', filters.min_passes.toString());
+    if (filters.min_score) params.append('min_score', filters.min_score.toString());
+    if (filters.min_actions) params.append('min_actions', filters.min_actions.toString());
+    if (filters.min_prog) params.append('min_prog', filters.min_prog.toString());
+    if (filters.has_shot) params.append('has_shot', 'true');
+    if (filters.is_fast_break) params.append('is_fast_break', 'true');
+    if (filters.starts_own) params.append('starts_own', 'true');
+    if (filters.reaches_opp) params.append('reaches_opp', 'true');
+    if (filters.involved_player_id?.length > 0) params.append('involved_player_id', filters.involved_player_id.join(','));
+    if (filters.excluded_player_id?.length > 0) params.append('excluded_player_id', filters.excluded_player_id.join(','));
+
+    const url = `${OPTAVISION_API_URL}/api/optavision/buildup?${params.toString()}`;
+    console.log("🌐 Appel de l'API OptaVision vers :", url);
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`BUILDUP_DATA_FAILURE: ${response.status}`);
+      const json = await response.json();
+      console.log("🚨 RÉPONSE API BUILDUP :", json);
+      setData(json); // json contient { sequences: [...] }
+    } catch (err) {
+      console.error("❌ ERREUR DE FETCH BUILDUP :", err);
+      setError(err.message);
+      setData({ sequences: [] });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Fetch Lookups (Auto-Discovery)
   useEffect(() => {
     const fetchMeta = async () => {
@@ -365,7 +403,13 @@ const OptaVisionDashboard = ({ user }) => {
                           />
                         </div>
                       ) : activeTool === 'sequences' ? (
-                        <BuildUpExplorer data={data} loading={loading} />
+                        <BuildUpExplorer 
+                          data={data} 
+                          loading={loading} 
+                          matchId={explorationFilters.matches[0]}
+                          playersList={playersList}
+                          advancedMetricsList={advancedMetricsList}
+                        />
                       ) : activeTool === 'shots' ? (
                         <ShotMapExplorer data={data} loading={loading} />
                       ) : (
@@ -417,7 +461,7 @@ const OptaVisionDashboard = ({ user }) => {
                         onClose={() => setIsFilterOpen(false)}
                       />
                     )}
-                    {activeTab === 'buildup' && <BuildUpFilterPanel onClose={() => setIsFilterOpen(false)} />}
+                    {activeTab === 'buildup' && <BuildUpFilterPanel matchId={explorationFilters.matches?.[0]} playersList={playersList} onApply={(filters) => fetchBuildup(filters)} onClose={() => setIsFilterOpen(false)} />}
                     {activeTab === 'shots' && <ShotMapFilterPanel onClose={() => setIsFilterOpen(false)} />}
                   </motion.div>
                 </>

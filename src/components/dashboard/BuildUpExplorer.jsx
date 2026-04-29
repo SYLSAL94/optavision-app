@@ -1,48 +1,36 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Activity, Clock, Hash, Zap, TrendingUp } from 'lucide-react';
+import EventExplorer from './EventExplorer';
 
-const BuildUpExplorer = ({ data = [], loading = false }) => {
+const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], advancedMetricsList = [], matchId }) => {
+  const [selectedSequence, setSelectedSequence] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5; // Nombre de séquences par page pour garder un layout aéré
   
-  // Agrégation des séquences par possession_id
+  // Lecture pure des séquences du Back-End (Zéro-Calcul)
   const sequences = useMemo(() => {
-    const groups = {};
-    
-    data.forEach(event => {
-      const pid = event.possession_id || event.possessionId;
-      if (!pid && pid !== 0) return;
-      
-      if (!groups[pid]) {
-        groups[pid] = {
-          id: pid,
-          startTime: event.minute * 60 + (event.second || 0),
-          endTime: event.minute * 60 + (event.second || 0),
-          events: [],
-          passCount: 0,
-          threatScore: 0,
-          teamName: event.teamName || event.team || 'Unknown Team',
-        };
-      }
-      
-      groups[pid].events.push(event);
-      if (event.type === 'Pass' || event.type_id === 1) groups[pid].passCount++;
-      
-      // xT total de la séquence (généralement porté par le dernier événement ou sommé)
-      // Ici on somme les xT individuels pour avoir le score de menace cumulé
-      groups[pid].threatScore += (parseFloat(event.xT) || parseFloat(event.seq_score) || 0);
-      
-      const currentTime = event.minute * 60 + (event.second || 0);
-      if (currentTime < groups[pid].startTime) groups[pid].startTime = currentTime;
-      if (currentTime > groups[pid].endTime) groups[pid].endTime = currentTime;
-    });
+    if (!data.sequences) return [];
+    return data.sequences.map(seq => ({
+      ...seq,
+      // Mapping pour la compatibilité avec la vue existante
+      id: seq.sub_sequence_id,
+      teamName: seq.team_id,
+      passCount: seq.seq_pass_count,
+      threatScore: seq.seq_score || 0,
+      duration: seq.start_time ? `${seq.start_time} - ${seq.end_time}` : "N/A"
+    })).sort((a, b) => b.threatScore - a.threatScore);
+  }, [data]);
 
-    return Object.values(groups)
-      .filter(seq => seq.events.length >= 2) // Une séquence doit avoir au moins 2 événements
-      .map(seq => ({
-        ...seq,
-        duration: Math.max(1, seq.endTime - seq.startTime),
-      }))
-      .sort((a, b) => b.threatScore - a.threatScore);
+  const totalPages = Math.ceil(sequences.length / itemsPerPage);
+  const paginatedSequences = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return sequences.slice(start, start + itemsPerPage);
+  }, [sequences, currentPage]);
+
+  // Reset page quand les données changent
+  React.useEffect(() => {
+    setCurrentPage(1);
   }, [data]);
 
 
@@ -65,13 +53,14 @@ const BuildUpExplorer = ({ data = [], loading = false }) => {
         </div>
 
         <div className="flex-1 overflow-y-auto scrollbar-verge pr-4 space-y-4 pt-4">
-           {sequences.length > 0 ? sequences.map((seq, i) => (
+           {paginatedSequences.length > 0 ? paginatedSequences.map((seq, i) => (
              <motion.div 
                key={seq.id}
                initial={{ opacity: 0, y: 20 }}
                animate={{ opacity: 1, y: 0 }}
                transition={{ delay: i * 0.05 }}
-               className="bg-[#2d2d2d]/30 border border-white/5 p-6 rounded-[2px] group hover:border-[#3cffd0]/50 transition-all cursor-pointer relative overflow-hidden"
+               onClick={() => setSelectedSequence(seq.id)}
+               className={`border p-6 rounded-[2px] group hover:border-[#3cffd0]/50 transition-all cursor-pointer relative overflow-hidden ${selectedSequence === seq.id ? 'bg-[#3cffd0]/10 border-[#3cffd0]' : 'bg-[#2d2d2d]/30 border-white/5'}`}
              >
                 {/* Threat Indicator Bar */}
                 <div 
@@ -113,8 +102,6 @@ const BuildUpExplorer = ({ data = [], loading = false }) => {
                       <span className="verge-label-mono text-sm text-white font-black">{seq.events.length}</span>
                    </div>
                 </div>
-
-                {/* Progress Mini-Map visualization could go here */}
              </motion.div>
            )) : (
              <div className="h-full flex items-center justify-center opacity-10">
@@ -127,34 +114,76 @@ const BuildUpExplorer = ({ data = [], loading = false }) => {
              </div>
            )}
         </div>
+
+        {/* CONTROLES DE PAGINATION SIDEBAR */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between pt-8 border-t border-white/5">
+             <button 
+               disabled={currentPage === 1}
+               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+               className="verge-label-mono text-[10px] text-[#949494] hover:text-white uppercase font-black disabled:opacity-20 transition-all flex items-center gap-2"
+             >
+               Précédent
+             </button>
+             <div className="verge-label-mono text-[9px] text-[#3cffd0] font-black tracking-widest">
+               PAGE {currentPage} / {totalPages}
+             </div>
+             <button 
+               disabled={currentPage === totalPages}
+               onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+               className="verge-label-mono text-[10px] text-[#949494] hover:text-white uppercase font-black disabled:opacity-20 transition-all flex items-center gap-2"
+             >
+               Suivant
+             </button>
+          </div>
+        )}
       </div>
 
-      {/* STATS GLOBALES */}
-      <div className="w-[350px] flex flex-col gap-6">
-         <div className="bg-[#1a1a1a] border border-white/10 p-8 rounded-[4px] relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-16 h-16 bg-[#3cffd0]/5 rounded-bl-full pointer-events-none" />
-            <h4 className="verge-label-mono text-[10px] text-white font-black uppercase mb-8">Performance Indices</h4>
-            <div className="space-y-8">
-               <div className="flex flex-col gap-2">
-                  <div className="flex justify-between items-center text-[8px] text-[#949494] uppercase font-black">
-                     <span>Avg. Sequence Threat</span>
-                     <span className="text-white">{(sequences.reduce((acc, s) => acc + s.threatScore, 0) / (sequences.length || 1)).toFixed(4)}</span>
-                  </div>
-                  <div className="h-1 bg-white/5 rounded-full overflow-hidden">
-                     <div className="h-full bg-[#3cffd0] w-[65%]" />
-                  </div>
-               </div>
-               <div className="flex flex-col gap-2">
-                  <div className="flex justify-between items-center text-[8px] text-[#949494] uppercase font-black">
-                     <span>Pass Density</span>
-                     <span className="text-white">{(sequences.reduce((acc, s) => acc + s.passCount, 0) / (sequences.length || 1)).toFixed(1)} / seq</span>
-                  </div>
-                  <div className="h-1 bg-white/5 rounded-full overflow-hidden">
-                     <div className="h-full bg-[#3cffd0] w-[45%]" />
-                  </div>
-               </div>
-            </div>
+      {/* MAP ET STATS GLOBALES */}
+      <div className="flex-[2] flex flex-col gap-6">
+         {/* Carte Spatiale Isolée */}
+         <div className="flex-1 bg-[#1a1a1a] border border-white/10 rounded-[4px] overflow-hidden">
+            <EventExplorer 
+              data={data} 
+              selectedSequence={selectedSequence}
+              matchId={matchId} 
+              loading={loading} 
+              playersList={playersList} 
+              advancedMetricsList={advancedMetricsList} 
+            />
          </div>
+         
+         {/* BANDEAU DE PERFORMANCE (Horizontal Grid Style) */}
+          <div className="bg-[#131313] border border-white/10 rounded-[2px] flex divide-x divide-white/10 overflow-hidden shrink-0">
+             <div className="flex-1 py-10 flex flex-col items-center justify-center gap-6">
+                <span className="verge-label-mono text-[9px] text-[#3cffd0] font-black uppercase tracking-[0.3em]">Séquences</span>
+                <span className="verge-label-mono text-4xl text-white font-black tabular-nums">{sequences.length}</span>
+             </div>
+             <div className="flex-1 py-10 flex flex-col items-center justify-center gap-6">
+                <span className="verge-label-mono text-[9px] text-[#3cffd0] font-black uppercase tracking-[0.3em]">Avec Tir</span>
+                <span className="verge-label-mono text-4xl text-white font-black tabular-nums">
+                  {sequences.filter(s => s.has_shot).length}
+                </span>
+             </div>
+             <div className="flex-1 py-10 flex flex-col items-center justify-center gap-6">
+                <span className="verge-label-mono text-[9px] text-[#3cffd0] font-black uppercase tracking-[0.3em]">Avec But</span>
+                <span className="verge-label-mono text-4xl text-white font-black tabular-nums">
+                  {sequences.filter(s => s.events.some(e => e.type === 'Goal' || (e.type === 'Shot' && e.outcome === 1))).length}
+                </span>
+             </div>
+             <div className="flex-1 py-10 flex flex-col items-center justify-center gap-6">
+                <span className="verge-label-mono text-[9px] text-[#3cffd0] font-black uppercase tracking-[0.3em]">Contre-Att.</span>
+                <span className="verge-label-mono text-4xl text-white font-black tabular-nums">
+                  {sequences.filter(s => s.is_fast_break).length}
+                </span>
+             </div>
+             <div className="flex-1 py-10 flex flex-col items-center justify-center gap-6">
+                <span className="verge-label-mono text-[9px] text-[#3cffd0] font-black uppercase tracking-[0.3em]">Moy. Passes</span>
+                <span className="verge-label-mono text-4xl text-white font-black tabular-nums">
+                   {(sequences.reduce((acc, s) => acc + s.passCount, 0) / (sequences.length || 1)).toFixed(1)}
+                </span>
+             </div>
+          </div>
       </div>
     </div>
   );
