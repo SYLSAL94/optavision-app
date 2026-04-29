@@ -278,7 +278,7 @@ const EventExplorer = ({
                       displayData.map((seq, seqIdx) => {
                         const pureProgressionEvents = seq.events?.filter(e => {
                            const isSameTeam = String(e.team_id) === String(seq.team_id);
-                           const isProgression = [1, 10, 13, 14, 15, 16].includes(Number(e.type_id)) || 
+                           const isProgression = [1, 10, 13, 14, 15, 16, 99].includes(Number(e.type_id)) || 
                                                 ['Pass', 'Carry', 'Shot', 'Goal', 'SavedShot', 'MissedShots'].includes(e.type_name);
                            return isSameTeam && isProgression;
                         }) || [];
@@ -321,10 +321,10 @@ const EventExplorer = ({
                                     x1={cx} y1={cy} 
                                     x2={(endX / 100) * 105} 
                                     y2={((100 - endY) / 100) * 68} 
-                                    stroke={color} 
-                                    strokeWidth="0.2" 
-                                    strokeOpacity={opacity * 0.6}
-                                    strokeDasharray={isSuccess ? "none" : "1,1"}
+                                    stroke={event.type === 'Carry' ? '#ffd03c' : color} 
+                                    strokeWidth={event.type === 'Carry' ? "0.3" : "0.2"} 
+                                    strokeOpacity={opacity * 0.8}
+                                    strokeDasharray={event.type === 'Carry' ? "1,1" : (isSuccess ? "none" : "1,1")}
                                     className="animate-in fade-in duration-500 fill-mode-backwards"
                                     style={{ animationDelay: `${i * 0.4 + 0.1}s` }}
                                   />
@@ -421,10 +421,10 @@ const EventExplorer = ({
                               x1={cx} y1={cy} 
                               x2={(endX / 100) * 105} 
                               y2={((100 - endY) / 100) * 68} 
-                              stroke={color} 
-                              strokeWidth="0.2" 
-                              strokeOpacity={opacity * 0.6}
-                              strokeDasharray={isSuccess ? "none" : "1,1"}
+                              stroke={event.type === 'Carry' ? '#ffd03c' : color} 
+                              strokeWidth={event.type === 'Carry' ? "0.3" : "0.2"} 
+                              strokeOpacity={opacity * 0.8}
+                              strokeDasharray={event.type === 'Carry' ? "1,1" : (isSuccess ? "none" : "1,1")}
                               className="animate-in fade-in duration-500"
                             />
                           )}
@@ -609,19 +609,48 @@ const EventExplorer = ({
               </span>
           </div>
           <div className="flex-1 overflow-y-auto styled-scrollbar-verge bg-black/20">
-             {!loading && displayData.length > 0 ? (
-               displayData.slice(0, 100).map((e, i) => (
-                 <div key={i} className="flex items-center justify-between py-3 border-b border-white/[0.03] hover:bg-[#3cffd0]/5 transition-colors px-6 group">
-                   <div className="flex items-center gap-6">
-                     <span className="verge-label-mono text-[10px] text-[#3cffd0] font-black">{e.minute || '00'}'</span>
-                     <span className="verge-label-mono text-[10px] text-white uppercase font-black tracking-tight">{e.type}</span>
-                     <span className="verge-label-mono text-[10px] text-[#949494] group-hover:text-white transition-colors">{e.playerName}</span>
+             {!loading && (isSequenceMode ? sequenceToDraw?.events : displayData)?.length > 0 ? (
+               ((isSequenceMode ? sequenceToDraw?.events : displayData) || []).slice(0, 100).map((e, i) => {
+                 let metrics = e.advanced_metrics || {};
+                 if (typeof metrics === 'string') {
+                   try { metrics = JSON.parse(metrics); } catch (err) { metrics = {}; }
+                 }
+                 const endX = metrics.end_x ?? metrics.endX;
+                 const endY = metrics.end_y ?? metrics.endY;
+
+                 return (
+                   <div key={i} className="flex items-center justify-between py-2 border-b border-white/[0.03] hover:bg-[#3cffd0]/5 transition-colors px-6 group">
+                     <div className="flex items-center gap-6 flex-1">
+                       <span className="verge-label-mono text-[10px] text-[#3cffd0] font-black w-20 shrink-0">
+                         {(e.minute ?? e.min ?? 0)}' {(e.sec ?? e.second ?? 0).toString().padStart(2, '0')}''
+                       </span>
+                       <span className="verge-label-mono text-[10px] text-white uppercase font-black tracking-tight w-28 shrink-0 truncate">
+                         {e.type_name || e.type || e.type_id}
+                       </span>
+                       <span className="verge-label-mono text-[10px] text-[#949494] group-hover:text-white transition-colors w-32 shrink-0 truncate">
+                         {e.playerName || globalPlayerMap[e.player_id] || e.player_id}
+                       </span>
+                       
+                       {/* TÉLÉMÉTRIE SPATIALE */}
+                       <div className="flex items-center gap-4 text-[9px] font-mono text-[#333] group-hover:text-[#666] transition-colors overflow-hidden">
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span className="opacity-30">START</span>
+                            <span className="text-white/20 group-hover:text-white/40">[{Number(e.x).toFixed(1)}, {Number(e.y).toFixed(1)}]</span>
+                          </div>
+                          {(endX !== undefined && endX !== null) && (
+                            <div className="flex items-center gap-1 border-l border-white/5 pl-4 shrink-0">
+                              <span className="opacity-30 uppercase">End</span>
+                              <span className="text-[#3cffd0]/20 group-hover:text-[#3cffd0]/40">[{Number(endX).toFixed(1)}, {Number(endY).toFixed(1)}]</span>
+                            </div>
+                          )}
+                       </div>
+                     </div>
+                      <div className="verge-label-mono text-[8px] text-[#2d2d2d] group-hover:text-[#3cffd0] transition-colors font-black shrink-0">
+                        ID:{e.event_id || e.id}
+                      </div>
                    </div>
-                    <div className="verge-label-mono text-[8px] text-[#2d2d2d] group-hover:text-[#3cffd0] transition-colors font-black">
-                      {/* NETTOYAGE : Suppression de l'affichage de l'ID brut polluant */}
-                    </div>
-                 </div>
-               ))
+                 );
+               })
              ) : (
                <div className="h-full flex items-center justify-center opacity-10">
                  <div className="text-center">
