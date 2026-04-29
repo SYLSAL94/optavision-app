@@ -62,6 +62,34 @@ const EventExplorer = ({
   const [hoveredEvent, setHoveredEvent] = useState(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
+  // HELPER : Extraction robuste des coordonnées de fin (Audit Carries & Trajectoires)
+  const getEndCoordinates = (event) => {
+    let metrics = event.advanced_metrics || {};
+    if (typeof metrics === 'string') {
+      try { metrics = JSON.parse(metrics); } catch (e) { metrics = {}; }
+    }
+    
+    // 1. Priorité aux métriques enrichies (Polymorphisme end_x/endX)
+    const ex = metrics.end_x ?? metrics.endX ?? event.end_x ?? event.endX;
+    const ey = metrics.end_y ?? metrics.endY ?? event.end_y ?? event.endY;
+    
+    if (ex !== undefined && ey !== undefined && ex !== null && ey !== null) {
+      return { x: parseFloat(ex), y: parseFloat(ey) };
+    }
+    
+    // 2. Fallback Qualifiers Opta (140/141 ou 212/213)
+    const quals = event.qualifiers || [];
+    if (Array.isArray(quals)) {
+      const qX = quals.find(q => [140, 212].includes(Number(q.type_id || q.id)));
+      const qY = quals.find(q => [141, 213].includes(Number(q.type_id || q.id)));
+      if (qX && qY) {
+        return { x: parseFloat(qX.value), y: parseFloat(qY.value) };
+      }
+    }
+    
+    return null;
+  };
+
 
 
   const combinedActions = useMemo(() => {
@@ -80,7 +108,7 @@ const EventExplorer = ({
   const displayData = useMemo(() => {
     if (isSequenceMode) {
       if (!selectedSequence || !data.sequences) return [];
-      return data.sequences.filter(seq => seq.sub_sequence_id === selectedSequence);
+      return data.sequences.filter(seq => seq.seq_uuid === selectedSequence);
     }
 
     let filtered = (data || []).filter(e => e.type !== 'Out' && e.type_id !== 5);
@@ -158,9 +186,11 @@ const EventExplorer = ({
       }
 
       if (isMatch) {
-        const playerName = event.playerName || 'Unknown Player';
-        counts[playerName] = (counts[playerName] || 0) + 1;
-        playerTeams[playerName] = event.teamName || 'Unknown Team';
+        const playerName = event.playerName || event.player_id;
+        if (playerName && playerName !== 'N/A') {
+          counts[playerName] = (counts[playerName] || 0) + 1;
+          playerTeams[playerName] = event.teamName || 'Unknown Team';
+        }
       }
     });
 
@@ -182,6 +212,21 @@ const EventExplorer = ({
     setPage(1);
   }, [selectedAction, sortOrder, displayData]);
 
+  // SONDE DE DÉBOGAGE (Mission Architecte)
+  const sequenceToDraw = isSequenceMode ? (data.sequences?.find(s => s.seq_uuid === selectedSequence)) : null;
+  const firstSequenceEvents = sequenceToDraw?.events || [];
+  const pureProgressionEventsProbe = firstSequenceEvents.filter(e => 
+    String(e.team_id) === String(sequenceToDraw?.team_id) && 
+    (Number(e.type_id) === 1 || ['Pass', 'Carry', 'Shot'].includes(e.type_name))
+  );
+
+  console.log("🚨 DEBUG ISOLATION :", { 
+    selectedSequence, 
+    sequenceFound: !!sequenceToDraw, 
+    eventsCount: pureProgressionEventsProbe.length,
+    rawEvents: firstSequenceEvents.length 
+  });
+
   return (
     <div className="flex h-full w-full gap-8 animate-in fade-in zoom-in-95 duration-500 overflow-hidden">
       
@@ -200,7 +245,7 @@ const EventExplorer = ({
               <div>
                 <h3 className="verge-h3 text-white uppercase tracking-tighter font-black">Visualisation Spatiale</h3>
                 <p className="verge-label-mono text-[9px] text-[#3cffd0] uppercase tracking-[0.3em] font-bold mt-1">
-                  Aperçu tactique des {selectedAction}s ({displayData.length} sélectionnés)
+                  Aperçu tactique des {selectedAction === 'Pass' ? 'Passes' : selectedAction + 's'} ({displayData.length} sélectionnés)
                 </p>
               </div>
             </div>
@@ -226,9 +271,20 @@ const EventExplorer = ({
                 {!loading && displayData.length > 0 && (
                   <svg viewBox="0 0 105 68" className="absolute inset-0 w-full h-full">
                     {isSequenceMode ? (
-                      displayData.map((seq, seqIdx) => (
-                        <g key={`seq-${seq.sub_sequence_id || seqIdx}`}>
-                          {seq.events.map((event, i) => {
+                      displayData.map((seq, seqIdx) => {
+                        const pureProgressionEvents = seq.events?.filter(e => {
+                           const isSameTeam = String(e.team_id) === String(seq.team_id);
+                           const isProgression = [1, 10, 13, 14, 15, 16].includes(Number(e.type_id)) || 
+                                                ['Pass', 'Carry', 'Shot', 'Goal', 'SavedShot', 'MissedShots'].includes(e.type_name);
+                           return isSameTeam && isProgression;
+                        }) || [];
+
+                        // Debug Audit (Mission Lead Data)
+                        if (seqIdx === 0) console.log("BuildUp Sequence Audit:", { seqId: seq.sub_sequence_id, teamId: seq.team_id, eventsCount: seq.events?.length, filteredCount: pureProgressionEvents.length });
+
+                        return (
+                          <g key={`seq-${seq.sub_sequence_id || seqIdx}`}>
+                            {pureProgressionEvents.map((event, i) => {
                             const cx = (event.x / 100) * 105;
                             const cy = ((100 - event.y) / 100) * 68; // Inversion Y pour standard Opta (y=0 à droite/bas)
                             const isSuccess = event.outcome === 1 || event.outcome === 'Successful';
@@ -239,19 +295,10 @@ const EventExplorer = ({
                               try { parsedMetrics = JSON.parse(parsedMetrics); } catch(e) { parsedMetrics = {}; }
                             }
                             
-                            // Ligne vers le PROCHAIN événement de la possession
-                            let nextEvent = seq.events[i+1];
-                            let hasNext = false;
-                            let nx = 0, ny = 0;
-                            if (nextEvent && nextEvent.x !== null && nextEvent.y !== null) {
-                                hasNext = true;
-                                nx = (nextEvent.x / 100) * 105;
-                                ny = ((100 - nextEvent.y) / 100) * 68;
-                            }
-
-                            const endX = parsedMetrics?.end_x || event.end_x;
-                            const endY = parsedMetrics?.end_y || event.end_y;
-                            const hasValidEnd = typeof endX === 'number' && typeof endY === 'number';
+                            const endCoords = getEndCoordinates(event);
+                            const endX = endCoords?.x;
+                            const endY = endCoords?.y;
+                            const hasValidEnd = endCoords !== null;
 
                             return (
                               <g 
@@ -264,16 +311,6 @@ const EventExplorer = ({
                                 }}
                                 onMouseLeave={() => setHoveredEvent(null)}
                               >
-                                {/* Vecteur vers événement suivant (Continuité de Possession) */}
-                                {hasNext && (
-                                  <line 
-                                    x1={cx} y1={cy} x2={nx} y2={ny} 
-                                    stroke="rgba(255,255,255,0.25)" strokeWidth="0.4" strokeDasharray="1,1" 
-                                    className="animate-in fade-in fill-mode-backwards"
-                                    style={{ animationDelay: `${i * 0.4 + 0.2}s` }}
-                                  />
-                                )}
-                                
                                 {/* Trajectoire (Ligne) - Rendu Conditionnel Strict */}
                                 {hasValidEnd && (
                                   <line 
@@ -314,11 +351,30 @@ const EventExplorer = ({
                                     style={{ animationDelay: `${i * 0.4}s` }}
                                   />
                                 )}
+
+                                {/* NUMÉROTATION CHRONOLOGIQUE (Build-Up Analysis) */}
+                                <text 
+                                  x={cx} y={cy - 1.2} 
+                                  textAnchor="middle"
+                                  alignmentBaseline="central"
+                                  fontSize="0.6" 
+                                  fill="white" 
+                                  fontWeight="900" 
+                                  className="pointer-events-none animate-in fade-in duration-700"
+                                  style={{ 
+                                    animationDelay: `${i * 0.4 + 0.3}s`,
+                                    fontSize: '0.6px',
+                                    textShadow: '0px 0px 1px black'
+                                  }}
+                                >
+                                  {i + 1}
+                                </text>
                               </g>
                             );
                           })}
-                        </g>
-                      ))
+                          </g>
+                        );
+                      })
                     ) : (
                     displayData.slice(0, 1000).map((event, i) => {
                     const cx = (event.x / 100) * 105;
@@ -340,9 +396,10 @@ const EventExplorer = ({
                     const finalMatchName = matchMap[currentMatchId] || currentMatchId || 'ANALYST_PRO';
                     
                     // 3. Vérification de type stricte (Mission Lead Data)
-                    const endX = parsedMetrics?.end_x;
-                    const endY = parsedMetrics?.end_y;
-                    const hasValidEnd = typeof endX === 'number' && typeof endY === 'number';
+                    const endCoords = getEndCoordinates(event);
+                    const endX = endCoords?.x;
+                    const endY = endCoords?.y;
+                    const hasValidEnd = endCoords !== null;
 
                       return (
                         <g 

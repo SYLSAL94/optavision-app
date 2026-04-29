@@ -14,7 +14,7 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], advance
     return data.sequences.map(seq => ({
       ...seq,
       // Mapping pour la compatibilité avec la vue existante
-      id: seq.sub_sequence_id,
+      id: seq.seq_uuid || seq.sub_sequence_id,
       teamName: seq.team_id,
       passCount: seq.seq_pass_count,
       threatScore: seq.seq_score || 0,

@@ -56,6 +56,11 @@ const BuildUpFilterPanel = ({
     return map;
   }, [teamsList]);
 
+  // ÉCOSYSTÈME JOUEURS : Mapping Bidirectionnel (UI Strings vs API IDs)
+  const playerNamesList = React.useMemo(() => playersList.map(p => p.name), [playersList]);
+  const playerNameMap = React.useMemo(() => Object.fromEntries(playersList.map(p => [p.name, p.id])), [playersList]);
+  const playerIdMap = React.useMemo(() => Object.fromEntries(playersList.map(p => [p.id, p.name])), [playersList]);
+
   const toggleSection = (id) => {
     setOpenSection(openSection === id ? null : id);
   };
@@ -100,6 +105,16 @@ const BuildUpFilterPanel = ({
           badge={(pendingFilters.matches?.length || 0) + (pendingFilters.competition?.length || 0)}
         >
           <div className="space-y-8">
+            <MultiSelectWithChips 
+              label="Sélection Matchs" 
+              options={matchesList.map(m => m.label)} 
+              selected={(pendingFilters.matches || []).map(id => matchesList.find(m => m.id === id)?.label).filter(Boolean)} 
+              onChange={(labels) => {
+                const ids = labels.map(label => matchesList.find(m => m.label === label)?.id).filter(Boolean);
+                setPendingFilters({ ...pendingFilters, matches: ids });
+              }} 
+              placeholder="Sélectionner matchs..." 
+            />
             <MultiSelectWithChips 
               label="Compétitions" 
               options={competitionsList} 
@@ -304,16 +319,22 @@ const BuildUpFilterPanel = ({
           <div className="space-y-6">
             <MultiSelectWithChips 
               label="Joueurs Impliqués" 
-              options={playersList} 
-              selected={pendingFilters.involved_player_id || []} 
-              onChange={(vals) => updateFilter('involved_player_id', vals)} 
+              options={playerNamesList} 
+              selected={(pendingFilters.involved_player_id || []).map(id => playerIdMap[id]).filter(Boolean)} 
+              onChange={(names) => {
+                const ids = names.map(name => playerNameMap[name]).filter(Boolean);
+                updateFilter('involved_player_id', ids);
+              }} 
               placeholder="Chercher joueur..." 
             />
             <MultiSelectWithChips 
               label="Joueurs Exclus" 
-              options={playersList} 
-              selected={pendingFilters.excluded_player_id || []} 
-              onChange={(vals) => updateFilter('excluded_player_id', vals)} 
+              options={playerNamesList} 
+              selected={(pendingFilters.excluded_player_id || []).map(id => playerIdMap[id]).filter(Boolean)} 
+              onChange={(names) => {
+                const ids = names.map(name => playerNameMap[name]).filter(Boolean);
+                updateFilter('excluded_player_id', ids);
+              }} 
               placeholder="Chercher joueur..." 
             />
           </div>
