@@ -145,6 +145,7 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], advance
          <div className="flex-1 bg-[#1a1a1a] border border-white/10 rounded-[4px] overflow-hidden">
             <EventExplorer 
               data={data} 
+              isSequenceMode={true}
               selectedSequence={selectedSequence}
               matchId={matchId} 
               loading={loading} 

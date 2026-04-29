@@ -42,7 +42,16 @@ const RankBadge = ({ rank }) => {
   );
 };
 
-const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedMetricsList = [], playersList = [], selectedSequence }) => {
+const EventExplorer = ({ 
+  data = [], 
+  matchId, 
+  loading = false, 
+  filters, 
+  advancedMetricsList = [], 
+  playersList = [], 
+  selectedSequence,
+  isSequenceMode = false 
+}) => {
   const [selectedAction, setSelectedAction] = useState('Pass');
   const [sortOrder, setSortOrder] = useState('desc');
   const [isSelectOpen, setIsSelectOpen] = useState(false);
@@ -65,11 +74,12 @@ const EventExplorer = ({ data = [], matchId, loading = false, filters, advancedM
     return [...ACTION_TYPES, ...advanced];
   }, [advancedMetricsList]);
 
-  const isSequenceMode = data && Array.isArray(data.sequences);
+  // Suppression de la détection automatique pour forcer l'Isolation Spatiale via Props
+  // const isSequenceMode = data && Array.isArray(data.sequences);
 
   const displayData = useMemo(() => {
     if (isSequenceMode) {
-      if (!selectedSequence) return [];
+      if (!selectedSequence || !data.sequences) return [];
       return data.sequences.filter(seq => seq.sub_sequence_id === selectedSequence);
     }
 
