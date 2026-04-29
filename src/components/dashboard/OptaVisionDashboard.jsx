@@ -136,8 +136,8 @@ const OptaVisionDashboard = ({ user }) => {
     const params = new URLSearchParams();
     
     // 1. MACRO-ANALYSE : Support multi-matchs et contextes (Miroir Exploration)
-    if (filters.matches?.length > 0) params.append('match_ids', filters.matches.join(','));
-    else if (explorationFilters.matches?.length > 0) params.append('match_ids', explorationFilters.matches.join(','));
+    const matchIdsParam = Array.isArray(filters?.matches) ? filters.matches.join(',') : (filters?.matches || '');
+    if (matchIdsParam) params.append('match_ids', matchIdsParam);
 
     if (filters.competition?.length > 0) params.append('competition', filters.competition.join(','));
     if (filters.season?.length > 0) params.append('season', filters.season.join(','));
@@ -158,6 +158,7 @@ const OptaVisionDashboard = ({ user }) => {
     if (filters.reaches_opp) params.append('reaches_opp', 'true');
     if (filters.involved_player_id?.length > 0) params.append('involved_player_id', filters.involved_player_id.join(','));
     if (filters.excluded_player_id?.length > 0) params.append('excluded_player_id', filters.excluded_player_id.join(','));
+    if (filters.localTeam && filters.localTeam !== 'ALL') params.append('team_id', filters.localTeam);
     if (filters.silo) params.append('silo', filters.silo);
 
     const url = `${OPTAVISION_API_URL}/api/optavision/buildup?${params.toString()}`;
@@ -405,7 +406,7 @@ const OptaVisionDashboard = ({ user }) => {
                           {/* HYDRATATION ET FILTRAGE DU JOURNAL DES ÉVÉNEMENTS */}
                           <EventExplorer
                             data={data}
-                            matchId={explorationFilters.matches[0] || 'CROSS-MATCH'}
+                            matchIds={explorationFilters.matches}
                             loading={loading}
                             filters={explorationFilters}
                             advancedMetricsList={advancedMetricsList}
@@ -416,7 +417,7 @@ const OptaVisionDashboard = ({ user }) => {
                         <BuildUpExplorer 
                           data={data} 
                           loading={loading} 
-                          matchId={explorationFilters.matches[0]}
+                          matchIds={explorationFilters.matches}
                           playersList={playersList}
                           advancedMetricsList={advancedMetricsList}
                         />
@@ -473,7 +474,7 @@ const OptaVisionDashboard = ({ user }) => {
                     )}
                     {activeTab === 'buildup' && (
                       <BuildUpFilterPanel 
-                        matchId={explorationFilters.matches?.[0]} 
+                        matchIds={explorationFilters.matches} 
                         playersList={playersList} 
                         matchesList={matchesList}
                         competitionsList={competitionsList}
@@ -484,7 +485,7 @@ const OptaVisionDashboard = ({ user }) => {
                         stadiumsList={stadiumsList}
                         teamsList={teamsList}
                         filters={explorationFilters}
-                        onApply={(filters) => fetchBuildup(filters)} 
+                        onApply={(filters) => { setExplorationFilters(filters); fetchBuildup(filters); }} 
                         onClose={() => setIsFilterOpen(false)} 
                       />
                     )}

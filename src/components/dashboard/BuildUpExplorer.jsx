@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Activity, Clock, Hash, Zap, TrendingUp } from 'lucide-react';
 import EventExplorer from './EventExplorer';
 
-const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], advancedMetricsList = [], matchId }) => {
+const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], advancedMetricsList = [], matchIds }) => {
   const [selectedSequence, setSelectedSequence] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5; // Nombre de séquences par page pour garder un layout aéré
@@ -147,7 +147,7 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], advance
               data={data} 
               isSequenceMode={true}
               selectedSequence={selectedSequence}
-              matchId={matchId} 
+              matchIds={matchIds} 
               loading={loading} 
               playersList={playersList} 
               advancedMetricsList={advancedMetricsList} 

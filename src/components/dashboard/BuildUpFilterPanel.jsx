@@ -19,7 +19,7 @@ import MultiSelectWithChips from '../ui/MultiSelectWithChips';
  * BuildUpFilterPanel - Squelette du panneau de filtrage latéral pour les séquences
  */
 const BuildUpFilterPanel = ({ 
-  matchId, 
+  matchIds, 
   playersList = [], 
   matchesList = [],
   competitionsList = [],
@@ -108,7 +108,7 @@ const BuildUpFilterPanel = ({
             <MultiSelectWithChips 
               label="Sélection Matchs" 
               options={matchesList.map(m => m.label)} 
-              selected={(pendingFilters.matches || []).map(id => matchesList.find(m => m.id === id)?.label).filter(Boolean)} 
+              selected={(pendingFilters.matches || []).map(id => matchesList.find(m => String(m.id) === String(id))?.label).filter(Boolean)} 
               onChange={(labels) => {
                 const ids = labels.map(label => matchesList.find(m => m.label === label)?.id).filter(Boolean);
                 setPendingFilters({ ...pendingFilters, matches: ids });
