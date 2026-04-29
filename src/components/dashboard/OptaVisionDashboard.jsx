@@ -149,6 +149,7 @@ const OptaVisionDashboard = ({ user }) => {
     if (filters.reaches_opp) params.append('reaches_opp', 'true');
     if (filters.involved_player_id?.length > 0) params.append('involved_player_id', filters.involved_player_id.join(','));
     if (filters.excluded_player_id?.length > 0) params.append('excluded_player_id', filters.excluded_player_id.join(','));
+    if (filters.silo) params.append('silo', filters.silo);
 
     const url = `${OPTAVISION_API_URL}/api/optavision/buildup?${params.toString()}`;
     console.log("🌐 Appel de l'API OptaVision vers :", url);

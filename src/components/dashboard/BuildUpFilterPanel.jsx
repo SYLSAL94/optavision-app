@@ -22,7 +22,8 @@ const BuildUpFilterPanel = ({ matchId, playersList = [], onApply, onClose }) => 
     min_passes: 0,
     min_score: 0.0,
     has_shot: false,
-    is_fast_break: false
+    is_fast_break: false,
+    silo: null
   });
 
   const toggleSection = (id) => {
@@ -47,7 +48,7 @@ const BuildUpFilterPanel = ({ matchId, playersList = [], onApply, onClose }) => 
             <p className="verge-label-mono text-[9px] text-[#949494] mt-2 uppercase tracking-widest">Analyse du Build-up collectif</p>
           </div>
           <button 
-            onClick={() => setPendingFilters({ min_passes: 0, min_score: 0.0, has_shot: false, is_fast_break: false })}
+            onClick={() => setPendingFilters({ min_passes: 0, min_score: 0.0, has_shot: false, is_fast_break: false, silo: null })}
             className="verge-label-mono text-[10px] text-[#949494] hover:text-white uppercase font-black transition-colors flex items-center gap-2"
           >
             <RotateCcw size={12} />
@@ -175,6 +176,25 @@ const BuildUpFilterPanel = ({ matchId, playersList = [], onApply, onClose }) => 
                <div className={`w-4 h-4 border rounded-[2px] flex items-center justify-center ${pendingFilters.is_fast_break ? 'bg-[#5200ff] border-[#5200ff]' : 'border-white/20'}`}>
                  {pendingFilters.is_fast_break && <Check size={12} className="text-white" />}
                </div>
+             </div>
+
+             {/* Filtrage SILOS */}
+             <div className="pt-6 space-y-4">
+                <div className="flex items-center gap-4">
+                   <div className="w-1 h-3 bg-[#5200ff]" />
+                   <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest">Silos Tactiques</label>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                   {['Build-Up', 'Progression', 'Danger', 'Finish'].map(s => (
+                     <button 
+                       key={s}
+                       onClick={() => updateFilter('silo', pendingFilters.silo === s ? null : s)}
+                       className={`py-4 px-2 border rounded-[2px] verge-label-mono text-[9px] uppercase font-black transition-all ${pendingFilters.silo === s ? 'bg-[#5200ff] border-[#5200ff] text-white' : 'bg-white/5 border-white/10 text-[#949494] hover:border-white/30'}`}
+                     >
+                       {s}
+                     </button>
+                   ))}
+                </div>
              </div>
           </div>
         </AccordionSection>
