@@ -8,7 +8,9 @@ import {
   Users,
   Database,
   Zap,
-  Layout
+  Layout,
+  SlidersHorizontal,
+  Clock
 } from 'lucide-react';
 import AccordionSection from './AccordionSection';
 import MultiSelectWithChips from '../ui/MultiSelectWithChips';
@@ -16,15 +18,43 @@ import MultiSelectWithChips from '../ui/MultiSelectWithChips';
 /**
  * BuildUpFilterPanel - Squelette du panneau de filtrage latéral pour les séquences
  */
-const BuildUpFilterPanel = ({ matchId, playersList = [], onApply, onClose }) => {
-  const [openSection, setOpenSection] = useState('sequential');
+const BuildUpFilterPanel = ({ 
+  matchId, 
+  playersList = [], 
+  matchesList = [],
+  competitionsList = [],
+  seasonsList = [],
+  weeksList = [],
+  countriesList = [],
+  phasesList = [],
+  stadiumsList = [],
+  teamsList = [],
+  filters,
+  onApply, 
+  onClose 
+}) => {
+  const [openSection, setOpenSection] = useState('matches');
   const [pendingFilters, setPendingFilters] = useState({
+    ...filters,
     min_passes: 0,
     min_score: 0.0,
+    min_actions: 0,
+    min_prog: 0,
     has_shot: false,
     is_fast_break: false,
-    silo: null
+    starts_own: false,
+    reaches_opp: false,
+    silo: null,
+    involved_player_id: [],
+    excluded_player_id: []
   });
+
+  // Règle d'Or : Mapping des noms explicites
+  const teamMap = React.useMemo(() => {
+    const map = {};
+    if (teamsList) teamsList.forEach(t => { map[t.id] = t.name; });
+    return map;
+  }, [teamsList]);
 
   const toggleSection = (id) => {
     setOpenSection(openSection === id ? null : id);
@@ -58,7 +88,70 @@ const BuildUpFilterPanel = ({ matchId, playersList = [], onApply, onClose }) => 
       </div>
 
       {/* CONTENT : ACCORDIONS */}
-      <div className="flex-1 overflow-y-auto p-10 pt-6 space-y-2 scrollbar-verge">
+      <div className="flex-1 overflow-y-auto p-10 pt-6 space-y-4 scrollbar-verge">
+        
+        {/* SECTION 0 : SÉLECTION DES MATCHS (Cross-Match Intelligence) */}
+        <AccordionSection 
+          id="matches" 
+          title="Silos de Données" 
+          icon={<Database size={18} />}
+          isOpen={openSection === 'matches'}
+          onToggle={() => setOpenSection(openSection === 'matches' ? null : 'matches')}
+          badge={(pendingFilters.matches?.length || 0) + (pendingFilters.competition?.length || 0)}
+        >
+          <div className="space-y-8">
+            <MultiSelectWithChips 
+              label="Compétitions" 
+              options={competitionsList} 
+              selected={pendingFilters.competition || []} 
+              onChange={(vals) => setPendingFilters({ ...pendingFilters, competition: vals })} 
+              placeholder="Sélectionner..." 
+            />
+            <MultiSelectWithChips 
+              label="Saisons" 
+              options={seasonsList.map(String)} 
+              selected={(pendingFilters.season || []).map(String)} 
+              onChange={(vals) => setPendingFilters({ ...pendingFilters, season: vals })} 
+              placeholder="Sélectionner..." 
+            />
+            <MultiSelectWithChips 
+              label="Journées" 
+              options={weeksList.map(String)} 
+              selected={(pendingFilters.week || []).map(String)} 
+              onChange={(vals) => setPendingFilters({ ...pendingFilters, week: vals })} 
+              placeholder="Sélectionner..." 
+            />
+            <div className="h-px bg-white/5 my-4" />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-3">
+                <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Équipe Focus</label>
+                <select 
+                  value={pendingFilters.localTeam || 'ALL'} 
+                  onChange={(e) => setPendingFilters({ ...pendingFilters, localTeam: e.target.value })}
+                  className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white focus:border-[#5200ff] outline-none transition-all cursor-pointer rounded-[2px]"
+                >
+                  <option value="ALL">TOUTES ÉQUIPES</option>
+                  {teamsList.map(team => (
+                    <option key={team.id} value={team.id}>{teamMap[team.id]?.toUpperCase() || team.id}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-3">
+                <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Opposition</label>
+                <select 
+                  value={pendingFilters.localOpponent || 'ALL'} 
+                  onChange={(e) => setPendingFilters({ ...pendingFilters, localOpponent: e.target.value })}
+                  className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white focus:border-[#ff4d4d] outline-none transition-all cursor-pointer rounded-[2px]"
+                >
+                  <option value="ALL">SANS FILTRE</option>
+                  {teamsList.map(team => (
+                    <option key={team.id} value={team.id}>VS {teamMap[team.id]?.toUpperCase() || team.id}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        </AccordionSection>
         
         {/* SECTION 1 : SÉQUENTIEL */}
         <AccordionSection 
@@ -223,6 +316,38 @@ const BuildUpFilterPanel = ({ matchId, playersList = [], onApply, onClose }) => 
               onChange={(vals) => updateFilter('excluded_player_id', vals)} 
               placeholder="Chercher joueur..." 
             />
+          </div>
+        </AccordionSection>
+
+        {/* SECTION 4 : FENÊTRE TEMPORELLE (Chronologie) */}
+        <AccordionSection 
+          id="time" 
+          title="Chronologie" 
+          icon={<Clock size={18} />}
+          isOpen={openSection === 'time'}
+          onToggle={() => setOpenSection('time')}
+        >
+          <div className="space-y-8">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-3">
+                <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Date Début</label>
+                <input 
+                  type="date" 
+                  value={pendingFilters.startDate || ''}
+                  onChange={(e) => setPendingFilters({ ...pendingFilters, startDate: e.target.value })}
+                  className="w-full bg-[#131313] border border-white/10 p-4 verge-label-mono text-white text-[10px] outline-none focus:border-[#5200ff] transition-all"
+                />
+              </div>
+              <div className="space-y-3">
+                <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Date Fin</label>
+                <input 
+                  type="date" 
+                  value={pendingFilters.endDate || ''}
+                  onChange={(e) => setPendingFilters({ ...pendingFilters, endDate: e.target.value })}
+                  className="w-full bg-[#131313] border border-white/10 p-4 verge-label-mono text-white text-[10px] outline-none focus:border-[#5200ff] transition-all"
+                />
+              </div>
+            </div>
           </div>
         </AccordionSection>
       </div>

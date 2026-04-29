@@ -130,15 +130,24 @@ const OptaVisionDashboard = ({ user }) => {
   };
 
   const fetchBuildup = async (filters) => {
-    if (!explorationFilters.matches?.length) {
-      console.warn("Aucun match sélectionné pour l'analyse des séquences.");
-      return;
-    }
     setLoading(true);
     setError(null);
 
     const params = new URLSearchParams();
-    params.append('match_id', explorationFilters.matches[0]);
+    
+    // 1. MACRO-ANALYSE : Support multi-matchs et contextes (Miroir Exploration)
+    if (filters.matches?.length > 0) params.append('match_ids', filters.matches.join(','));
+    else if (explorationFilters.matches?.length > 0) params.append('match_ids', explorationFilters.matches.join(','));
+
+    if (filters.competition?.length > 0) params.append('competition', filters.competition.join(','));
+    if (filters.season?.length > 0) params.append('season', filters.season.join(','));
+    if (filters.week?.length > 0) params.append('week', filters.week.join(','));
+    if (filters.country?.length > 0) params.append('country', filters.country.join(','));
+    if (filters.startDate) params.append('start_date', filters.startDate);
+    if (filters.endDate) params.append('end_date', filters.endDate);
+    if (filters.location?.length > 0) params.append('location', filters.location.join(','));
+
+    // 2. FILTRES SÉQUENTIELS (Propres au Build-Up)
     if (filters.min_passes) params.append('min_passes', filters.min_passes.toString());
     if (filters.min_score) params.append('min_score', filters.min_score.toString());
     if (filters.min_actions) params.append('min_actions', filters.min_actions.toString());
@@ -462,7 +471,23 @@ const OptaVisionDashboard = ({ user }) => {
                         onClose={() => setIsFilterOpen(false)}
                       />
                     )}
-                    {activeTab === 'buildup' && <BuildUpFilterPanel matchId={explorationFilters.matches?.[0]} playersList={playersList} onApply={(filters) => fetchBuildup(filters)} onClose={() => setIsFilterOpen(false)} />}
+                    {activeTab === 'buildup' && (
+                      <BuildUpFilterPanel 
+                        matchId={explorationFilters.matches?.[0]} 
+                        playersList={playersList} 
+                        matchesList={matchesList}
+                        competitionsList={competitionsList}
+                        seasonsList={seasonsList}
+                        weeksList={weeksList}
+                        countriesList={countriesList}
+                        phasesList={phasesList}
+                        stadiumsList={stadiumsList}
+                        teamsList={teamsList}
+                        filters={explorationFilters}
+                        onApply={(filters) => fetchBuildup(filters)} 
+                        onClose={() => setIsFilterOpen(false)} 
+                      />
+                    )}
                     {activeTab === 'shots' && <ShotMapFilterPanel onClose={() => setIsFilterOpen(false)} />}
                   </motion.div>
                 </>
