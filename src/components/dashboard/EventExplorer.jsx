@@ -67,6 +67,7 @@ const EventExplorer = ({
   const [page, setPage] = useState(1);
   const itemsPerPage = 10;
   const [generatingEventId, setGeneratingEventId] = useState(null);
+  const [activeVideoUrl, setActiveVideoUrl] = useState(null);
 
   const handleGenerateClip = async (e, event) => {
     e.stopPropagation();
@@ -82,8 +83,9 @@ const EventExplorer = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ match_id: matchId, event_id: eventId })
       });
-      if (response.ok) {
-        // Optionnel : Notification de succès
+      const data = await response.json();
+      if (response.ok && data.video_url) {
+        setActiveVideoUrl(data.video_url);
       }
     } catch (err) {
       console.error("❌ Erreur génération clip:", err);
@@ -422,6 +424,56 @@ const EventExplorer = ({
           </div>
         </div>
       )}
+      {/* MODALE LECTEUR VIDÉO (GLASSMORPHISM) */}
+      <AnimatePresence>
+        {activeVideoUrl && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 md:p-12"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="relative w-full max-w-6xl bg-[#1a1a1a] border border-white/10 rounded-xl overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.8)]"
+            >
+              {/* HEADER MODALE */}
+              <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center z-10 bg-gradient-to-b from-black/80 to-transparent">
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                  <span className="verge-label-mono text-[10px] text-white font-black uppercase tracking-[0.2em]">Live Video Feed</span>
+                </div>
+                <button 
+                  onClick={() => setActiveVideoUrl(null)}
+                  className="w-10 h-10 flex items-center justify-center bg-white/10 hover:bg-red-500 rounded-full text-white transition-all group"
+                >
+                  <X size={20} className="group-hover:rotate-90 transition-transform" />
+                </button>
+              </div>
+
+              {/* LECTEUR VIDÉO */}
+              <div className="aspect-video bg-black flex items-center justify-center">
+                <video 
+                  src={activeVideoUrl} 
+                  controls 
+                  autoPlay 
+                  className="w-full h-full object-contain"
+                />
+              </div>
+
+              {/* FOOTER MODALE */}
+              <div className="p-4 bg-black/40 border-t border-white/5 flex justify-center">
+                <span className="verge-label-mono text-[8px] text-[#949494] uppercase tracking-widest">
+                  Powered by OptaVision R2 Zero-Disk Engine
+                </span>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 };
