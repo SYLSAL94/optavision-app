@@ -5,8 +5,26 @@ const GOAL_RIGHT = 55;
 const GOAL_TOP = 0;
 const GOAL_GROUND = 36;
 
+const CANVAS_WIDTH = 300;
+const CANVAS_HEIGHT = 128;
+const FRAME_X = 30;
+const FRAME_Y = 16;
+const FRAME_WIDTH = 240;
+const FRAME_HEIGHT = 80;
+const POST_DEPTH = 12;
+
 const readMetric = (event, key) => {
-  const metrics = event?.advanced_metrics || event?.advancedMetrics || {};
+  const rawMetrics = event?.advanced_metrics || event?.advancedMetrics || {};
+  let metrics = rawMetrics;
+
+  if (typeof rawMetrics === 'string') {
+    try {
+      metrics = JSON.parse(rawMetrics);
+    } catch {
+      metrics = {};
+    }
+  }
+
   return event?.[key] ?? metrics?.[key] ?? null;
 };
 
@@ -16,8 +34,23 @@ const toNumber = (value) => {
 };
 
 const isGoal = (shot) => {
-  const type = String(shot?.type || '').toLowerCase();
-  return shot?.isGoal === true || shot?.type_id === 16 || type.includes('goal');
+  const type = String(shot?.type_name || shot?.type || '').toLowerCase();
+  return shot?.isGoal === true || Number(shot?.type_id) === 16 || type.includes('goal');
+};
+
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+const projectGoalMouthPoint = (goalMouthY, goalMouthZ) => {
+  // Audit legacy: x opta = 100 - goal_mouth_y, y opta = 36 - goal_mouth_z.
+  const optaX = 100 - goalMouthY;
+  const optaY = GOAL_GROUND - goalMouthZ;
+  const xRatio = (optaX - GOAL_LEFT) / (GOAL_RIGHT - GOAL_LEFT);
+  const yRatio = (optaY - GOAL_TOP) / (GOAL_GROUND - GOAL_TOP);
+
+  return {
+    cx: FRAME_X + clamp(xRatio, -0.08, 1.08) * FRAME_WIDTH,
+    cy: FRAME_Y + clamp(yRatio, -0.08, 1.08) * FRAME_HEIGHT,
+  };
 };
 
 const GoalFrameSVG = ({ shots = [], focusedShot, onShotFocus }) => {
@@ -32,8 +65,7 @@ const GoalFrameSVG = ({ shots = [], focusedShot, onShotFocus }) => {
 
       return {
         shot,
-        cx: 100 - goalMouthY,
-        cy: GOAL_GROUND - goalMouthZ,
+        ...projectGoalMouthPoint(goalMouthY, goalMouthZ),
         goal: isGoal(shot),
       };
     })
@@ -41,37 +73,40 @@ const GoalFrameSVG = ({ shots = [], focusedShot, onShotFocus }) => {
 
   return (
     <svg
-      viewBox="42 -4 16 44"
+      viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`}
       role="img"
       aria-label="Vue cage des tirs"
-      className="h-full w-full overflow-visible"
+      className="h-full w-full"
       preserveAspectRatio="xMidYMid meet"
     >
-      <rect x="42" y="-4" width="16" height="44" fill="#050505" />
-      <rect x={GOAL_LEFT} y={GOAL_TOP} width="10" height="36" fill="#08130f" stroke="none" />
+      <rect x="0" y="0" width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="#050505" />
+      <rect x={FRAME_X} y={FRAME_Y} width={FRAME_WIDTH} height={FRAME_HEIGHT} fill="#08130f" stroke="none" />
 
-      {[48.333, 51.667].map((x) => (
-        <line key={`v-${x}`} x1={x} y1={GOAL_TOP} x2={x} y2={GOAL_GROUND} stroke="rgba(255,255,255,0.12)" strokeWidth="0.12" />
-      ))}
-      <line x1={GOAL_LEFT} y1="18" x2={GOAL_RIGHT} y2="18" stroke="rgba(255,255,255,0.12)" strokeWidth="0.12" />
+      {[1 / 3, 2 / 3].map((ratio) => {
+        const x = FRAME_X + FRAME_WIDTH * ratio;
+        return (
+          <line key={`third-v-${ratio}`} x1={x} y1={FRAME_Y} x2={x} y2={FRAME_Y + FRAME_HEIGHT} stroke="rgba(255,255,255,0.16)" strokeWidth="1" />
+        );
+      })}
+      <line x1={FRAME_X} y1={FRAME_Y + FRAME_HEIGHT / 2} x2={FRAME_X + FRAME_WIDTH} y2={FRAME_Y + FRAME_HEIGHT / 2} stroke="rgba(255,255,255,0.16)" strokeWidth="1" />
 
-      {[6, 12, 24, 30].map((y) => (
-        <line key={`net-h-${y}`} x1={GOAL_LEFT} y1={y} x2={GOAL_RIGHT} y2={y} stroke="rgba(60,255,208,0.08)" strokeWidth="0.08" />
+      {[0.2, 0.4, 0.6, 0.8].map((ratio) => (
+        <line key={`net-h-${ratio}`} x1={FRAME_X} y1={FRAME_Y + FRAME_HEIGHT * ratio} x2={FRAME_X + FRAME_WIDTH} y2={FRAME_Y + FRAME_HEIGHT * ratio} stroke="rgba(60,255,208,0.08)" strokeWidth="0.8" />
       ))}
-      {[46.667, 50, 53.333].map((x) => (
-        <line key={`net-v-${x}`} x1={x} y1={GOAL_TOP} x2={x} y2={GOAL_GROUND} stroke="rgba(60,255,208,0.08)" strokeWidth="0.08" />
+      {[0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875].map((ratio) => (
+        <line key={`net-v-${ratio}`} x1={FRAME_X + FRAME_WIDTH * ratio} y1={FRAME_Y} x2={FRAME_X + FRAME_WIDTH * ratio} y2={FRAME_Y + FRAME_HEIGHT} stroke="rgba(60,255,208,0.08)" strokeWidth="0.8" />
       ))}
 
       <path
-        d={`M ${GOAL_LEFT} ${GOAL_GROUND} L ${GOAL_LEFT} ${GOAL_TOP} L ${GOAL_RIGHT} ${GOAL_TOP} L ${GOAL_RIGHT} ${GOAL_GROUND}`}
+        d={`M ${FRAME_X} ${FRAME_Y + FRAME_HEIGHT} L ${FRAME_X} ${FRAME_Y} L ${FRAME_X + FRAME_WIDTH} ${FRAME_Y} L ${FRAME_X + FRAME_WIDTH} ${FRAME_Y + FRAME_HEIGHT}`}
         fill="none"
         stroke="#f5f5f5"
-        strokeWidth="0.35"
+        strokeWidth="2.4"
         strokeLinecap="square"
       />
-      <line x1={GOAL_LEFT} y1={GOAL_GROUND} x2={GOAL_RIGHT} y2={GOAL_GROUND} stroke="rgba(255,255,255,0.35)" strokeWidth="0.18" />
-      <line x1={GOAL_LEFT} y1={GOAL_GROUND} x2={GOAL_LEFT} y2="40" stroke="#f5f5f5" strokeWidth="0.28" />
-      <line x1={GOAL_RIGHT} y1={GOAL_GROUND} x2={GOAL_RIGHT} y2="40" stroke="#f5f5f5" strokeWidth="0.28" />
+      <line x1={FRAME_X} y1={FRAME_Y + FRAME_HEIGHT} x2={FRAME_X + FRAME_WIDTH} y2={FRAME_Y + FRAME_HEIGHT} stroke="rgba(255,255,255,0.45)" strokeWidth="1.2" />
+      <line x1={FRAME_X} y1={FRAME_Y + FRAME_HEIGHT} x2={FRAME_X} y2={FRAME_Y + FRAME_HEIGHT + POST_DEPTH} stroke="#f5f5f5" strokeWidth="2" />
+      <line x1={FRAME_X + FRAME_WIDTH} y1={FRAME_Y + FRAME_HEIGHT} x2={FRAME_X + FRAME_WIDTH} y2={FRAME_Y + FRAME_HEIGHT + POST_DEPTH} stroke="#f5f5f5" strokeWidth="2" />
 
       {projectedShots.map(({ shot, cx, cy, goal }, index) => {
         const shotId = shot.opta_id ?? shot.id;
@@ -80,36 +115,36 @@ const GoalFrameSVG = ({ shots = [], focusedShot, onShotFocus }) => {
         const isDimmed = focusedShotId !== null && !isFocused;
 
         return (
-        <g
-          key={shot.id || shot.opta_id || `${cx}-${cy}-${index}`}
-          opacity={isDimmed ? 0.2 : 1}
-          className="cursor-pointer pointer-events-auto"
-          onClick={(e) => {
-            e.stopPropagation();
-            onShotFocus?.(shot);
-          }}
-        >
-          {goal && (
+          <g
+            key={shot.id || shot.opta_id || `${cx}-${cy}-${index}`}
+            opacity={isDimmed ? 0.2 : 1}
+            className="cursor-pointer pointer-events-auto"
+            onClick={(e) => {
+              e.stopPropagation();
+              onShotFocus?.(shot);
+            }}
+          >
+            {goal && (
+              <circle
+                cx={cx}
+                cy={cy}
+                r="5.2"
+                fill="none"
+                stroke="#3cffd0"
+                strokeWidth="1"
+                opacity="0.65"
+              />
+            )}
             <circle
               cx={cx}
               cy={cy}
-              r="1.15"
-              fill="none"
-              stroke="#3cffd0"
-              strokeWidth="0.18"
-              opacity="0.75"
+              r={isFocused ? 4.4 : goal ? 3.4 : 2.8}
+              fill={goal ? '#3cffd0' : '#ff4d4d'}
+              stroke="#050505"
+              strokeWidth="0.8"
+              style={{ filter: goal ? 'drop-shadow(0 0 3px #3cffd0)' : 'none' }}
             />
-          )}
-          <circle
-            cx={cx}
-            cy={cy}
-            r={isFocused ? 0.78 : goal ? 0.55 : 0.42}
-            fill={goal ? '#3cffd0' : '#ff4d4d'}
-            stroke="#050505"
-            strokeWidth="0.12"
-            style={{ filter: goal ? 'drop-shadow(0 0 2px #3cffd0)' : 'none' }}
-          />
-        </g>
+          </g>
         );
       })}
     </svg>

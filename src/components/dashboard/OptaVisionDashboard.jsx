@@ -27,19 +27,6 @@ import ShotMapExplorer from './ShotMapExplorer';
 import VideoSettingsPanel from './VideoSettingsPanel';
 import { API_BASE_URL, OPTAVISION_API_URL } from '../../config';
 
-const SHOT_BODY_PART_IDS = {
-  head: 15,
-  right_foot: 20,
-  left_foot: 72
-};
-
-const SHOT_SITUATION_IDS = {
-  regular_play: 22,
-  fast_break: 23,
-  one_on_one: 89,
-  out_of_box: 18
-};
-
 /**
  * OptaVisionDashboard - Squelette UI/UX Premium (Style The Verge)
  * Aligné sur le Design System du projet Scouting.
@@ -103,20 +90,17 @@ const OptaVisionDashboard = ({ user }) => {
     startDate: '',
     endDate: '',
     start_min: 0,
-    end_min: 95
+    end_min: 95,
+    player_id: []
   });
 
   const appendShotMapParams = (params, filters) => {
     params.set('types', '13,14,15,16');
 
-    const bodyParts = (filters?.bodyParts || [])
-      .map(part => SHOT_BODY_PART_IDS[part] ?? part)
-      .filter(Boolean);
+    const bodyParts = (filters?.bodyParts || []).filter(Boolean);
     if (bodyParts.length > 0) params.append('body_parts', bodyParts.join(','));
 
-    const situations = (filters?.situations || [])
-      .map(situation => SHOT_SITUATION_IDS[situation] ?? situation)
-      .filter(Boolean);
+    const situations = (filters?.situations || []).filter(Boolean);
     if (situations.length > 0) params.append('situations', situations.join(','));
 
     if (filters?.outcomes?.length > 0) params.append('shot_outcomes', filters.outcomes.join(','));
@@ -622,6 +606,7 @@ const OptaVisionDashboard = ({ user }) => {
                         countriesList={countriesList}
                         phasesList={phasesList}
                         stadiumsList={stadiumsList}
+                        playersList={playersList}
                         filters={shotFilters}
                         onFilterChange={setShotFilters}
                         onApply={(nextFilters) => {

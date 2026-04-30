@@ -26,7 +26,8 @@ const DEFAULT_FILTERS = {
   startDate: '',
   endDate: '',
   start_min: 0,
-  end_min: 95
+  end_min: 95,
+  player_id: []
 };
 
 const OUTCOME_OPTIONS = [
@@ -38,16 +39,16 @@ const OUTCOME_OPTIONS = [
 ];
 
 const BODY_PART_OPTIONS = [
-  { id: 'head', label: 'Tete', qualifierId: 15 },
-  { id: 'right_foot', label: 'Pied droit', qualifierId: 20 },
-  { id: 'left_foot', label: 'Pied gauche', qualifierId: 72 }
+  { id: 'is_shot_head', label: 'Tete' },
+  { id: 'is_shot_right_footed', label: 'Pied droit' },
+  { id: 'is_shot_left_footed', label: 'Pied gauche' }
 ];
 
 const SITUATION_OPTIONS = [
-  { id: 'fast_break', label: 'Contre-attaque' },
-  { id: 'regular_play', label: 'Jeu place' },
-  { id: 'one_on_one', label: 'Face-a-face' },
-  { id: 'out_of_box', label: 'Hors surface' }
+  { id: 'is_shot_fast_break', label: 'Contre-attaque' },
+  { id: 'is_shot_regular_play', label: 'Jeu place' },
+  { id: 'is_shot_big_chance', label: 'Grosse occasion' },
+  { id: 'is_shot_out_of_box_centre', label: 'Hors surface' }
 ];
 
 const mergeFilters = (filters) => ({
@@ -63,6 +64,7 @@ const ShotMapFilterPanel = ({
   countriesList = [],
   phasesList = [],
   stadiumsList = [],
+  playersList = [],
   filters,
   onFilterChange,
   onApply
@@ -203,6 +205,21 @@ const ShotMapFilterPanel = ({
               }}
               placeholder="Selectionner des matchs..."
             />
+
+            <div className="h-px bg-white/5 my-4" />
+
+            <MultiSelectWithChips
+              label="Selection des Joueurs"
+              options={playersList.map(p => p.name)}
+              selected={(pendingFilters.player_id || []).map(id => playersList.find(p => String(p.id) === String(id))?.name).filter(Boolean)}
+              onChange={(selectedNames) => {
+                const selectedIds = selectedNames
+                  .map(name => playersList.find(p => p.name === name)?.id)
+                  .filter(Boolean);
+                updateFilters({ player_id: selectedIds });
+              }}
+              placeholder="Rechercher des joueurs..."
+            />
           </div>
         </AccordionSection>
 
@@ -234,7 +251,7 @@ const ShotMapFilterPanel = ({
           icon={<Shield size={18} />}
           isOpen={openSection === 'tactical'}
           onToggle={() => toggleSection('tactical')}
-          subtitle="QUALIFIERS"
+          subtitle="TAGS METIER"
         >
           <div className="space-y-8">
             <div className="space-y-4">
@@ -246,7 +263,7 @@ const ShotMapFilterPanel = ({
                     type="button"
                     onClick={() => toggleArrayFilter('bodyParts', option.id)}
                     className={optionClassName(pendingFilters.bodyParts.includes(option.id))}
-                    title={`Qualifier Opta ${option.qualifierId}`}
+                    title={option.id}
                   >
                     {option.label}
                   </button>
