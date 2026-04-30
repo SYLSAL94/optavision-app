@@ -1,19 +1,32 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Check,
   Crosshair,
+  Database,
   RotateCcw,
   Shield,
   Target,
   Zap
 } from 'lucide-react';
 import AccordionSection from './AccordionSection';
+import MultiSelectWithChips from '../ui/MultiSelectWithChips';
 
 const DEFAULT_FILTERS = {
   outcomes: [],
   bodyParts: [],
   situations: [],
-  distanceMax: null
+  distanceMax: null,
+  matches: [],
+  competition: [],
+  season: [],
+  week: [],
+  country: [],
+  phase: [],
+  stadium: [],
+  startDate: '',
+  endDate: '',
+  start_min: 0,
+  end_min: 95
 };
 
 const OUTCOME_OPTIONS = [
@@ -42,24 +55,39 @@ const mergeFilters = (filters) => ({
   ...(filters || {})
 });
 
-const ShotMapFilterPanel = ({ filters, onFilterChange, onApply, onClose }) => {
-  const [openSection, setOpenSection] = useState('precision');
-  const activeFilters = mergeFilters(filters);
-  const distanceValue = activeFilters.distanceMax ?? 40;
+const ShotMapFilterPanel = ({
+  matchesList = [],
+  competitionsList = [],
+  seasonsList = [],
+  weeksList = [],
+  countriesList = [],
+  phasesList = [],
+  stadiumsList = [],
+  filters,
+  onFilterChange,
+  onApply
+}) => {
+  const [openSection, setOpenSection] = useState('matches');
+  const [pendingFilters, setPendingFilters] = useState(mergeFilters(filters));
+  const distanceValue = pendingFilters.distanceMax ?? 40;
+
+  useEffect(() => {
+    setPendingFilters(mergeFilters(filters));
+  }, [filters]);
 
   const toggleSection = (id) => {
     setOpenSection(openSection === id ? null : id);
   };
 
   const updateFilters = (patch) => {
-    onFilterChange?.({
-      ...activeFilters,
+    setPendingFilters(prev => ({
+      ...prev,
       ...patch
-    });
+    }));
   };
 
   const toggleArrayFilter = (key, value) => {
-    const values = activeFilters[key] || [];
+    const values = pendingFilters[key] || [];
     updateFilters({
       [key]: values.includes(value)
         ? values.filter(item => item !== value)
@@ -68,7 +96,12 @@ const ShotMapFilterPanel = ({ filters, onFilterChange, onApply, onClose }) => {
   };
 
   const resetFilters = () => {
-    onFilterChange?.(DEFAULT_FILTERS);
+    setPendingFilters(DEFAULT_FILTERS);
+  };
+
+  const applyAnalysis = () => {
+    onFilterChange?.(pendingFilters);
+    onApply?.(pendingFilters);
   };
 
   const optionClassName = (active) => (
@@ -101,7 +134,78 @@ const ShotMapFilterPanel = ({ filters, onFilterChange, onApply, onClose }) => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-10 pt-6 space-y-2 scrollbar-verge">
+      <div className="flex-1 overflow-y-auto p-10 pt-6 space-y-4 scrollbar-verge">
+        <AccordionSection
+          id="matches"
+          title="Silos de Donnees"
+          icon={<Database size={18} />}
+          isOpen={openSection === 'matches'}
+          onToggle={() => toggleSection('matches')}
+          badge={(pendingFilters.matches?.length || 0) + (pendingFilters.competition?.length || 0) + (pendingFilters.season?.length || 0) + (pendingFilters.week?.length || 0) + (pendingFilters.country?.length || 0)}
+        >
+          <div className="space-y-8">
+            <div className="space-y-8">
+              <MultiSelectWithChips
+                label="Competitions"
+                options={competitionsList}
+                selected={pendingFilters.competition || []}
+                onChange={(vals) => updateFilters({ competition: vals })}
+                placeholder="Selectionner..."
+              />
+              <MultiSelectWithChips
+                label="Saisons"
+                options={seasonsList.map(String)}
+                selected={(pendingFilters.season || []).map(String)}
+                onChange={(vals) => updateFilters({ season: vals })}
+                placeholder="Selectionner..."
+              />
+              <MultiSelectWithChips
+                label="Journees"
+                options={weeksList.map(String)}
+                selected={(pendingFilters.week || []).map(String)}
+                onChange={(vals) => updateFilters({ week: vals })}
+                placeholder="Selectionner..."
+              />
+              <MultiSelectWithChips
+                label="Pays"
+                options={countriesList}
+                selected={pendingFilters.country || []}
+                onChange={(vals) => updateFilters({ country: vals })}
+                placeholder="Selectionner..."
+              />
+              <MultiSelectWithChips
+                label="Phases"
+                options={phasesList}
+                selected={pendingFilters.phase || []}
+                onChange={(vals) => updateFilters({ phase: vals })}
+                placeholder="Selectionner..."
+              />
+              <MultiSelectWithChips
+                label="Stades"
+                options={stadiumsList}
+                selected={pendingFilters.stadium || []}
+                onChange={(vals) => updateFilters({ stadium: vals })}
+                placeholder="Selectionner..."
+              />
+            </div>
+
+            <div className="h-px bg-white/5 my-4" />
+
+            <MultiSelectWithChips
+              label="Selection Individuelle (Match)"
+              options={matchesList.map(m => m.label || m.id)}
+              selected={(pendingFilters.matches || []).map(id => matchesList.find(m => m.id === id)?.label || id)}
+              onChange={(vals) => {
+                const selectedIds = vals
+                  .map(val => matchesList.find(m => m.label === val || m.id === val)?.id)
+                  .filter(Boolean);
+                updateFilters({ matches: selectedIds });
+              }}
+              placeholder="Selectionner des matchs..."
+            />
+          </div>
+        </AccordionSection>
+
         <AccordionSection
           id="precision"
           title="Precision & Resultat"
@@ -116,7 +220,7 @@ const ShotMapFilterPanel = ({ filters, onFilterChange, onApply, onClose }) => {
                 key={option.id}
                 type="button"
                 onClick={() => toggleArrayFilter('outcomes', option.id)}
-                className={optionClassName(activeFilters.outcomes.includes(option.id))}
+                className={optionClassName(pendingFilters.outcomes.includes(option.id))}
               >
                 {option.label}
               </button>
@@ -141,7 +245,7 @@ const ShotMapFilterPanel = ({ filters, onFilterChange, onApply, onClose }) => {
                     key={option.id}
                     type="button"
                     onClick={() => toggleArrayFilter('bodyParts', option.id)}
-                    className={optionClassName(activeFilters.bodyParts.includes(option.id))}
+                    className={optionClassName(pendingFilters.bodyParts.includes(option.id))}
                     title={`Qualifier Opta ${option.qualifierId}`}
                   >
                     {option.label}
@@ -154,7 +258,7 @@ const ShotMapFilterPanel = ({ filters, onFilterChange, onApply, onClose }) => {
               <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block">Situation</label>
               <div className="space-y-2">
                 {SITUATION_OPTIONS.map(option => {
-                  const active = activeFilters.situations.includes(option.id);
+                  const active = pendingFilters.situations.includes(option.id);
                   return (
                     <button
                       key={option.id}
@@ -188,7 +292,7 @@ const ShotMapFilterPanel = ({ filters, onFilterChange, onApply, onClose }) => {
             <div className="flex justify-between items-center mb-6">
               <label className="verge-label-mono text-[10px] text-white font-black uppercase tracking-widest">Distance max</label>
               <span className="verge-label-mono text-[11px] text-red-500 font-black">
-                {activeFilters.distanceMax === null ? 'Tout' : `${activeFilters.distanceMax}m`}
+                {pendingFilters.distanceMax === null ? 'Tout' : `${pendingFilters.distanceMax}m`}
               </span>
             </div>
             <input
@@ -209,12 +313,62 @@ const ShotMapFilterPanel = ({ filters, onFilterChange, onApply, onClose }) => {
             </button>
           </div>
         </AccordionSection>
+
+        <AccordionSection
+          id="time"
+          title="Chronologie"
+          icon={<RotateCcw size={18} />}
+          isOpen={openSection === 'time'}
+          onToggle={() => toggleSection('time')}
+        >
+          <div className="space-y-8">
+            <div className="grid grid-cols-2 gap-4">
+              <FilterGroup label="Plage de Dates (Debut)">
+                <input
+                  type="date"
+                  value={pendingFilters.startDate || ''}
+                  onChange={(e) => updateFilters({ startDate: e.target.value })}
+                  className="w-full bg-[#131313] border border-white/10 p-4 verge-label-mono text-white text-[10px] outline-none focus:border-red-500 transition-all"
+                />
+              </FilterGroup>
+              <FilterGroup label="Plage de Dates (Fin)">
+                <input
+                  type="date"
+                  value={pendingFilters.endDate || ''}
+                  onChange={(e) => updateFilters({ endDate: e.target.value })}
+                  className="w-full bg-[#131313] border border-white/10 p-4 verge-label-mono text-white text-[10px] outline-none focus:border-red-500 transition-all"
+                />
+              </FilterGroup>
+            </div>
+
+            <div className="h-px bg-white/5 my-4" />
+
+            <div className="grid grid-cols-2 gap-4">
+              <FilterGroup label="Minute Debut">
+                <input
+                  type="number"
+                  value={pendingFilters.start_min}
+                  onChange={(e) => updateFilters({ start_min: parseInt(e.target.value, 10) || 0 })}
+                  className="w-full bg-[#131313] border border-white/10 p-4 verge-label-mono text-white text-xs outline-none"
+                />
+              </FilterGroup>
+              <FilterGroup label="Minute Fin">
+                <input
+                  type="number"
+                  value={pendingFilters.end_min}
+                  onChange={(e) => updateFilters({ end_min: parseInt(e.target.value, 10) || 95 })}
+                  className="w-full bg-[#131313] border border-white/10 p-4 verge-label-mono text-white text-xs outline-none"
+                />
+              </FilterGroup>
+            </div>
+          </div>
+        </AccordionSection>
       </div>
 
       <div className="p-10 bg-[#131313] border-t border-white/10">
         <button
           type="button"
-          onClick={() => onApply?.(activeFilters)}
+          onClick={applyAnalysis}
           className="w-full bg-red-500 text-white py-6 rounded-[2px] verge-label-mono text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-4 hover:bg-white hover:text-black transition-all shadow-[0_20px_40px_rgba(239,68,68,0.1)]"
         >
           Appliquer l'Analyse
@@ -224,5 +378,14 @@ const ShotMapFilterPanel = ({ filters, onFilterChange, onApply, onClose }) => {
     </aside>
   );
 };
+
+const FilterGroup = ({ label, children }) => (
+  <div className="space-y-4">
+    <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">
+      {label}
+    </label>
+    {children}
+  </div>
+);
 
 export default ShotMapFilterPanel;

@@ -92,7 +92,18 @@ const OptaVisionDashboard = ({ user }) => {
     outcomes: [],
     bodyParts: [],
     situations: [],
-    distanceMax: null
+    distanceMax: null,
+    matches: [],
+    competition: [],
+    season: [],
+    week: [],
+    country: [],
+    phase: [],
+    stadium: [],
+    startDate: '',
+    endDate: '',
+    start_min: 0,
+    end_min: 95
   });
 
   const appendShotMapParams = (params, filters) => {
@@ -117,6 +128,9 @@ const OptaVisionDashboard = ({ user }) => {
   const fetchEvents = async (baseFilters = explorationFilters, nextShotFilters = shotFilters, tool = activeTool) => {
     setLoading(true);
     setError(null);
+    const requestFilters = tool === 'shots'
+      ? { ...baseFilters, ...nextShotFilters }
+      : baseFilters;
 
     // Construction dynamique des query params
     const params = new URLSearchParams({
@@ -124,30 +138,30 @@ const OptaVisionDashboard = ({ user }) => {
       limit: '1000'
     });
 
-    if (baseFilters.startDate) params.append('start_date', baseFilters.startDate);
-    if (baseFilters.endDate) params.append('end_date', baseFilters.endDate);
+    if (requestFilters.startDate) params.append('start_date', requestFilters.startDate);
+    if (requestFilters.endDate) params.append('end_date', requestFilters.endDate);
 
-    if (baseFilters.matches?.length > 0) params.append('match_ids', baseFilters.matches.join(','));
-    if (baseFilters.types?.length > 0) params.append('types', baseFilters.types.join(','));
-    if (baseFilters.players?.length > 0) params.append('player_ids', baseFilters.players.join(','));
-    if (baseFilters.player_id?.length > 0) params.append('player_id', baseFilters.player_id.join(','));
-    if (baseFilters.receiver_id?.length > 0) params.append('receiver_id', baseFilters.receiver_id.join(','));
-    if (baseFilters.opponent_id?.length > 0) params.append('opponent_id', baseFilters.opponent_id.join(','));
-    if (baseFilters.teams?.length > 0) params.append('team_ids', baseFilters.teams.join(','));
-    if (baseFilters.min_xt > 0) params.append('min_xt', baseFilters.min_xt.toString());
-    if (baseFilters.start_min > 0) params.append('start_min', baseFilters.start_min.toString());
-    if (baseFilters.end_min < 95) params.append('end_min', baseFilters.end_min.toString());
-    if (baseFilters.outcome !== null) params.append('outcome', baseFilters.outcome.toString());
-    if (baseFilters.period_id?.length > 0) params.append('period_id', baseFilters.period_id.join(','));
-    if (baseFilters.location?.length > 0) params.append('location', baseFilters.location.join(','));
-    if (baseFilters.zone?.length > 0) params.append('zone', baseFilters.zone.join(','));
-    if (baseFilters.competition?.length > 0) params.append('competition', baseFilters.competition.join(','));
-    if (baseFilters.season?.length > 0) params.append('season', baseFilters.season.join(','));
-    if (baseFilters.week?.length > 0) params.append('week', baseFilters.week.join(','));
-    if (baseFilters.country?.length > 0) params.append('country', baseFilters.country.join(','));
-    if (baseFilters.phase?.length > 0) params.append('phase', baseFilters.phase.join(','));
-    if (baseFilters.stadium?.length > 0) params.append('stadium', baseFilters.stadium.join(','));
-    if (baseFilters.advanced_tactics?.length > 0) params.append('advanced_tactics', baseFilters.advanced_tactics.join(','));
+    if (requestFilters.matches?.length > 0) params.append('match_ids', requestFilters.matches.join(','));
+    if (requestFilters.types?.length > 0) params.append('types', requestFilters.types.join(','));
+    if (requestFilters.players?.length > 0) params.append('player_ids', requestFilters.players.join(','));
+    if (requestFilters.player_id?.length > 0) params.append('player_id', requestFilters.player_id.join(','));
+    if (requestFilters.receiver_id?.length > 0) params.append('receiver_id', requestFilters.receiver_id.join(','));
+    if (requestFilters.opponent_id?.length > 0) params.append('opponent_id', requestFilters.opponent_id.join(','));
+    if (requestFilters.teams?.length > 0) params.append('team_ids', requestFilters.teams.join(','));
+    if (requestFilters.min_xt > 0) params.append('min_xt', requestFilters.min_xt.toString());
+    if (requestFilters.start_min > 0) params.append('start_min', requestFilters.start_min.toString());
+    if (requestFilters.end_min < 95) params.append('end_min', requestFilters.end_min.toString());
+    if (requestFilters.outcome !== null) params.append('outcome', requestFilters.outcome.toString());
+    if (requestFilters.period_id?.length > 0) params.append('period_id', requestFilters.period_id.join(','));
+    if (requestFilters.location?.length > 0) params.append('location', requestFilters.location.join(','));
+    if (requestFilters.zone?.length > 0) params.append('zone', requestFilters.zone.join(','));
+    if (requestFilters.competition?.length > 0) params.append('competition', requestFilters.competition.join(','));
+    if (requestFilters.season?.length > 0) params.append('season', requestFilters.season.join(','));
+    if (requestFilters.week?.length > 0) params.append('week', requestFilters.week.join(','));
+    if (requestFilters.country?.length > 0) params.append('country', requestFilters.country.join(','));
+    if (requestFilters.phase?.length > 0) params.append('phase', requestFilters.phase.join(','));
+    if (requestFilters.stadium?.length > 0) params.append('stadium', requestFilters.stadium.join(','));
+    if (requestFilters.advanced_tactics?.length > 0) params.append('advanced_tactics', requestFilters.advanced_tactics.join(','));
 
     if (tool === 'shots') {
       appendShotMapParams(params, nextShotFilters);
@@ -527,7 +541,12 @@ const OptaVisionDashboard = ({ user }) => {
                           isVideoLoading={isVideoLoading}
                         />
                       ) : activeTool === 'shots' ? (
-                        <ShotMapExplorer data={data} loading={loading} />
+                        <ShotMapExplorer
+                          data={data}
+                          loading={loading}
+                          onPlayVideo={handlePlaySingleVideo}
+                          isVideoLoading={isVideoLoading}
+                        />
                       ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center bg-[#131313] text-white/20">
                           <div className="verge-label-mono text-[10px] uppercase tracking-[0.5em]">
@@ -596,6 +615,13 @@ const OptaVisionDashboard = ({ user }) => {
                     )}
                     {activeTab === 'shots' && (
                       <ShotMapFilterPanel
+                        matchesList={matchesList}
+                        competitionsList={competitionsList}
+                        seasonsList={seasonsList}
+                        weeksList={weeksList}
+                        countriesList={countriesList}
+                        phasesList={phasesList}
+                        stadiumsList={stadiumsList}
                         filters={shotFilters}
                         onFilterChange={setShotFilters}
                         onApply={(nextFilters) => {

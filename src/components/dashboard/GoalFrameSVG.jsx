@@ -20,7 +20,7 @@ const isGoal = (shot) => {
   return shot?.isGoal === true || shot?.type_id === 16 || type.includes('goal');
 };
 
-const GoalFrameSVG = ({ shots = [] }) => {
+const GoalFrameSVG = ({ shots = [], focusedShot, onShotFocus }) => {
   const projectedShots = shots
     .map((shot) => {
       const goalMouthY = toNumber(readMetric(shot, 'goal_mouth_y'));
@@ -73,8 +73,22 @@ const GoalFrameSVG = ({ shots = [] }) => {
       <line x1={GOAL_LEFT} y1={GOAL_GROUND} x2={GOAL_LEFT} y2="40" stroke="#f5f5f5" strokeWidth="0.28" />
       <line x1={GOAL_RIGHT} y1={GOAL_GROUND} x2={GOAL_RIGHT} y2="40" stroke="#f5f5f5" strokeWidth="0.28" />
 
-      {projectedShots.map(({ shot, cx, cy, goal }, index) => (
-        <g key={shot.id || shot.opta_id || `${cx}-${cy}-${index}`}>
+      {projectedShots.map(({ shot, cx, cy, goal }, index) => {
+        const shotId = shot.opta_id ?? shot.id;
+        const focusedShotId = focusedShot ? (focusedShot.opta_id ?? focusedShot.id) : null;
+        const isFocused = focusedShotId !== null && String(shotId) === String(focusedShotId);
+        const isDimmed = focusedShotId !== null && !isFocused;
+
+        return (
+        <g
+          key={shot.id || shot.opta_id || `${cx}-${cy}-${index}`}
+          opacity={isDimmed ? 0.2 : 1}
+          className="cursor-pointer pointer-events-auto"
+          onClick={(e) => {
+            e.stopPropagation();
+            onShotFocus?.(shot);
+          }}
+        >
           {goal && (
             <circle
               cx={cx}
@@ -89,14 +103,15 @@ const GoalFrameSVG = ({ shots = [] }) => {
           <circle
             cx={cx}
             cy={cy}
-            r={goal ? 0.55 : 0.42}
+            r={isFocused ? 0.78 : goal ? 0.55 : 0.42}
             fill={goal ? '#3cffd0' : '#ff4d4d'}
             stroke="#050505"
             strokeWidth="0.12"
             style={{ filter: goal ? 'drop-shadow(0 0 2px #3cffd0)' : 'none' }}
           />
         </g>
-      ))}
+        );
+      })}
     </svg>
   );
 };

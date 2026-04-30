@@ -56,13 +56,14 @@ const projectShotToVerticalHalfPitch = (shot) => {
   };
 };
 
-const VerticalHalfPitch = ({ shots }) => (
+const VerticalHalfPitch = ({ shots, focusedShot, onShotFocus, onClearFocus }) => (
   <svg
     viewBox="-5 -5 78 62"
     className="h-full w-full"
     preserveAspectRatio="xMidYMid meet"
     aria-label="Demi-terrain vertical des tirs"
     role="img"
+    onClick={onClearFocus}
   >
     <rect x="-5" y="-5" width="78" height="62" fill="#101010" />
     <rect x="0" y="0" width={HALF_PITCH_WIDTH} height={HALF_PITCH_LENGTH} fill="none" stroke={PITCH_LINE} strokeWidth="0.28" />
@@ -81,24 +82,36 @@ const VerticalHalfPitch = ({ shots }) => (
         return null;
       }
 
+      const shotId = shot.opta_id ?? shot.id;
+      const focusedShotId = focusedShot ? (focusedShot.opta_id ?? focusedShot.id) : null;
+      const isFocused = focusedShotId !== null && String(shotId) === String(focusedShotId);
+      const isDimmed = focusedShotId !== null && !isFocused;
+
       return (
         <circle
           key={shot.id || shot.opta_id || index}
           cx={position.cx}
           cy={position.cy}
-          r="0.85"
+          r={isFocused ? 1.15 : 0.85}
           fill="#6fa2db"
-          fillOpacity="0.76"
+          fillOpacity={isDimmed ? 0.2 : 0.76}
           stroke="#9fc4f4"
-          strokeWidth="0.22"
+          strokeWidth={isFocused ? 0.35 : 0.22}
+          className="cursor-pointer pointer-events-auto"
+          onClick={(e) => {
+            e.stopPropagation();
+            onShotFocus?.(shot);
+          }}
         />
       );
     })}
   </svg>
 );
 
-const ShotMapExplorer = ({ data = [], loading = false }) => {
+const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, isVideoLoading = false }) => {
   const [detailsPage, setDetailsPage] = useState(1);
+  const [focusedShot, setFocusedShot] = useState(null);
+  const [activeVideoUrl, setActiveVideoUrl] = useState(null);
 
   const shotData = useMemo(() => {
     const events = Array.isArray(data) ? data : (data?.items || []);
@@ -124,6 +137,7 @@ const ShotMapExplorer = ({ data = [], loading = false }) => {
 
   useEffect(() => {
     setDetailsPage(1);
+    setFocusedShot(null);
   }, [shotData.length]);
 
   useEffect(() => {
@@ -138,6 +152,12 @@ const ShotMapExplorer = ({ data = [], loading = false }) => {
       conversion: shotData.length > 0 ? ((goals / shotData.length) * 100).toFixed(1) : 0
     };
   }, [shotData]);
+
+  const handleFocusedShotVideo = async () => {
+    if (!focusedShot || !onPlayVideo) return;
+    const videoUrl = await onPlayVideo(focusedShot);
+    if (videoUrl) setActiveVideoUrl(videoUrl);
+  };
 
   return (
     <div className="flex h-full min-h-0 w-full gap-8 animate-in fade-in zoom-in-95 duration-500 overflow-hidden p-8">
@@ -166,8 +186,56 @@ const ShotMapExplorer = ({ data = [], loading = false }) => {
 
         <div className="flex-1 min-h-0 bg-[#101010] border border-white/5 relative rounded-[2px] flex items-center justify-center overflow-hidden">
            <div className="w-full h-full max-w-[820px] max-h-[680px] relative">
-              {!loading && <VerticalHalfPitch shots={shotData} />}
+              {!loading && (
+                <VerticalHalfPitch
+                  shots={shotData}
+                  focusedShot={focusedShot}
+                  onShotFocus={setFocusedShot}
+                  onClearFocus={() => setFocusedShot(null)}
+                />
+              )}
            </div>
+
+           {focusedShot && (
+             <div className="absolute right-6 top-6 z-20 w-72 rounded-lg border border-white/10 bg-[#131313]/90 p-4 text-white shadow-2xl backdrop-blur-xl">
+               <div className="mb-3 border-b border-white/10 pb-2">
+                 <div className="verge-label-mono text-[8px] uppercase tracking-widest text-red-400">Tir selectionne</div>
+                 <div className="mt-1 truncate text-sm font-black">{focusedShot.playerName || 'Joueur inconnu'}</div>
+               </div>
+               <div className="space-y-2 verge-label-mono text-[9px] uppercase text-[#d7d7d7]">
+                 <div className="flex justify-between gap-4">
+                   <span className="text-[#949494]">Resultat</span>
+                   <span className={focusedShot.isGoal ? 'text-[#3cffd0]' : 'text-white'}>{focusedShot.isGoal ? 'Goal' : focusedShot.type_name || focusedShot.type || 'Tir'}</span>
+                 </div>
+                 <div className="flex justify-between gap-4">
+                   <span className="text-[#949494]">Minute</span>
+                   <span>{focusedShot.minute ?? focusedShot.min ?? '-'}'</span>
+                 </div>
+                 <div className="flex justify-between gap-4">
+                   <span className="text-[#949494]">Distance</span>
+                   <span>{focusedShot.shotDistance !== null ? `${focusedShot.shotDistance.toFixed(1)}m` : '-'}</span>
+                 </div>
+               </div>
+               <button
+                 type="button"
+                 onClick={(e) => {
+                   e.stopPropagation();
+                   handleFocusedShotVideo();
+                 }}
+                 disabled={isVideoLoading}
+                 className="mt-4 flex w-full items-center justify-center gap-2 rounded-full border border-[#3cffd0] bg-[#131313]/80 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-[#3cffd0] shadow-[0_0_10px_rgba(60,255,208,0.2)] backdrop-blur-md transition-all duration-300 hover:bg-[#3cffd0] hover:text-[#131313] hover:shadow-[0_0_20px_rgba(60,255,208,0.6)] disabled:cursor-wait disabled:opacity-50"
+               >
+                 {isVideoLoading ? (
+                   <>
+                     <div className="h-3 w-3 animate-spin rounded-full border-2 border-[#3cffd0] border-t-transparent" />
+                     <span>Decoupe en cours...</span>
+                   </>
+                 ) : (
+                   <span>🎬 Lancer la vidéo</span>
+                 )}
+               </button>
+             </div>
+           )}
 
            {(loading || shotData.length === 0) && (
              <div className="absolute inset-0 flex items-center justify-center backdrop-blur-[2px]">
@@ -189,7 +257,7 @@ const ShotMapExplorer = ({ data = [], loading = false }) => {
               Vue Cage
             </h4>
             <div className="h-[170px] bg-black/40 border border-white/5 rounded-[2px] p-3">
-              <GoalFrameSVG shots={shotData} />
+              <GoalFrameSVG shots={shotData} focusedShot={focusedShot} onShotFocus={setFocusedShot} />
             </div>
          </div>
 
@@ -260,6 +328,17 @@ const ShotMapExplorer = ({ data = [], loading = false }) => {
             </div>
          </div>
       </div>
+      {activeVideoUrl && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 p-8 backdrop-blur-sm" onClick={() => setActiveVideoUrl(null)}>
+          <div className="w-full max-w-5xl rounded-[4px] border border-white/10 bg-[#131313] p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <div className="verge-label-mono text-[10px] uppercase tracking-widest text-[#949494]">Clip Shot Map</div>
+              <button type="button" onClick={() => setActiveVideoUrl(null)} className="text-sm font-black uppercase text-white/60 hover:text-white">Fermer</button>
+            </div>
+            <video src={activeVideoUrl} controls autoPlay className="max-h-[78vh] w-full bg-black" />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
