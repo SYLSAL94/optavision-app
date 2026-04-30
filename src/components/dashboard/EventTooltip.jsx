@@ -1,13 +1,15 @@
 import React from 'react';
 
-export const EventTooltip = ({ hoveredEvent, mousePos, globalPlayerMap }) => {
-  if (!hoveredEvent) return null;
+export const EventTooltip = ({ hoveredEvent, focusedEvent, mousePos, globalPlayerMap, onPlayVideo, isVideoLoading = false }) => {
+  const activeEvent = focusedEvent || hoveredEvent;
+  const isFocused = Boolean(focusedEvent);
+  if (!activeEvent) return null;
 
-  let parsed = hoveredEvent.advanced_metrics;
+  let parsed = activeEvent.advanced_metrics;
   if (typeof parsed === 'string') {
     try { parsed = JSON.parse(parsed); } catch(e) { parsed = {}; }
   }
-  const typeName = parsed?.type_name || hoveredEvent.type || hoveredEvent.type_id;
+  const typeName = parsed?.type_name || activeEvent.type || activeEvent.type_id;
   const typeStr = String(typeName);
   
   const getPlayerName = (id) => {
@@ -17,7 +19,7 @@ export const EventTooltip = ({ hoveredEvent, mousePos, globalPlayerMap }) => {
   };
 
   const opponentName = getPlayerName(parsed?.opponent_id);
-  const receiverId = parsed?.receiver || hoveredEvent.receiver || hoveredEvent.receiverName;
+  const receiverId = parsed?.receiver || activeEvent.receiver || activeEvent.receiverName;
   const receiverNameTooltip = getPlayerName(receiverId);
   
   const isProgressive = parsed?.is_progressive;
@@ -31,10 +33,10 @@ export const EventTooltip = ({ hoveredEvent, mousePos, globalPlayerMap }) => {
   return (
     <div 
       style={{ left: mousePos.x + 15, top: mousePos.y + 15 }} 
-      className="fixed z-50 w-64 p-3 rounded-lg shadow-2xl backdrop-blur-xl bg-[#131313]/95 border border-slate-700 text-white pointer-events-none text-xs flex flex-col gap-2"
+      className={`fixed z-50 w-64 p-3 rounded-lg shadow-2xl backdrop-blur-xl bg-[#131313]/95 border border-slate-700 text-white text-xs flex flex-col gap-2 ${isFocused ? 'pointer-events-auto' : 'pointer-events-none'}`}
     >
       <div className="font-bold border-b border-white/10 pb-1 mb-1">
-        {hoveredEvent.playerName || 'Joueur inconnu'} <span className="text-[#949494]">| {typeStr}</span>
+        {activeEvent.playerName || 'Joueur inconnu'} <span className="text-[#949494]">| {typeStr}</span>
       </div>
       
       {isPass && (
@@ -102,6 +104,19 @@ export const EventTooltip = ({ hoveredEvent, mousePos, globalPlayerMap }) => {
           </span>
         )}
       </div>
+      {isFocused && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onPlayVideo?.(focusedEvent);
+          }}
+          disabled={isVideoLoading}
+          className="mt-2 bg-sky-500 hover:bg-sky-400 disabled:bg-sky-900 disabled:text-sky-200 text-white font-bold py-1 px-3 rounded text-center cursor-pointer disabled:cursor-wait transition-colors"
+        >
+          {isVideoLoading ? "Découpe en cours..." : "🎬 Lancer la vidéo"}
+        </button>
+      )}
     </div>
   );
 };

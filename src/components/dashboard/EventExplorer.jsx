@@ -60,7 +60,9 @@ const EventExplorer = ({
   advancedMetricsList = [], 
   playersList = [], 
   selectedSequence,
-  isSequenceMode = false
+  isSequenceMode = false,
+  onPlayVideo,
+  isVideoLoading = false
 }) => {
   const [selectedAction, setSelectedAction] = useState('ALL');
   const [sortOrder, setSortOrder] = useState('desc');
@@ -95,12 +97,28 @@ const EventExplorer = ({
     }
   };
 
+  const handlePlayFocusedVideo = async (event) => {
+    if (!event) return;
+    try {
+      if (onPlayVideo) {
+        const videoUrl = await onPlayVideo(event);
+        if (videoUrl) setActiveVideoUrl(videoUrl);
+        return;
+      }
+      console.log("Lecture vidéo pour l'événement :", event.id);
+    } catch (err) {
+      console.error("❌ Erreur génération clip:", err);
+    }
+  };
+
   const actualSequenceMode = isSequenceMode && data && Array.isArray(data.sequences);
 
   // États pour le Tooltip et Focus
   const [hoveredEvent, setHoveredEvent] = useState(null);
+  const [focusedEvent, setFocusedEvent] = useState(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [focusedEventId, setFocusedEventId] = useState(null);
+  const activeFocusedEventId = focusedEvent ? (focusedEvent.opta_id ?? focusedEvent.id) : focusedEventId;
 
   // HELPER : Extraction des coordonnées de fin
   const getEndCoordinates = (event) => {
@@ -249,16 +267,26 @@ const EventExplorer = ({
             </div>
           </div>
 
-          <PitchSVG loading={loading} hasData={displayData.length > 0 || isSequenceMode}>
+          <PitchSVG
+            loading={loading}
+            hasData={displayData.length > 0 || isSequenceMode}
+            onClearFocus={() => {
+              setFocusedEvent(null);
+              setFocusedEventId(null);
+              setHoveredEvent(null);
+            }}
+          >
             {isSequenceMode ? (
               <>
                 <BuildUpLayer 
                   displayData={displayData} 
-                  focusedEventId={focusedEventId} 
+                  focusedEventId={activeFocusedEventId} 
                   getEndCoordinates={getEndCoordinates}
                   setHoveredEvent={setHoveredEvent}
                   setMousePos={setMousePos}
                   selectedSequence={selectedSequence}
+                  setFocusedEvent={setFocusedEvent}
+                  setFocusedEventId={setFocusedEventId}
                 />
                 {!selectedSequence && (
                   <g>
@@ -274,18 +302,23 @@ const EventExplorer = ({
             ) : (
               <ExplorationLayer 
                 displayData={displayData} 
-                focusedEventId={focusedEventId} 
+                focusedEventId={activeFocusedEventId} 
                 getEndCoordinates={getEndCoordinates}
                 setHoveredEvent={setHoveredEvent}
                 setMousePos={setMousePos}
+                setFocusedEvent={setFocusedEvent}
+                setFocusedEventId={setFocusedEventId}
               />
             )}
           </PitchSVG>
 
           <EventTooltip 
             hoveredEvent={hoveredEvent} 
+            focusedEvent={focusedEvent}
             mousePos={mousePos} 
             globalPlayerMap={globalPlayerMap} 
+            onPlayVideo={handlePlayFocusedVideo}
+            isVideoLoading={isVideoLoading}
           />
 
           {(loading || (Array.isArray(data) ? data.length === 0 : (!data?.items?.length && !data?.sequences?.length))) && (
@@ -318,8 +351,14 @@ const EventExplorer = ({
                ((actualSequenceMode ? displayData[0]?.events : displayData) || []).slice(0, 100).map((e, i) => (
                   <div 
                     key={i} 
-                    onClick={() => setFocusedEventId(e.opta_id === focusedEventId ? null : e.opta_id)}
-                    className={`flex items-center justify-between py-2 border-b border-white/[0.03] hover:bg-[#3cffd0]/5 transition-colors px-6 group cursor-pointer ${e.opta_id === focusedEventId ? 'bg-[#3cffd0]/10 border-l-2 border-l-[#3cffd0]' : ''}`}
+                    onClick={() => {
+                      const eventId = e.opta_id ?? e.id;
+                      const nextFocused = eventId === activeFocusedEventId ? null : e;
+                      setFocusedEvent(nextFocused);
+                      setFocusedEventId(nextFocused ? eventId : null);
+                      setHoveredEvent(nextFocused);
+                    }}
+                    className={`flex items-center justify-between py-2 border-b border-white/[0.03] hover:bg-[#3cffd0]/5 transition-colors px-6 group cursor-pointer ${(e.opta_id ?? e.id) === activeFocusedEventId ? 'bg-[#3cffd0]/10 border-l-2 border-l-[#3cffd0]' : ''}`}
                   >
                    <div className="flex items-center gap-6 flex-1">
                      <span className="verge-label-mono text-[10px] text-[#3cffd0] font-black w-20 shrink-0">

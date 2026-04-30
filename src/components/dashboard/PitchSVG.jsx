@@ -1,7 +1,7 @@
 import React from 'react';
 import { FootballPitch } from './FootballPitch';
 
-export const PitchSVG = ({ children, loading, hasData }) => {
+export const PitchSVG = ({ children, loading, hasData, onClearFocus }) => {
   return (
     <div className="flex-1 min-h-0 bg-black/40 rounded-[2px] border border-white/5 p-8 shadow-inner relative flex items-center justify-center overflow-hidden">
       <div className="w-full h-full max-w-[1000px] max-h-[700px] relative">
@@ -11,7 +11,7 @@ export const PitchSVG = ({ children, loading, hasData }) => {
         />
         
         {!loading && hasData && (
-          <svg viewBox="0 0 105 68" className="absolute inset-0 w-full h-full">
+          <svg viewBox="0 0 105 68" className="absolute inset-0 w-full h-full" onClick={onClearFocus}>
             {children}
           </svg>
         )}

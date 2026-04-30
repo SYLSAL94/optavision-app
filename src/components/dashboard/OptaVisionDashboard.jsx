@@ -34,6 +34,7 @@ import { API_BASE_URL, OPTAVISION_API_URL } from '../../config';
 const OptaVisionDashboard = ({ user }) => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [isVideoLoading, setIsVideoLoading] = useState(false);
   const [error, setError] = useState(null);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(50);
@@ -128,6 +129,31 @@ const OptaVisionDashboard = ({ user }) => {
       setTotalEvents(0);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePlaySingleVideo = async (event) => {
+    const eventId = event?.opta_id || event?.id;
+    const matchId = event?.match_id || event?.matchId || explorationFilters.matches?.[0];
+
+    if (!matchId || !eventId) {
+      throw new Error("match_id et event_id requis pour générer la vidéo");
+    }
+
+    setIsVideoLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/optavision/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ match_id: matchId, event_id: eventId })
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.video_url) {
+        throw new Error(payload.detail || "Aucune URL vidéo retournée par l'API");
+      }
+      return payload.video_url;
+    } finally {
+      setIsVideoLoading(false);
     }
   };
 
@@ -416,6 +442,8 @@ const OptaVisionDashboard = ({ user }) => {
                             filters={explorationFilters}
                             advancedMetricsList={advancedMetricsList}
                             playersList={playersList}
+                            onPlayVideo={handlePlaySingleVideo}
+                            isVideoLoading={isVideoLoading}
                           />
                         </div>
                       ) : activeTool === 'sequences' ? (

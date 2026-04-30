@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const BuildUpLayer = ({ displayData, focusedEventId, getEndCoordinates, setHoveredEvent, setMousePos, selectedSequence }) => {
+export const BuildUpLayer = ({ displayData, focusedEventId, getEndCoordinates, setHoveredEvent, setMousePos, selectedSequence, setFocusedEvent, setFocusedEventId }) => {
   // Rendu Conditionnel Strict : Désactivation si aucune séquence n'est sélectionnée
   if (!selectedSequence || !displayData || displayData.length === 0) return null;
 
@@ -33,12 +33,13 @@ export const BuildUpLayer = ({ displayData, focusedEventId, getEndCoordinates, s
       </defs>
 
       {sequenceEvents.map((event, i) => {
+        const eventId = event.opta_id ?? event.id;
         const cx = (event.x / 100) * 105;
         const cy = ((100 - event.y) / 100) * 68;
         const isSuccess = event.outcome === 1 || event.outcome === 'Successful';
         const color = isSuccess ? '#3cffd0' : '#ff4d4d';
         const isCarry = event.type === 'Carry' || event.type_id === 99 || event.type_name === 'Carry';
-        const isFocused = event.opta_id === focusedEventId;
+        const isFocused = eventId === focusedEventId;
         
         const endCoords = getEndCoordinates(event);
         const endX = endCoords?.x;
@@ -55,12 +56,19 @@ export const BuildUpLayer = ({ displayData, focusedEventId, getEndCoordinates, s
           <g 
             key={`buildup-ev-${event.id || i}`} 
             className="cursor-help pointer-events-auto animate-in fade-in"
-            style={animationStyle}
+            style={{ ...animationStyle, opacity: focusedEventId && eventId !== focusedEventId ? 0.2 : 1 }}
             onMouseMove={(e) => {
               setHoveredEvent(event);
               setMousePos({ x: e.clientX, y: e.clientY });
             }}
             onMouseLeave={() => setHoveredEvent(null)}
+            onClick={(e) => {
+              e.stopPropagation();
+              setFocusedEvent(event);
+              setFocusedEventId(eventId);
+              setHoveredEvent(event);
+              setMousePos({ x: e.clientX, y: e.clientY });
+            }}
           >
             {/* Vecteurs de trajectoire */}
             {hasValidEnd && (
