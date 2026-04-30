@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
-import { Activity, Clock, Hash, Zap, TrendingUp } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Activity, Clock, Hash, Zap, TrendingUp, Loader2, X } from 'lucide-react';
 import EventExplorer from './EventExplorer';
 
-const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], advancedMetricsList = [], matchIds }) => {
+const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], advancedMetricsList = [], matchIds, onPlayVideo, isVideoLoading = false }) => {
   const [selectedSequence, setSelectedSequence] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [loadingSequenceId, setLoadingSequenceId] = useState(null);
+  const [activeVideoUrl, setActiveVideoUrl] = useState(null);
   const itemsPerPage = 5; // Nombre de séquences par page pour garder un layout aéré
   
   // Lecture pure des séquences du Back-End (Zéro-Calcul)
@@ -32,6 +34,19 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], advance
   React.useEffect(() => {
     setCurrentPage(1);
   }, [data]);
+
+  const handleSequenceVideo = async (seq) => {
+    if (!onPlayVideo) return;
+    setLoadingSequenceId(seq.id);
+    try {
+      const videoUrl = await onPlayVideo(seq);
+      if (videoUrl) setActiveVideoUrl(videoUrl);
+    } catch (err) {
+      console.error("❌ Erreur génération clip Build-Up:", err);
+    } finally {
+      setLoadingSequenceId(null);
+    }
+  };
 
 
   return (
@@ -68,12 +83,30 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], advance
                   style={{ opacity: Math.min(1, seq.threatScore * 10) }}
                 />
 
-                <div className="flex justify-between items-center mb-6">
-                   <div className="flex items-center gap-4">
-                      <span className="verge-label-mono text-[10px] text-[#949494] uppercase">SEQ #{seq.id.toString().slice(-4)}</span>
-                      <span className="verge-label-mono text-[11px] text-white font-black uppercase tracking-tight">{seq.teamName}</span>
+                <div className="flex justify-between items-start gap-4 mb-6">
+                   <div className="flex items-center gap-4 min-w-0 flex-1">
+                      <span className="verge-label-mono text-[10px] text-[#949494] uppercase shrink-0">SEQ #{seq.id.toString().slice(-4)}</span>
+                      <span className="verge-label-mono text-[11px] text-white font-black uppercase tracking-tight truncate min-w-0">{seq.teamName}</span>
                    </div>
-                   <div className="flex items-center gap-2">
+                   <div className="flex items-center gap-3 shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSequenceVideo(seq);
+                        }}
+                        disabled={loadingSequenceId !== null}
+                        className="min-w-[104px] bg-sky-500 hover:bg-sky-400 disabled:bg-sky-900 disabled:text-sky-200 text-white font-bold py-1.5 px-3 rounded text-center cursor-pointer disabled:cursor-wait transition-colors text-[10px] leading-tight flex items-center justify-center gap-1.5"
+                      >
+                        {loadingSequenceId === seq.id ? (
+                          <>
+                            <Loader2 size={12} className="animate-spin" />
+                            Découpe...
+                          </>
+                        ) : (
+                          "🎬 Lancer"
+                        )}
+                      </button>
                       <TrendingUp size={14} className="text-[#3cffd0]" />
                       <span className="verge-label-mono text-xl font-black text-[#3cffd0]">{seq.threatScore.toFixed(3)}</span>
                    </div>
@@ -151,6 +184,8 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], advance
               loading={loading} 
               playersList={playersList} 
               advancedMetricsList={advancedMetricsList} 
+              onPlayVideo={onPlayVideo}
+              isVideoLoading={isVideoLoading}
             />
          </div>
          
@@ -186,6 +221,44 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], advance
              </div>
           </div>
       </div>
+      <AnimatePresence>
+        {activeVideoUrl && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 md:p-12"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="relative w-full max-w-6xl bg-[#1a1a1a] border border-white/10 rounded-xl overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.8)]"
+            >
+              <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center z-10 bg-gradient-to-b from-black/80 to-transparent">
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                  <span className="verge-label-mono text-[10px] text-white font-black uppercase tracking-[0.2em]">Build-Up Video Feed</span>
+                </div>
+                <button
+                  onClick={() => setActiveVideoUrl(null)}
+                  className="w-10 h-10 flex items-center justify-center bg-white/10 hover:bg-red-500 rounded-full text-white transition-all group"
+                >
+                  <X size={20} className="group-hover:rotate-90 transition-transform" />
+                </button>
+              </div>
+              <div className="aspect-video bg-black flex items-center justify-center">
+                <video
+                  src={activeVideoUrl}
+                  controls
+                  autoPlay
+                  className="w-full h-full object-contain"
+                />
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

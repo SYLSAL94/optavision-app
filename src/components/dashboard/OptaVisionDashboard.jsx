@@ -133,8 +133,25 @@ const OptaVisionDashboard = ({ user }) => {
   };
 
   const handlePlaySingleVideo = async (event) => {
-    const eventId = event?.opta_id || event?.id;
-    const matchId = event?.match_id || event?.matchId || explorationFilters.matches?.[0];
+    const isSequence = Array.isArray(event?.events) && event.events.length > 0;
+    const targetEvent = isSequence
+      ? event.events[0]
+      : event;
+    const eventId = targetEvent?.opta_id || targetEvent?.id;
+    const matchId = targetEvent?.match_id || targetEvent?.matchId || event?.match_id || event?.matchId || explorationFilters.matches?.[0];
+    const parseClock = (value) => {
+      if (!value) return null;
+      const match = String(value).match(/(\d+)'(\d+)/);
+      return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+    };
+    const firstSequenceEvent = isSequence ? event.events[0] : null;
+    const lastSequenceEvent = isSequence ? event.events[event.events.length - 1] : null;
+    const sequenceStartSeconds = isSequence
+      ? (parseClock(event.start_time) ?? (Number(firstSequenceEvent?.min ?? firstSequenceEvent?.minute ?? 0) * 60 + Number(firstSequenceEvent?.sec ?? firstSequenceEvent?.second ?? 0)))
+      : null;
+    const sequenceEndSeconds = isSequence
+      ? (parseClock(event.end_time) ?? (Number(lastSequenceEvent?.min ?? lastSequenceEvent?.minute ?? 0) * 60 + Number(lastSequenceEvent?.sec ?? lastSequenceEvent?.second ?? 0)))
+      : null;
 
     if (!matchId || !eventId) {
       throw new Error("match_id et event_id requis pour générer la vidéo");
@@ -142,10 +159,21 @@ const OptaVisionDashboard = ({ user }) => {
 
     setIsVideoLoading(true);
     try {
+      const requestPayload = {
+        match_id: matchId,
+        event_id: eventId,
+        ...(isSequence ? {
+          event_ids: event.events.map((item) => item.opta_id || item.id).filter(Boolean),
+          sequence_id: event.sub_sequence_id || event.seq_uuid || event.id,
+          sequence_start_seconds: sequenceStartSeconds,
+          sequence_end_seconds: sequenceEndSeconds,
+        } : {})
+      };
+
       const response = await fetch(`${API_BASE_URL}/api/optavision/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ match_id: matchId, event_id: eventId })
+        body: JSON.stringify(requestPayload)
       });
       const payload = await response.json();
       if (!response.ok || !payload.video_url) {
@@ -453,6 +481,8 @@ const OptaVisionDashboard = ({ user }) => {
                           matchIds={explorationFilters.matches}
                           playersList={playersList}
                           advancedMetricsList={advancedMetricsList}
+                          onPlayVideo={handlePlaySingleVideo}
+                          isVideoLoading={isVideoLoading}
                         />
                       ) : activeTool === 'shots' ? (
                         <ShotMapExplorer data={data} loading={loading} />
