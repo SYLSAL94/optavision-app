@@ -12,9 +12,12 @@ import {
   ArrowUpDown,
   Filter,
   Layers,
-  ShieldAlert
+  ShieldAlert,
+  Play,
+  Loader2
 } from 'lucide-react';
 
+import { API_BASE_URL } from '../../config';
 import { PitchSVG } from './PitchSVG';
 import { BuildUpLayer } from './BuildUpLayer';
 import { ExplorationLayer } from './ExplorationLayer';
@@ -63,6 +66,31 @@ const EventExplorer = ({
   const [isSelectOpen, setIsSelectOpen] = useState(false);
   const [page, setPage] = useState(1);
   const itemsPerPage = 10;
+  const [generatingEventId, setGeneratingEventId] = useState(null);
+
+  const handleGenerateClip = async (e, event) => {
+    e.stopPropagation();
+    const eventId = event.opta_id || event.id;
+    const matchId = event.match_id || event.matchId || matchIds?.[0];
+    
+    if (!matchId || !eventId) return;
+
+    setGeneratingEventId(eventId);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/optavision/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ match_id: matchId, event_id: eventId })
+      });
+      if (response.ok) {
+        // Optionnel : Notification de succès
+      }
+    } catch (err) {
+      console.error("❌ Erreur génération clip:", err);
+    } finally {
+      setGeneratingEventId(null);
+    }
+  };
 
   const actualSequenceMode = isSequenceMode && data && Array.isArray(data.sequences);
 
@@ -301,7 +329,20 @@ const EventExplorer = ({
                        {e.playerName || globalPlayerMap[e.player_id] || e.player_id}
                      </span>
                    </div>
-                   <div className="verge-label-mono text-[8px] text-[#2d2d2d] group-hover:text-[#3cffd0] transition-colors font-black shrink-0">ID:{e.opta_id || e.id}</div>
+                   <div className="flex items-center gap-4 shrink-0">
+                      <div className="verge-label-mono text-[8px] text-[#2d2d2d] group-hover:text-[#3cffd0] transition-colors font-black">ID:{e.opta_id || e.id}</div>
+                      <button 
+                        onClick={(evt) => handleGenerateClip(evt, e)}
+                        disabled={generatingEventId === (e.opta_id || e.id)}
+                        className={`w-8 h-8 flex items-center justify-center rounded-full border transition-all ${generatingEventId === (e.opta_id || e.id) ? 'bg-[#3cffd0]/20 border-[#3cffd0]' : 'border-white/10 hover:border-[#3cffd0] hover:bg-[#3cffd0] hover:text-black text-[#949494]'}`}
+                      >
+                        {generatingEventId === (e.opta_id || e.id) ? (
+                          <Loader2 size={12} className="animate-spin text-[#3cffd0]" />
+                        ) : (
+                          <Play size={12} fill="currentColor" />
+                        )}
+                      </button>
+                    </div>
                  </div>
                ))
              ) : (
