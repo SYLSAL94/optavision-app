@@ -11,18 +11,24 @@ import {
   Database,
   ArrowUpDown,
   Filter,
-  Layers
+  Layers,
+  ShieldAlert
 } from 'lucide-react';
-import { FootballPitch } from './FootballPitch';
+
+import { PitchSVG } from './PitchSVG';
+import { BuildUpLayer } from './BuildUpLayer';
+import { ExplorationLayer } from './ExplorationLayer';
+import { EventTooltip } from './EventTooltip';
 
 const ACTION_TYPES = [
+  { id: 'ALL', label: 'Toutes les actions', icon: <Layers size={14} />, color: '#ffffff' },
   { id: 'Pass', label: 'Passes', icon: <Activity size={14} />, color: '#3cffd0' },
   { id: 'BallReceipt', label: 'Réceptions', icon: <ChevronRight size={14} />, color: '#ffd03c' },
   { id: 'Shot', label: 'Tirs', icon: <Target size={14} />, color: '#ff4d4d' },
-  { id: 'Duel', label: 'Duels', icon: <Layers size={14} />, color: '#5200ff' },
+  { id: 'TakeOn', label: 'Dribbles (TakeOn)', icon: <Layers size={14} />, color: '#5200ff' },
   { id: 'Interception', label: 'Interceptions', icon: <Database size={14} />, color: '#ffd03c' },
+  { id: 'Tackle', label: 'Tacles', icon: <ShieldAlert size={14} />, color: '#5200ff' },
 ];
-
 
 const RankBadge = ({ rank }) => {
   if (rank === 1) return (
@@ -50,48 +56,41 @@ const EventExplorer = ({
   advancedMetricsList = [], 
   playersList = [], 
   selectedSequence,
-  isSequenceMode = false 
+  isSequenceMode = false
 }) => {
-  const [selectedAction, setSelectedAction] = useState('Pass');
+  const [selectedAction, setSelectedAction] = useState('ALL');
   const [sortOrder, setSortOrder] = useState('desc');
   const [isSelectOpen, setIsSelectOpen] = useState(false);
   const [page, setPage] = useState(1);
   const itemsPerPage = 10;
 
-  // États pour le Tooltip Premium
+  const actualSequenceMode = isSequenceMode && data && Array.isArray(data.sequences);
+
+  // États pour le Tooltip et Focus
   const [hoveredEvent, setHoveredEvent] = useState(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [focusedEventId, setFocusedEventId] = useState(null);
 
-  // HELPER : Extraction robuste des coordonnées de fin (Audit Carries & Trajectoires)
+  // HELPER : Extraction des coordonnées de fin
   const getEndCoordinates = (event) => {
     let metrics = event.advanced_metrics || {};
     if (typeof metrics === 'string') {
       try { metrics = JSON.parse(metrics); } catch (e) { metrics = {}; }
     }
-    
-    // 1. Priorité aux métriques enrichies (Polymorphisme end_x/endX)
     const ex = metrics.end_x ?? metrics.endX ?? event.end_x ?? event.endX;
     const ey = metrics.end_y ?? metrics.endY ?? event.end_y ?? event.endY;
     
     if (ex !== undefined && ey !== undefined && ex !== null && ey !== null) {
       return { x: parseFloat(ex), y: parseFloat(ey) };
     }
-    
-    // 2. Fallback Qualifiers Opta (140/141 ou 212/213)
     const quals = event.qualifiers || [];
     if (Array.isArray(quals)) {
       const qX = quals.find(q => [140, 212].includes(Number(q.type_id || q.id)));
       const qY = quals.find(q => [141, 213].includes(Number(q.type_id || q.id)));
-      if (qX && qY) {
-        return { x: parseFloat(qX.value), y: parseFloat(qY.value) };
-      }
+      if (qX && qY) return { x: parseFloat(qX.value), y: parseFloat(qY.value) };
     }
-    
     return null;
   };
-
-
 
   const combinedActions = useMemo(() => {
     const advanced = advancedMetricsList.map(tag => ({
@@ -103,104 +102,74 @@ const EventExplorer = ({
     return [...ACTION_TYPES, ...advanced];
   }, [advancedMetricsList]);
 
-  // Suppression de la détection automatique pour forcer l'Isolation Spatiale via Props
-  // const isSequenceMode = data && Array.isArray(data.sequences);
-
   const displayData = useMemo(() => {
     if (isSequenceMode) {
-      if (!selectedSequence || !data.sequences) return [];
-      return data.sequences.filter(seq => seq.seq_uuid === selectedSequence);
+      if (!selectedSequence || !data?.sequences) return [];
+      return data.sequences.filter(seq => seq.seq_uuid === selectedSequence || seq.sub_sequence_id === selectedSequence);
     }
-
     const baseData = Array.isArray(data) ? data : (data?.items || []);
     let filtered = baseData.filter(e => e.type !== 'Out' && e.type_id !== 5);
 
-    // Câblage du filtre visuel interactif (Mission Lead Data)
     if (selectedAction && selectedAction !== 'ALL') {
+      const normalizedSelected = String(selectedAction).replace(/\s+/g, '').toLowerCase();
       filtered = filtered.filter(event => {
         if (selectedAction.startsWith('is_') || selectedAction.startsWith('seq_')) {
-          let metrics = event.advanced_metrics;
-          if (typeof metrics === 'string') {
-            try { metrics = JSON.parse(metrics); } catch(e) { metrics = {}; }
-          }
-          return metrics?.[selectedAction] === true || metrics?.[selectedAction] === 'true';
+          let m = event.advanced_metrics;
+          if (typeof m === 'string') try { m = JSON.parse(m); } catch(e) { m = {}; }
+          return m?.[selectedAction] === true || m?.[selectedAction] === 'true';
         }
-        return event.type === selectedAction || String(event.type_id) === String(selectedAction);
+        const eventType = event.type_name || event.type || String(event.type_id || '');
+        const normalizedEvent = String(eventType).replace(/\s+/g, '').toLowerCase();
+        return normalizedEvent === normalizedSelected || String(event.type_id) === String(selectedAction);
       });
     }
-    
     const { localTeam, localOpponent } = filters || {};
-    
     if (localTeam && localTeam !== 'ALL') {
-      filtered = filtered.filter(e => e.team_id === localTeam);
+      filtered = filtered.filter(e => String(e.team_id) === String(localTeam));
     }
-    
     if (localOpponent && localOpponent !== 'ALL') {
-      // Logique Adversaire : On affiche les actions de l'autre équipe
-      filtered = filtered.filter(e => e.team_id !== localOpponent);
+      filtered = filtered.filter(e => String(e.team_id) !== String(localOpponent));
     }
-    
     return filtered;
   }, [data, filters, isSequenceMode, selectedSequence, selectedAction]);
 
-
-
-  // DICTIONNAIRES DE MAPPING DYNAMIQUE (Auto-résolution des IDs en noms explicites)
   const globalPlayerMap = useMemo(() => {
     const map = {};
     if (playersList && Array.isArray(playersList)) {
-      playersList.forEach(p => { 
-        map[String(p.id || p.player_id)] = p.name || p.shortName || p.id; 
-      });
+      playersList.forEach(p => { map[String(p.id || p.player_id)] = p.name || p.shortName || p.id; });
     }
     return map;
   }, [playersList]);
 
   const matchMap = useMemo(() => {
     const map = {};
-    if (!isSequenceMode && Array.isArray(data)) {
-      data.forEach(e => {
+    const base = Array.isArray(data) ? data : (data?.items || []);
+    if (Array.isArray(base)) {
+      base.forEach(e => {
         const mId = e.match_id || e.matchId;
         if (mId && e.matchName) map[mId] = e.matchName;
       });
     }
     return map;
-  }, [data, isSequenceMode]);
+  }, [data]);
 
-
-
-  const teamMap = useMemo(() => {
-    const map = {};
-    if (!isSequenceMode && Array.isArray(data)) {
-      data.forEach(e => {
-        if (e.team_id) map[e.team_id] = e.teamName || `Team ${e.team_id}`;
-      });
-    }
-    return map;
-  }, [data, isSequenceMode]);
-
-  const teamList = Object.keys(teamMap);
-
-  // Calcul du classement des joueurs basé sur l'action sélectionnée dans le sélecteur DROIT
   const playerRanking = useMemo(() => {
-    if (isSequenceMode || !displayData || displayData.length === 0) return [];
-
+    if (actualSequenceMode || !displayData || displayData.length === 0) return [];
     const counts = {};
     const playerTeams = {};
+    const normalizedSelected = String(selectedAction).replace(/\s+/g, '').toLowerCase();
 
     displayData.forEach(event => {
       let isMatch = false;
-      
       if (selectedAction.startsWith('is_') || selectedAction.startsWith('seq_')) {
-        let parsedMetrics = event.advanced_metrics;
-        if (typeof parsedMetrics === 'string') {
-          try { parsedMetrics = JSON.parse(parsedMetrics); } catch(e) { parsedMetrics = {}; }
-        }
-        isMatch = parsedMetrics?.[selectedAction] === true || parsedMetrics?.[selectedAction] === 'true';
+        let m = event.advanced_metrics;
+        if (typeof m === 'string') try { m = JSON.parse(m); } catch(e) { m = {}; }
+        isMatch = m?.[selectedAction] === true || m?.[selectedAction] === 'true';
       } else {
-        isMatch = event.type === selectedAction || event.type_id === selectedAction;
+        const eventType = event.type_name || event.type || String(event.type_id || '');
+        const normalizedEvent = String(eventType).replace(/\s+/g, '').toLowerCase();
+        isMatch = normalizedEvent === normalizedSelected || String(event.type_id) === String(selectedAction);
       }
-
       if (isMatch) {
         const playerName = event.playerName || event.player_id;
         if (playerName && playerName !== 'N/A') {
@@ -209,59 +178,31 @@ const EventExplorer = ({
         }
       }
     });
-
     return Object.entries(counts)
-      .map(([name, count]) => ({
-        name,
-        count,
-        team: playerTeams[name],
-      }))
+      .map(([name, count]) => ({ name, count, team: playerTeams[name] }))
       .sort((a, b) => sortOrder === 'desc' ? b.count - a.count : a.count - b.count)
       .map(p => ({ ...p, count: typeof p.count === 'number' && !Number.isInteger(p.count) ? p.count.toFixed(3) : p.count }));
-  }, [displayData, selectedAction, sortOrder, isSequenceMode]);
+  }, [displayData, selectedAction, sortOrder, actualSequenceMode]);
 
-  const totalPages = isSequenceMode ? 0 : Math.ceil(playerRanking.length / itemsPerPage);
-  const paginatedRanking = isSequenceMode ? [] : playerRanking.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+  const totalPages = actualSequenceMode ? 0 : Math.ceil(playerRanking.length / itemsPerPage);
+  const paginatedRanking = actualSequenceMode ? [] : playerRanking.slice((page - 1) * itemsPerPage, page * itemsPerPage);
 
-  // Reset de la pagination en cas de changement de filtre
-  React.useEffect(() => {
-    setPage(1);
-  }, [selectedAction, sortOrder, displayData]);
-
-  // SONDE DE DÉBOGAGE (Mission Architecte)
-  const sequenceToDraw = isSequenceMode ? (data.sequences?.find(s => s.seq_uuid === selectedSequence)) : null;
-  const firstSequenceEvents = sequenceToDraw?.events || [];
-  const pureProgressionEventsProbe = firstSequenceEvents.filter(e => 
-    String(e.team_id) === String(sequenceToDraw?.team_id) && 
-    (Number(e.type_id) === 1 || ['Pass', 'Carry', 'Shot'].includes(e.type_name))
-  );
-
-  console.log("🚨 DEBUG ISOLATION :", { 
-    selectedSequence, 
-    sequenceFound: !!sequenceToDraw, 
-    eventsCount: pureProgressionEventsProbe.length,
-    rawEvents: firstSequenceEvents.length 
-  });
+  React.useEffect(() => { setPage(1); }, [selectedAction, sortOrder, displayData]);
 
   return (
     <div className="flex h-full w-full gap-8 animate-in fade-in zoom-in-95 duration-500 overflow-hidden">
       
-      {/* ZONE CENTRALE : TERRAIN TACTIQUE */}
       <div className="flex-1 flex flex-col gap-8 min-w-0">
         <div className="bg-[#1a1a1a] border border-white/10 rounded-[4px] p-8 flex flex-col gap-6 relative overflow-hidden group flex-1">
           <div className="absolute inset-0 bg-gradient-to-b from-[#3cffd0]/2 to-transparent pointer-events-none" />
           
-          {/* Corner Markers (Scouting Style) */}
-          <div className="absolute top-0 right-0 w-8 h-8 border-t border-r border-white/5 pointer-events-none" />
-          <div className="absolute bottom-0 left-0 w-8 h-8 border-b border-l border-white/5 pointer-events-none" />
-
           <div className="flex justify-between items-center relative z-10 border-b border-white/5 pb-6">
             <div className="flex items-center gap-6">
               <div className="w-1 h-8 bg-[#3cffd0]" />
               <div>
                 <h3 className="verge-h3 text-white uppercase tracking-tighter font-black">Visualisation Spatiale</h3>
                 <p className="verge-label-mono text-[9px] text-[#3cffd0] uppercase tracking-[0.3em] font-bold mt-1">
-                  Aperçu tactique des {selectedAction === 'Pass' ? 'Passes' : selectedAction + 's'} ({displayData.length} sélectionnés)
+                  {selectedAction} ANALYSIS ({displayData.length} SELECTED)
                 </p>
               </div>
             </div>
@@ -270,571 +211,171 @@ const EventExplorer = ({
               <div className="px-5 py-2.5 bg-black border border-white/10 rounded-[2px] verge-label-mono text-[10px] text-[#949494] font-black tracking-widest">
                 SESSION: <span className="text-[#3cffd0]">
                   {Array.isArray(matchIds) && matchIds.length > 1 
-                    ? `${matchIds.length} MATCHS (CROSS-ANALYSIS)` 
+                    ? `${matchIds.length} MATCHS` 
                     : (matchMap[matchIds?.[0]] || matchIds?.[0] || 'ANALYST_PRO')}
                 </span>
               </div>
             </div>
-
-
           </div>
 
-          {/* Terrain Svg */}
-          <div className="flex-1 min-h-0 bg-black/40 rounded-[2px] border border-white/5 p-8 shadow-inner relative flex items-center justify-center overflow-hidden">
-             <div className="w-full h-full max-w-[1000px] max-h-[700px] relative">
-               <FootballPitch 
-                  orientation="horizontal" 
-                  style={{ grass: 'transparent', line: 'rgba(255,255,255,0.08)', background: 'transparent' }} 
-               />
-               
-                {/* Affichage des points (Events) sur le terrain avec SCALING CORRECT & RENDU CONDITIONNEL */}
-                {!loading && displayData.length > 0 && (
-                  <svg viewBox="0 0 105 68" className="absolute inset-0 w-full h-full">
-                    {isSequenceMode ? (
-                      displayData.map((seq, seqIdx) => {
-                        const pureProgressionEvents = seq.events?.filter(e => {
-                           const isSameTeam = String(e.team_id) === String(seq.team_id);
-                           const isProgression = [1, 10, 13, 14, 15, 16, 99].includes(Number(e.type_id)) || 
-                                                ['Pass', 'Carry', 'Shot', 'Goal', 'SavedShot', 'MissedShots'].includes(e.type_name);
-                           return isSameTeam && isProgression;
-                        }) || [];
-
-                        // Debug Audit (Mission Lead Data)
-                        if (seqIdx === 0) console.log("BuildUp Sequence Audit:", { seqId: seq.sub_sequence_id, teamId: seq.team_id, eventsCount: seq.events?.length, filteredCount: pureProgressionEvents.length });
-
-                        return (
-                          <g key={`seq-${seq.sub_sequence_id || seqIdx}`}>
-                            {pureProgressionEvents.map((event, i) => {
-                            const cx = (event.x / 100) * 105;
-                            const cy = ((100 - event.y) / 100) * 68; // Inversion Y pour standard Opta (y=0 à droite/bas)
-                            const isSuccess = event.outcome === 1 || event.outcome === 'Successful';
-                            const color = isSuccess ? '#3cffd0' : '#ff4d4d'; // Vert/Cyan pour succès, Rouge pour échec
-                            const opacity = isSuccess ? 0.9 : 0.4;
-                            let parsedMetrics = event.advanced_metrics;
-                            if (typeof parsedMetrics === 'string') {
-                              try { parsedMetrics = JSON.parse(parsedMetrics); } catch(e) { parsedMetrics = {}; }
-                            }
-                            
-                            const endCoords = getEndCoordinates(event);
-                            const endX = endCoords?.x;
-                            const endY = endCoords?.y;
-                            const hasValidEnd = endCoords !== null;
-
-                            return (
-                              <g 
-                                key={`ev-${event.id || i}`} 
-                                className="cursor-help pointer-events-auto animate-in fade-in fill-mode-backwards"
-                                style={{ animationDelay: `${i * 0.4}s` }}
-                                onMouseMove={(e) => {
-                                  setHoveredEvent(event);
-                                  setMousePos({ x: e.clientX, y: e.clientY });
-                                }}
-                                >
-                                  {/* Trajectoire (Ligne) - Rendu Conditionnel Strict */}
-                                {hasValidEnd && (
-                                  <line 
-                                    x1={cx} y1={cy} 
-                                    x2={(endX / 100) * 105} 
-                                    y2={((100 - endY) / 100) * 68} 
-                                    stroke={event.opta_id === focusedEventId ? "#fbbf24" : (event.type === 'Carry' || event.type_id === 99 || event.type_name === 'Carry' ? '#5200ff' : color)} 
-                                    strokeWidth={event.opta_id === focusedEventId ? "0.8" : (event.type === 'Carry' || event.type_id === 99 || event.type_name === 'Carry' ? "0.4" : "0.2")} 
-                                    strokeOpacity={event.opta_id === focusedEventId ? 1 : opacity * 0.9}
-                                    strokeDasharray={event.type === 'Carry' || event.type_id === 99 || event.type_name === 'Carry' ? "5,5" : (isSuccess ? "none" : "1,1")}
-                                    className={`animate-in fade-in duration-500 fill-mode-backwards ${event.opta_id === focusedEventId ? 'animate-pulse' : ''}`}
-                                    style={{ animationDelay: `${i * 0.4 + 0.1}s` }}
-                                  />
-                                )}
-
-                                {/* Forme de l'action */}
-                                {event.type === 'Shot' || event.type === 'Goal' ? (
-                                  <circle 
-                                    cx={cx} cy={cy} r={event.opta_id === focusedEventId ? "3" : "1.4"} 
-                                    fill={event.opta_id === focusedEventId ? "#fbbf24" : color} fillOpacity={opacity}
-                                    stroke="white" strokeWidth={event.opta_id === focusedEventId ? "0.4" : "0.2"}
-                                    className={`animate-in fade-in zoom-in duration-300 fill-mode-backwards ${event.opta_id === focusedEventId ? 'animate-pulse' : ''}`}
-                                    style={{ animationDelay: `${i * 0.4}s` }}
-                                  />
-                                ) : event.type === 'Carry' ? (
-                                  <rect 
-                                    x={cx - (event.opta_id === focusedEventId ? 1.5 : 0.7)} 
-                                    y={cy - (event.opta_id === focusedEventId ? 1.5 : 0.7)} 
-                                    width={event.opta_id === focusedEventId ? "3" : "1.4"} 
-                                    height={event.opta_id === focusedEventId ? "3" : "1.4"}
-                                    fill={event.opta_id === focusedEventId ? "#fbbf24" : color} fillOpacity={opacity}
-                                    transform={`rotate(45, ${cx}, ${cy})`}
-                                    className={`animate-in fade-in zoom-in duration-300 fill-mode-backwards ${event.opta_id === focusedEventId ? 'animate-pulse' : ''}`}
-                                    style={{ animationDelay: `${i * 0.4}s` }}
-                                  />
-                                ) : (
-                                  <circle 
-                                    cx={cx} cy={cy} r={event.opta_id === focusedEventId ? "2" : "0.7"} 
-                                    fill={event.opta_id === focusedEventId ? "#fbbf24" : color} fillOpacity={opacity}
-                                    stroke={event.opta_id === focusedEventId ? "white" : "none"} strokeWidth="0.2"
-                                    className={`animate-in fade-in zoom-in duration-300 fill-mode-backwards ${event.opta_id === focusedEventId ? 'animate-pulse' : ''}`}
-                                    style={{ animationDelay: `${i * 0.4}s` }}
-                                  />
-                                )}
-
-                                {/* NUMÉROTATION CHRONOLOGIQUE (Build-Up Analysis) */}
-                                <text 
-                                  x={cx} y={cy - 1.2} 
-                                  textAnchor="middle"
-                                  alignmentBaseline="central"
-                                  fontSize="0.6" 
-                                  fill="white" 
-                                  fontWeight="900" 
-                                  className="pointer-events-none animate-in fade-in duration-700"
-                                  style={{ 
-                                    animationDelay: `${i * 0.4 + 0.3}s`,
-                                    fontSize: '0.6px',
-                                    textShadow: '0px 0px 1px black'
-                                  }}
-                                >
-                                  {i + 1}
-                                </text>
-                              </g>
-                            );
-                          })}
-                          </g>
-                        );
-                      })
-                    ) : (
-                    displayData.slice(0, 1000).map((event, i) => {
-                    const cx = (event.x / 100) * 105;
-                    const cy = ((100 - event.y) / 100) * 68; // Inversion Y pour standard Opta (y=0 à droite/bas)
-                    const isSuccess = event.outcome === 1;
-                    const color = isSuccess ? '#3cffd0' : '#ff4d4d'; // Vert/Cyan pour succès, Rouge pour échec
-                    const opacity = isSuccess ? 0.9 : 0.4;
-                    let parsedMetrics = event.advanced_metrics;
-                    if (typeof parsedMetrics === 'string') {
-                      try { parsedMetrics = JSON.parse(parsedMetrics); } catch(e) { parsedMetrics = {}; }
-                    }
-                    
-                    const displayType = parsedMetrics?.type_name || event.type || event.type_id;
-                    const receiverId = parsedMetrics?.receiver || event.receiver || event.receiverName || 'N/A';
-                    
-                    // Résolution des noms explicites
-                    const receiverName = globalPlayerMap[receiverId] || receiverId;
-                    const currentMatchId = event.match_id || (typeof matchId === 'string' ? matchId : matchId?.match_id);
-                    const finalMatchName = matchMap[currentMatchId] || currentMatchId || 'ANALYST_PRO';
-                    
-                    // 3. Vérification de type stricte (Mission Lead Data)
-                    const endCoords = getEndCoordinates(event);
-                    const endX = endCoords?.x;
-                    const endY = endCoords?.y;
-                    const hasValidEnd = endCoords !== null;
-
-                      return (
-                        <g 
-                          key={i} 
-                          className="cursor-help pointer-events-auto"
-                          onMouseMove={(e) => {
-                            setHoveredEvent(event);
-                            setMousePos({ x: e.clientX, y: e.clientY });
-                          }}
-                          onMouseLeave={() => setHoveredEvent(null)}
-                        >
-                          {/* Trajectoire (Ligne) - Rendu Conditionnel Strict */}
-                          {hasValidEnd && (
-                            <line 
-                              x1={cx} y1={cy} 
-                              x2={(endX / 100) * 105} 
-                              y2={((100 - endY) / 100) * 68} 
-                              stroke={event.opta_id === focusedEventId ? "#fbbf24" : (event.type === 'Carry' || event.type_id === 99 || event.type_name === 'Carry' ? '#5200ff' : color)} 
-                              strokeWidth={event.opta_id === focusedEventId ? "0.8" : (event.type === 'Carry' || event.type_id === 99 || event.type_name === 'Carry' ? "0.4" : "0.2")} 
-                              strokeOpacity={event.opta_id === focusedEventId ? 1 : opacity * 0.9}
-                              strokeDasharray={event.type === 'Carry' || event.type_id === 99 || event.type_name === 'Carry' ? "5,5" : (isSuccess ? "none" : "1,1")}
-                              className={`animate-in fade-in duration-500 ${event.opta_id === focusedEventId ? 'animate-pulse' : ''}`}
-                            />
-                          )}
-
-                          {/* Forme de l'action */}
-                          {event.type === 'Shot' || event.type === 'Goal' ? (
-                            <circle 
-                              cx={cx} cy={cy} r={event.opta_id === focusedEventId ? "3" : "1.4"} 
-                              fill={event.opta_id === focusedEventId ? "#fbbf24" : color} fillOpacity={opacity}
-                              stroke="white" strokeWidth={event.opta_id === focusedEventId ? "0.4" : "0.2"}
-                              className={`animate-in fade-in zoom-in duration-300 ${event.opta_id === focusedEventId ? 'animate-pulse' : ''}`}
-                            />
-                          ) : event.type === 'Carry' ? (
-                            <rect 
-                              x={cx - (event.opta_id === focusedEventId ? 1.5 : 0.7)} 
-                              y={cy - (event.opta_id === focusedEventId ? 1.5 : 0.7)} 
-                              width={event.opta_id === focusedEventId ? "3" : "1.4"} 
-                              height={event.opta_id === focusedEventId ? "3" : "1.4"}
-                              fill={event.opta_id === focusedEventId ? "#fbbf24" : color} fillOpacity={opacity}
-                              transform={`rotate(45, ${cx}, ${cy})`}
-                              className={`animate-in fade-in zoom-in duration-300 ${event.opta_id === focusedEventId ? 'animate-pulse' : ''}`}
-                            />
-                          ) : (
-                            <circle 
-                              cx={cx} cy={cy} r={event.opta_id === focusedEventId ? "2" : "0.7"} 
-                              fill={event.opta_id === focusedEventId ? "#fbbf24" : color} fillOpacity={opacity}
-                              stroke={event.opta_id === focusedEventId ? "white" : "none"} strokeWidth="0.2"
-                              className={`animate-in fade-in zoom-in duration-300 ${event.opta_id === focusedEventId ? 'animate-pulse' : ''}`}
-                            />
-                          )}
-                        </g>
-                      );
-                    }))}
-                  </svg>
+          <PitchSVG loading={loading} hasData={displayData.length > 0 || isSequenceMode}>
+            {isSequenceMode ? (
+              <>
+                <BuildUpLayer 
+                  displayData={displayData} 
+                  focusedEventId={focusedEventId} 
+                  getEndCoordinates={getEndCoordinates}
+                  setHoveredEvent={setHoveredEvent}
+                  setMousePos={setMousePos}
+                  selectedSequence={selectedSequence}
+                />
+                {!selectedSequence && (
+                  <g>
+                    <text x="52.5" y="30" textAnchor="middle" fill="#3cffd0" fontSize="2" fontWeight="900" className="animate-pulse uppercase tracking-widest">
+                      AUCUNE SÉQUENCE SÉLECTIONNÉE
+                    </text>
+                    <text x="52.5" y="34" textAnchor="middle" fill="#949494" fontSize="1.2" className="uppercase tracking-wider">
+                      Veuillez appliquer un filtre dans le panneau latéral gauche
+                    </text>
+                  </g>
                 )}
-             </div>
-             
-             {/* Tooltip Premium (HTML flottant) */}
-             {hoveredEvent && (
-               <div 
-                 style={{ left: mousePos.x + 15, top: mousePos.y + 15 }} 
-                 className="fixed z-50 w-64 p-3 rounded-lg shadow-2xl backdrop-blur-xl bg-[#131313]/95 border border-slate-700 text-white pointer-events-none text-xs flex flex-col gap-2"
-               >
-                 {(() => {
-                    let parsed = hoveredEvent.advanced_metrics;
-                    if (typeof parsed === 'string') {
-                      try { parsed = JSON.parse(parsed); } catch(e) { parsed = {}; }
-                    }
-                    const typeName = parsed?.type_name || hoveredEvent.type || hoveredEvent.type_id;
-                    const typeStr = String(typeName);
-                    
-                    const getPlayerName = (id) => {
-                      if (!id) return null;
-                      const strId = String(id);
-                      const mapped = globalPlayerMap[strId];
-                      return mapped?.name || mapped?.shortName || mapped || strId;
-                    };
+              </>
+            ) : (
+              <ExplorationLayer 
+                displayData={displayData} 
+                focusedEventId={focusedEventId} 
+                getEndCoordinates={getEndCoordinates}
+                setHoveredEvent={setHoveredEvent}
+                setMousePos={setMousePos}
+              />
+            )}
+          </PitchSVG>
 
-                    const opponentName = getPlayerName(parsed?.opponent_id);
-                    const receiverId = parsed?.receiver || hoveredEvent.receiver || hoveredEvent.receiverName;
-                    const receiverNameTooltip = getPlayerName(receiverId);
-                    
-                    const isProgressive = parsed?.is_progressive;
-                    const duelWon = parsed?.duel_won;
-                    const hasDuelResult = typeof duelWon !== 'undefined';
-                    
-                    const isPass = typeStr === 'Pass';
-                    const isDuel = ['TakeOn', 'Tackle', 'Aerial', 'Challenge'].includes(typeStr);
-                    const isShot = ['Shot', 'Goal', 'SavedShot', 'MissedShots'].includes(typeStr);
+          <EventTooltip 
+            hoveredEvent={hoveredEvent} 
+            mousePos={mousePos} 
+            globalPlayerMap={globalPlayerMap} 
+          />
 
-                    return (
-                      <>
-                        <div className="font-bold border-b border-white/10 pb-1 mb-1">
-                          {hoveredEvent.playerName || 'Joueur inconnu'} <span className="text-[#949494]">| {typeStr}</span>
-                        </div>
-                        
-                        {/* 1. Mode Passe */}
-                        {isPass && (
-                          <>
-                            {receiverNameTooltip && receiverNameTooltip !== 'N/A' && (
-                              <div className="flex justify-between">
-                                <span className="text-[#949494]">Receveur :</span>
-                                <span>{receiverNameTooltip}</span>
-                              </div>
-                            )}
-                            {(parsed?.xT !== undefined && parsed?.xT !== null) && (
-                              <div className="flex justify-between">
-                                <span className="text-[#949494]">xT :</span>
-                                <span className={parsed.xT > 0 ? "text-[#3cffd0]" : ""}>
-                                  {Number(parsed.xT).toFixed(4)}
-                                </span>
-                              </div>
-                            )}
-                            {(parsed?.prog_dist !== undefined && parsed?.prog_dist !== null) && (
-                              <div className="flex justify-between">
-                                <span className="text-[#949494]">Progression :</span>
-                                <span>{Number(parsed.prog_dist).toFixed(1)}m</span>
-                              </div>
-                            )}
-                          </>
-                        )}
-                        
-                        {/* 2. Mode Duel/Défense */}
-                        {isDuel && (
-                          <>
-                            {opponentName && (
-                              <div className="flex justify-between">
-                                <span className="text-[#949494]">Adversaire :</span>
-                                <span>{opponentName}</span>
-                              </div>
-                            )}
-                          </>
-                        )}
-
-                        {/* 3. Mode Tir */}
-                        {isShot && (
-                          <>
-                            {(parsed?.xG !== undefined && parsed?.xG !== null) && (
-                              <div className="flex justify-between">
-                                <span className="text-[#949494]">xG :</span>
-                                <span>{Number(parsed.xG).toFixed(2)}</span>
-                              </div>
-                            )}
-                            {parsed?.shot_status && (
-                              <div className="flex justify-between">
-                                <span className="text-[#949494]">Statut :</span>
-                                <span>{parsed.shot_status}</span>
-                              </div>
-                            )}
-                          </>
-                        )}
-                        
-                        {/* Badges Dynamiques */}
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {isProgressive && (
-                            <span className="bg-[#3cffd0] text-black px-1.5 py-0.5 rounded-[2px] font-black text-[9px] uppercase tracking-wider">
-                              Progressif
-                            </span>
-                          )}
-                          {isDuel && hasDuelResult && (
-                            <span className={`px-1.5 py-0.5 rounded-[2px] font-black text-[9px] uppercase tracking-wider text-black ${duelWon ? 'bg-[#3cffd0]' : 'bg-[#ff4d4d]'}`}>
-                              Duel {duelWon ? 'Gagné' : 'Perdu'}
-                            </span>
-                          )}
-                        </div>
-                      </>
-                    );
-                 })()}
-               </div>
-             )}
-
-             {/* Overlay de message si chargement ou pas de données */}
-             {(loading || (Array.isArray(data) ? data.length === 0 : !data?.items?.length)) && (
-               <div className="absolute inset-0 flex items-center justify-center backdrop-blur-[1px] z-50">
-                 <div className="bg-black/90 border border-white/10 p-8 rounded-[2px] text-center max-w-sm shadow-2xl">
-                   <div className="w-16 h-16 bg-[#3cffd0]/10 border border-[#3cffd0]/20 rounded-full flex items-center justify-center mx-auto mb-6">
-                     {loading ? (
-                       <div className="w-8 h-8 border-2 border-[#3cffd0] border-t-transparent rounded-full animate-spin" />
-                     ) : (
-                       <Filter className="text-[#3cffd0]" size={24} />
-                     )}
-                   </div>
-                   <h4 className="verge-label-mono text-white text-[12px] font-black uppercase mb-2">
-                     {loading ? 'Hyrdratation en cours' : 'Synchronisation prête'}
-                   </h4>
-                   <p className="verge-label-mono text-[9px] text-[#949494] leading-relaxed uppercase tracking-widest">
-                     {loading ? 'Récupération du flux JSONB depuis le serveur...' : 'En attente de réception du flux pour le Match ID fourni.'}
-                   </p>
-                 </div>
-               </div>
-             )}
-          </div>
+          {(loading || (Array.isArray(data) ? data.length === 0 : (!data?.items?.length && !data?.sequences?.length))) && (
+            <div className="absolute inset-0 flex items-center justify-center backdrop-blur-[1px] z-50">
+              <div className="bg-black/90 border border-white/10 p-8 rounded-[2px] text-center max-w-sm shadow-2xl">
+                <div className="w-16 h-16 bg-[#3cffd0]/10 border border-[#3cffd0]/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                  {loading ? <div className="w-8 h-8 border-2 border-[#3cffd0] border-t-transparent rounded-full animate-spin" /> : <Filter className="text-[#3cffd0]" size={24} />}
+                </div>
+                <h4 className="verge-label-mono text-white text-[12px] font-black uppercase mb-2">
+                  {loading ? 'Hyrdratation en cours' : 'Synchronisation prête'}
+                </h4>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* LOG DES ÉVÉNEMENTS (Filtré) */}
+        {/* FLUX LIVE ANALYST */}
         <div className="h-56 bg-[#1a1a1a] border border-white/10 rounded-[4px] flex flex-col overflow-hidden">
           <div className="px-6 py-4 border-b border-white/10 bg-[#2d2d2d] flex justify-between items-center">
              <div className="flex items-center gap-4">
                <div className={`w-2 h-2 rounded-full ${loading ? 'bg-orange-500 animate-bounce' : 'bg-[#3cffd0] animate-pulse'}`} />
-               <span className="verge-label-mono text-[10px] text-white font-black uppercase tracking-[0.2em]">
-                 {loading ? 'Receiving Data...' : 'Flux Live Analyst'}
-               </span>
+               <span className="verge-label-mono text-[10px] text-white font-black uppercase tracking-[0.2em]">Flux Live Analyst</span>
              </div>
-              <span className="verge-label-mono text-[9px] text-[#949494] bg-white/5 px-3 py-1 rounded-[2px] border border-white/5">
+             <span className="verge-label-mono text-[9px] text-[#949494] bg-white/5 px-3 py-1 rounded-[2px] border border-white/5">
                 {displayData.length.toLocaleString()} SELECTED
               </span>
           </div>
           <div className="flex-1 overflow-y-auto styled-scrollbar-verge bg-black/20">
-             {!loading && (isSequenceMode ? sequenceToDraw?.events : displayData)?.length > 0 ? (
-               ((isSequenceMode ? sequenceToDraw?.events : displayData) || []).slice(0, 100).map((e, i) => {
-                 let metrics = e.advanced_metrics || {};
-                 if (typeof metrics === 'string') {
-                   try { metrics = JSON.parse(metrics); } catch (err) { metrics = {}; }
-                 }
-                 const endX = metrics.end_x ?? metrics.endX;
-                 const endY = metrics.end_y ?? metrics.endY;
-
-                 return (
-                    <div 
-                      key={i} 
-                      onClick={() => setFocusedEventId(e.opta_id === focusedEventId ? null : e.opta_id)}
-                      className={`flex items-center justify-between py-2 border-b border-white/[0.03] hover:bg-[#3cffd0]/5 transition-colors px-6 group cursor-pointer ${e.opta_id === focusedEventId ? 'bg-[#3cffd0]/10 border-l-2 border-l-[#3cffd0]' : ''}`}
-                    >
-                     <div className="flex items-center gap-6 flex-1">
-                       <span className="verge-label-mono text-[10px] text-[#3cffd0] font-black w-20 shrink-0">
-                         {(metrics.cumulative_mins ?? e.cumulative_mins ?? 0).toFixed(1)}'
-                       </span>
-                       <span className="verge-label-mono text-[10px] text-white uppercase font-black tracking-tight w-28 shrink-0 truncate">
-                         {e.type_name || e.type || e.type_id}
-                       </span>
-                       <span className="verge-label-mono text-[10px] text-[#949494] group-hover:text-white transition-colors w-32 shrink-0 truncate">
-                         {e.playerName || globalPlayerMap[e.player_id] || e.player_id}
-                       </span>
-                       
-                       {/* TÉLÉMÉTRIE SPATIALE */}
-                       <div className="flex items-center gap-4 text-[9px] font-mono text-[#333] group-hover:text-[#666] transition-colors overflow-hidden">
-                          <div className="flex items-center gap-1 shrink-0">
-                            <span className="opacity-30">START</span>
-                            <span className="text-white/20 group-hover:text-white/40">[{Number(e.x).toFixed(1)}, {Number(e.y).toFixed(1)}]</span>
-                          </div>
-                          {(endX !== undefined && endX !== null) && (
-                            <div className="flex items-center gap-1 border-l border-white/5 pl-4 shrink-0">
-                              <span className="opacity-30 uppercase">End</span>
-                              <span className="text-[#3cffd0]/20 group-hover:text-[#3cffd0]/40">[{Number(endX).toFixed(1)}, {Number(endY).toFixed(1)}]</span>
-                            </div>
-                          )}
-                       </div>
-                     </div>
-                      <div className="verge-label-mono text-[8px] text-[#2d2d2d] group-hover:text-[#3cffd0] transition-colors font-black shrink-0">
-                        ID:{e.event_id || e.id}
-                      </div>
+             {!loading && (actualSequenceMode ? (displayData[0]?.events || []) : displayData).length > 0 ? (
+               ((actualSequenceMode ? displayData[0]?.events : displayData) || []).slice(0, 100).map((e, i) => (
+                  <div 
+                    key={i} 
+                    onClick={() => setFocusedEventId(e.opta_id === focusedEventId ? null : e.opta_id)}
+                    className={`flex items-center justify-between py-2 border-b border-white/[0.03] hover:bg-[#3cffd0]/5 transition-colors px-6 group cursor-pointer ${e.opta_id === focusedEventId ? 'bg-[#3cffd0]/10 border-l-2 border-l-[#3cffd0]' : ''}`}
+                  >
+                   <div className="flex items-center gap-6 flex-1">
+                     <span className="verge-label-mono text-[10px] text-[#3cffd0] font-black w-20 shrink-0">
+                       {(e.cumulative_mins ?? 0).toFixed(1)}'
+                     </span>
+                     <span className="verge-label-mono text-[10px] text-white uppercase font-black tracking-tight w-28 shrink-0 truncate">
+                       {e.type_name || e.type || e.type_id}
+                     </span>
+                     <span className="verge-label-mono text-[10px] text-[#949494] group-hover:text-white transition-colors w-32 shrink-0 truncate">
+                       {e.playerName || globalPlayerMap[e.player_id] || e.player_id}
+                     </span>
                    </div>
-                 );
-               })
-             ) : (
-               <div className="h-full flex items-center justify-center opacity-10">
-                 <div className="text-center">
-                   {loading ? (
-                      <div className="verge-label-mono text-[10px] uppercase font-black tracking-[0.5em] animate-pulse">Streaming Jsonb...</div>
-                   ) : (
-                     <>
-                       <Database size={32} className="mx-auto mb-4" />
-                       <div className="verge-label-mono text-[10px] uppercase font-black tracking-widest">No Active Stream</div>
-                     </>
-                   )}
+                   <div className="verge-label-mono text-[8px] text-[#2d2d2d] group-hover:text-[#3cffd0] transition-colors font-black shrink-0">ID:{e.opta_id || e.id}</div>
                  </div>
-               </div>
+               ))
+             ) : (
+               <div className="h-full flex items-center justify-center opacity-10"><Database size={32} /></div>
              )}
           </div>
         </div>
       </div>
 
-      {/* COLONNE DROITE : RANKING PERFORMANCE (Filtré) - Masqué en mode Build-Up */}
       {!isSequenceMode && (
         <div className="w-[450px] flex flex-col gap-0 bg-[#1a1a1a] border border-white/10 rounded-[4px] overflow-hidden shadow-[0_40px_100px_rgba(0,0,0,0.4)]">
-          
-          {/* Header Ranking Section */}
           <div className="p-8 border-b border-white/10 bg-[#2d2d2d]">
             <div className="flex items-center gap-4 mb-8">
-              <Trophy className="text-[#3cffd0]" size={20} />
-              <h3 className="verge-h3 text-white uppercase tracking-tighter font-black">Ranking Performance</h3>
+              <Trophy className="text-[#3cffd0]" size={20} /><h3 className="verge-h3 text-white uppercase tracking-tighter font-black">Ranking Performance</h3>
             </div>
-
-            <div className="space-y-4">
-               <div className="flex items-center gap-4">
-                  <div className="w-1 h-4 bg-[#3cffd0]" />
-                  <span className="verge-label-mono text-[10px] font-black text-white uppercase tracking-widest">Order By</span>
-               </div>
-               
-               {/* Custom Select - Style Scouting */}
-               <div className="relative">
-                  <button 
-                    onClick={() => setIsSelectOpen(!isSelectOpen)}
-                    className="w-full flex items-center justify-between px-6 py-4 bg-[#131313] border border-white/10 rounded-[2px] verge-label-mono text-[10px] text-white font-black hover:border-[#3cffd0]/50 transition-all text-left"
-                  >
-                    <div className="flex items-center gap-4">
-                      {combinedActions.find(a => a.id === selectedAction)?.icon}
-                      <span className="uppercase tracking-widest truncate max-w-[200px]">
-                        {combinedActions.find(a => a.id === selectedAction)?.label || 'SELECT METRIC...'}
-                      </span>
-                    </div>
-                    <ChevronDown className={`text-[#949494] transition-transform ${isSelectOpen ? 'rotate-180' : ''}`} size={16} />
-                  </button>
-
-                  <AnimatePresence>
-                    {isSelectOpen && (
-                      <motion.div 
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 10 }}
-                        className="absolute top-full left-0 right-0 mt-2 bg-[#1a1a1a] border border-white/10 rounded-[2px] shadow-2xl z-[100] max-h-[300px] overflow-y-auto styled-scrollbar-verge"
+            <div className="relative">
+              <button onClick={() => setIsSelectOpen(!isSelectOpen)} className="w-full flex items-center justify-between px-6 py-4 bg-[#131313] border border-white/10 rounded-[2px] verge-label-mono text-[10px] text-white font-black hover:border-[#3cffd0]/50 transition-all">
+                <div className="flex items-center gap-4">
+                  {combinedActions.find(a => a.id === selectedAction)?.icon}
+                  <span className="uppercase tracking-widest">{combinedActions.find(a => a.id === selectedAction)?.label}</span>
+                </div>
+                <ChevronDown className={`text-[#949494] transition-transform ${isSelectOpen ? 'rotate-180' : ''}`} size={16} />
+              </button>
+              <AnimatePresence>
+                {isSelectOpen && (
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute top-full left-0 right-0 mt-2 bg-[#1a1a1a] border border-white/10 rounded-[2px] shadow-2xl z-[100] max-h-[300px] overflow-y-auto styled-scrollbar-verge">
+                    {combinedActions.map(type => (
+                      <button 
+                        key={type.id} 
+                        onClick={() => { 
+                          setSelectedAction(type.id); 
+                          setIsSelectOpen(false);
+                        }} 
+                        className={`w-full flex items-center gap-4 px-6 py-4 verge-label-mono text-[10px] font-black uppercase tracking-widest text-left transition-all border-b border-white/[0.03] ${selectedAction === type.id ? 'bg-[#3cffd0] text-black' : 'text-[#949494] hover:bg-white/5 hover:text-white'}`}
                       >
-                        {combinedActions.map(type => (
-                          <button
-                            key={type.id}
-                            onClick={() => {
-                              setSelectedAction(type.id);
-                              setIsSelectOpen(false);
-                            }}
-                            className={`w-full flex items-center gap-4 px-6 py-4 verge-label-mono text-[10px] font-black uppercase tracking-widest text-left transition-all border-b border-white/[0.03] ${
-                              selectedAction === type.id 
-                              ? 'bg-[#3cffd0] text-black' 
-                              : 'text-[#949494] hover:bg-white/5 hover:text-white'
-                            }`}
-                          >
-                            {type.icon}
-                            <span className="truncate">{type.label}</span>
-                          </button>
-                        ))}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-               </div>
+                        {type.icon}<span className="truncate">{type.label}</span>
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
 
-          {/* Ranking List Table-Style (Basé sur filteredData) */}
           <div className="flex-1 overflow-hidden flex flex-col bg-[#131313]">
             <div className="px-8 py-4 border-b border-white/5 flex items-center justify-between bg-black/40">
                <span className="verge-label-mono text-[9px] text-[#949494] font-black uppercase tracking-widest">Leaderboard</span>
-               <button 
-                  onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
-                  className="flex items-center gap-2 text-[#949494] hover:text-[#3cffd0] transition-colors"
-               >
-                  <ArrowUpDown size={12} />
-                  <span className="verge-label-mono text-[8px] uppercase font-black">Sort</span>
+               <button onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')} className="flex items-center gap-2 text-[#949494] hover:text-[#3cffd0] transition-colors">
+                  <ArrowUpDown size={12} /><span className="verge-label-mono text-[8px] uppercase font-black">Sort</span>
                </button>
             </div>
-
             <div className="flex-1 overflow-y-auto styled-scrollbar-verge divide-y divide-white/[0.03] flex flex-col">
                {paginatedRanking.length > 0 ? (
                  <AnimatePresence mode="popLayout">
                     {paginatedRanking.map((player, index) => (
-                      <motion.div
-                        key={player.name}
-                        layout
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -20 }}
-                        className="group flex items-center gap-6 p-6 hover:bg-[#3cffd0]/5 transition-all cursor-pointer relative"
-                      >
+                      <motion.div key={player.name} layout initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="group flex items-center gap-6 p-6 hover:bg-[#3cffd0]/5 transition-all cursor-pointer relative">
                         <RankBadge rank={(page - 1) * itemsPerPage + index + 1} />
                         <div className="flex-1 min-w-0">
-                           <div className="verge-label-mono text-[13px] text-white font-black group-hover:text-[#3cffd0] transition-colors truncate uppercase tracking-tight">
-                             {player.name}
-                           </div>
-                           <div className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest mt-1 opacity-60">
-                             {player.team}
-                           </div>
+                           <div className="verge-label-mono text-[13px] text-white font-black group-hover:text-[#3cffd0] transition-colors truncate uppercase tracking-tight">{player.name}</div>
+                           <div className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest mt-1 opacity-60">{player.team}</div>
                         </div>
                         <div className="text-right flex flex-col items-end">
-                           <span className="verge-label-mono text-3xl font-black text-[#3cffd0] leading-none tabular-nums tracking-tighter">
-                             {player.count}
-                           </span>
-                           <span className="verge-label-mono text-[7px] text-[#949494] uppercase font-black tracking-widest mt-1">
-                             {combinedActions.find(a => a.id === selectedAction)?.label || selectedAction}S
-                         </span>
+                           <span className="verge-label-mono text-3xl font-black text-[#3cffd0] leading-none tracking-tighter">{player.count}</span>
                         </div>
-                        <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-[#3cffd0] scale-y-0 group-hover:scale-y-100 transition-transform origin-center" />
                       </motion.div>
                     ))}
                  </AnimatePresence>
-               ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center p-20 text-center opacity-20">
-                    <BarChart2 size={48} className="mb-6" />
-                    <div className="verge-label-mono text-[11px] font-black uppercase tracking-[0.3em]">No Data Profile</div>
-                    <p className="verge-label-mono text-[8px] mt-4 uppercase tracking-[0.2em] opacity-50">Waiting for analyst stream...</p>
-                  </div>
-               )}
+               ) : <div className="flex-1 flex flex-col items-center justify-center p-20 text-center opacity-20"><BarChart2 size={48} /><div className="verge-label-mono text-[11px] font-black uppercase tracking-[0.3em]">No Data Profile</div></div>}
             </div>
-
-            {/* Contrôles de Pagination */}
             {totalPages > 1 && (
               <div className="p-4 border-t border-white/10 bg-[#131313] flex items-center justify-between">
-                <button 
-                  disabled={page === 1}
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  className="px-4 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-30 rounded-[2px] verge-label-mono text-[10px] text-white font-black uppercase transition-colors"
-                >
-                  Précédent
-                </button>
-                <div className="verge-label-mono text-[9px] text-[#949494] font-black tracking-widest">
-                  PAGE <span className="text-[#3cffd0]">{page}</span> SUR {totalPages}
-                </div>
-                <button 
-                  disabled={page === totalPages}
-                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                  className="px-4 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-30 rounded-[2px] verge-label-mono text-[10px] text-white font-black uppercase transition-colors"
-                >
-                  Suivant
-                </button>
+                <button disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))} className="px-4 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-30 rounded-[2px] verge-label-mono text-[10px] text-white font-black uppercase tracking-widest">Prev</button>
+                <div className="verge-label-mono text-[9px] text-[#949494] font-black tracking-widest">PAGE <span className="text-[#3cffd0]">{page}</span> / {totalPages}</div>
+                <button disabled={page === totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} className="px-4 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-30 rounded-[2px] verge-label-mono text-[10px] text-white font-black uppercase tracking-widest">Next</button>
               </div>
             )}
           </div>
