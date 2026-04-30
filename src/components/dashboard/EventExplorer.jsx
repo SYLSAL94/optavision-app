@@ -61,6 +61,7 @@ const EventExplorer = ({
   // États pour le Tooltip Premium
   const [hoveredEvent, setHoveredEvent] = useState(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [focusedEventId, setFocusedEventId] = useState(null);
 
   // HELPER : Extraction robuste des coordonnées de fin (Audit Carries & Trajectoires)
   const getEndCoordinates = (event) => {
@@ -111,7 +112,22 @@ const EventExplorer = ({
       return data.sequences.filter(seq => seq.seq_uuid === selectedSequence);
     }
 
-    let filtered = (data || []).filter(e => e.type !== 'Out' && e.type_id !== 5);
+    const baseData = Array.isArray(data) ? data : (data?.items || []);
+    let filtered = baseData.filter(e => e.type !== 'Out' && e.type_id !== 5);
+
+    // Câblage du filtre visuel interactif (Mission Lead Data)
+    if (selectedAction && selectedAction !== 'ALL') {
+      filtered = filtered.filter(event => {
+        if (selectedAction.startsWith('is_') || selectedAction.startsWith('seq_')) {
+          let metrics = event.advanced_metrics;
+          if (typeof metrics === 'string') {
+            try { metrics = JSON.parse(metrics); } catch(e) { metrics = {}; }
+          }
+          return metrics?.[selectedAction] === true || metrics?.[selectedAction] === 'true';
+        }
+        return event.type === selectedAction || String(event.type_id) === String(selectedAction);
+      });
+    }
     
     const { localTeam, localOpponent } = filters || {};
     
@@ -125,7 +141,7 @@ const EventExplorer = ({
     }
     
     return filtered;
-  }, [data, filters, isSequenceMode, selectedSequence]);
+  }, [data, filters, isSequenceMode, selectedSequence, selectedAction]);
 
 
 
@@ -313,19 +329,18 @@ const EventExplorer = ({
                                   setHoveredEvent(event);
                                   setMousePos({ x: e.clientX, y: e.clientY });
                                 }}
-                                onMouseLeave={() => setHoveredEvent(null)}
-                              >
-                                {/* Trajectoire (Ligne) - Rendu Conditionnel Strict */}
+                                >
+                                  {/* Trajectoire (Ligne) - Rendu Conditionnel Strict */}
                                 {hasValidEnd && (
                                   <line 
                                     x1={cx} y1={cy} 
                                     x2={(endX / 100) * 105} 
                                     y2={((100 - endY) / 100) * 68} 
-                                    stroke={event.type === 'Carry' ? '#ffd03c' : color} 
-                                    strokeWidth={event.type === 'Carry' ? "0.3" : "0.2"} 
-                                    strokeOpacity={opacity * 0.8}
-                                    strokeDasharray={event.type === 'Carry' ? "1,1" : (isSuccess ? "none" : "1,1")}
-                                    className="animate-in fade-in duration-500 fill-mode-backwards"
+                                    stroke={event.opta_id === focusedEventId ? "#fbbf24" : (event.type === 'Carry' || event.type_id === 99 || event.type_name === 'Carry' ? '#5200ff' : color)} 
+                                    strokeWidth={event.opta_id === focusedEventId ? "0.8" : (event.type === 'Carry' || event.type_id === 99 || event.type_name === 'Carry' ? "0.4" : "0.2")} 
+                                    strokeOpacity={event.opta_id === focusedEventId ? 1 : opacity * 0.9}
+                                    strokeDasharray={event.type === 'Carry' || event.type_id === 99 || event.type_name === 'Carry' ? "5,5" : (isSuccess ? "none" : "1,1")}
+                                    className={`animate-in fade-in duration-500 fill-mode-backwards ${event.opta_id === focusedEventId ? 'animate-pulse' : ''}`}
                                     style={{ animationDelay: `${i * 0.4 + 0.1}s` }}
                                   />
                                 )}
@@ -333,25 +348,29 @@ const EventExplorer = ({
                                 {/* Forme de l'action */}
                                 {event.type === 'Shot' || event.type === 'Goal' ? (
                                   <circle 
-                                    cx={cx} cy={cy} r="1.4" 
-                                    fill={color} fillOpacity={opacity}
-                                    stroke="white" strokeWidth="0.2"
-                                    className="animate-in fade-in zoom-in duration-300 fill-mode-backwards"
+                                    cx={cx} cy={cy} r={event.opta_id === focusedEventId ? "3" : "1.4"} 
+                                    fill={event.opta_id === focusedEventId ? "#fbbf24" : color} fillOpacity={opacity}
+                                    stroke="white" strokeWidth={event.opta_id === focusedEventId ? "0.4" : "0.2"}
+                                    className={`animate-in fade-in zoom-in duration-300 fill-mode-backwards ${event.opta_id === focusedEventId ? 'animate-pulse' : ''}`}
                                     style={{ animationDelay: `${i * 0.4}s` }}
                                   />
                                 ) : event.type === 'Carry' ? (
                                   <rect 
-                                    x={cx - 0.7} y={cy - 0.7} width="1.4" height="1.4"
-                                    fill={color} fillOpacity={opacity}
+                                    x={cx - (event.opta_id === focusedEventId ? 1.5 : 0.7)} 
+                                    y={cy - (event.opta_id === focusedEventId ? 1.5 : 0.7)} 
+                                    width={event.opta_id === focusedEventId ? "3" : "1.4"} 
+                                    height={event.opta_id === focusedEventId ? "3" : "1.4"}
+                                    fill={event.opta_id === focusedEventId ? "#fbbf24" : color} fillOpacity={opacity}
                                     transform={`rotate(45, ${cx}, ${cy})`}
-                                    className="animate-in fade-in zoom-in duration-300 fill-mode-backwards"
+                                    className={`animate-in fade-in zoom-in duration-300 fill-mode-backwards ${event.opta_id === focusedEventId ? 'animate-pulse' : ''}`}
                                     style={{ animationDelay: `${i * 0.4}s` }}
                                   />
                                 ) : (
                                   <circle 
-                                    cx={cx} cy={cy} r="0.7" 
-                                    fill={color} fillOpacity={opacity}
-                                    className="animate-in fade-in zoom-in duration-300 fill-mode-backwards"
+                                    cx={cx} cy={cy} r={event.opta_id === focusedEventId ? "2" : "0.7"} 
+                                    fill={event.opta_id === focusedEventId ? "#fbbf24" : color} fillOpacity={opacity}
+                                    stroke={event.opta_id === focusedEventId ? "white" : "none"} strokeWidth="0.2"
+                                    className={`animate-in fade-in zoom-in duration-300 fill-mode-backwards ${event.opta_id === focusedEventId ? 'animate-pulse' : ''}`}
                                     style={{ animationDelay: `${i * 0.4}s` }}
                                   />
                                 )}
@@ -421,34 +440,38 @@ const EventExplorer = ({
                               x1={cx} y1={cy} 
                               x2={(endX / 100) * 105} 
                               y2={((100 - endY) / 100) * 68} 
-                              stroke={event.type === 'Carry' ? '#ffd03c' : color} 
-                              strokeWidth={event.type === 'Carry' ? "0.3" : "0.2"} 
-                              strokeOpacity={opacity * 0.8}
-                              strokeDasharray={event.type === 'Carry' ? "1,1" : (isSuccess ? "none" : "1,1")}
-                              className="animate-in fade-in duration-500"
+                              stroke={event.opta_id === focusedEventId ? "#fbbf24" : (event.type === 'Carry' || event.type_id === 99 || event.type_name === 'Carry' ? '#5200ff' : color)} 
+                              strokeWidth={event.opta_id === focusedEventId ? "0.8" : (event.type === 'Carry' || event.type_id === 99 || event.type_name === 'Carry' ? "0.4" : "0.2")} 
+                              strokeOpacity={event.opta_id === focusedEventId ? 1 : opacity * 0.9}
+                              strokeDasharray={event.type === 'Carry' || event.type_id === 99 || event.type_name === 'Carry' ? "5,5" : (isSuccess ? "none" : "1,1")}
+                              className={`animate-in fade-in duration-500 ${event.opta_id === focusedEventId ? 'animate-pulse' : ''}`}
                             />
                           )}
 
                           {/* Forme de l'action */}
                           {event.type === 'Shot' || event.type === 'Goal' ? (
                             <circle 
-                              cx={cx} cy={cy} r="1.4" 
-                              fill={color} fillOpacity={opacity}
-                              stroke="white" strokeWidth="0.2"
-                              className="animate-in fade-in zoom-in duration-300"
+                              cx={cx} cy={cy} r={event.opta_id === focusedEventId ? "3" : "1.4"} 
+                              fill={event.opta_id === focusedEventId ? "#fbbf24" : color} fillOpacity={opacity}
+                              stroke="white" strokeWidth={event.opta_id === focusedEventId ? "0.4" : "0.2"}
+                              className={`animate-in fade-in zoom-in duration-300 ${event.opta_id === focusedEventId ? 'animate-pulse' : ''}`}
                             />
                           ) : event.type === 'Carry' ? (
                             <rect 
-                              x={cx - 0.7} y={cy - 0.7} width="1.4" height="1.4"
-                              fill={color} fillOpacity={opacity}
+                              x={cx - (event.opta_id === focusedEventId ? 1.5 : 0.7)} 
+                              y={cy - (event.opta_id === focusedEventId ? 1.5 : 0.7)} 
+                              width={event.opta_id === focusedEventId ? "3" : "1.4"} 
+                              height={event.opta_id === focusedEventId ? "3" : "1.4"}
+                              fill={event.opta_id === focusedEventId ? "#fbbf24" : color} fillOpacity={opacity}
                               transform={`rotate(45, ${cx}, ${cy})`}
-                              className="animate-in fade-in zoom-in duration-300"
+                              className={`animate-in fade-in zoom-in duration-300 ${event.opta_id === focusedEventId ? 'animate-pulse' : ''}`}
                             />
                           ) : (
                             <circle 
-                              cx={cx} cy={cy} r="0.7" 
-                              fill={color} fillOpacity={opacity}
-                              className="animate-in fade-in zoom-in duration-300"
+                              cx={cx} cy={cy} r={event.opta_id === focusedEventId ? "2" : "0.7"} 
+                              fill={event.opta_id === focusedEventId ? "#fbbf24" : color} fillOpacity={opacity}
+                              stroke={event.opta_id === focusedEventId ? "white" : "none"} strokeWidth="0.2"
+                              className={`animate-in fade-in zoom-in duration-300 ${event.opta_id === focusedEventId ? 'animate-pulse' : ''}`}
                             />
                           )}
                         </g>
@@ -573,7 +596,7 @@ const EventExplorer = ({
              )}
 
              {/* Overlay de message si chargement ou pas de données */}
-             {(loading || data.length === 0) && (
+             {(loading || (Array.isArray(data) ? data.length === 0 : !data?.items?.length)) && (
                <div className="absolute inset-0 flex items-center justify-center backdrop-blur-[1px] z-50">
                  <div className="bg-black/90 border border-white/10 p-8 rounded-[2px] text-center max-w-sm shadow-2xl">
                    <div className="w-16 h-16 bg-[#3cffd0]/10 border border-[#3cffd0]/20 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -619,10 +642,14 @@ const EventExplorer = ({
                  const endY = metrics.end_y ?? metrics.endY;
 
                  return (
-                   <div key={i} className="flex items-center justify-between py-2 border-b border-white/[0.03] hover:bg-[#3cffd0]/5 transition-colors px-6 group">
+                    <div 
+                      key={i} 
+                      onClick={() => setFocusedEventId(e.opta_id === focusedEventId ? null : e.opta_id)}
+                      className={`flex items-center justify-between py-2 border-b border-white/[0.03] hover:bg-[#3cffd0]/5 transition-colors px-6 group cursor-pointer ${e.opta_id === focusedEventId ? 'bg-[#3cffd0]/10 border-l-2 border-l-[#3cffd0]' : ''}`}
+                    >
                      <div className="flex items-center gap-6 flex-1">
                        <span className="verge-label-mono text-[10px] text-[#3cffd0] font-black w-20 shrink-0">
-                         {(e.minute ?? e.min ?? 0)}' {(e.sec ?? e.second ?? 0).toString().padStart(2, '0')}''
+                         {(metrics.cumulative_mins ?? e.cumulative_mins ?? 0).toFixed(1)}'
                        </span>
                        <span className="verge-label-mono text-[10px] text-white uppercase font-black tracking-tight w-28 shrink-0 truncate">
                          {e.type_name || e.type || e.type_id}
