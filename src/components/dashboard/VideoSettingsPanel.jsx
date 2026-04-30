@@ -35,7 +35,8 @@ const VideoSettingsPanel = ({ onClose }) => {
     try {
       const response = await fetch(`${OPTAVISION_API_URL}/api/optavision/configs/unassigned`);
       const data = await response.json();
-      setUnassignedMatches(Array.isArray(data) ? data : []);
+      // Data Binding aligné sur le nouveau standard "items"
+      setUnassignedMatches(Array.isArray(data.items) ? data.items : []);
     } catch (err) {
       console.error("❌ Erreur chargement matchs non-assignés:", err);
       setStatus({ type: 'error', msg: 'Impossible de charger les matchs.' });
