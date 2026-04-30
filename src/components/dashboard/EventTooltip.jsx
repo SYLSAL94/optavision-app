@@ -112,9 +112,18 @@ export const EventTooltip = ({ hoveredEvent, focusedEvent, mousePos, globalPlaye
             onPlayVideo?.(focusedEvent);
           }}
           disabled={isVideoLoading}
-          className="mt-2 bg-sky-500 hover:bg-sky-400 disabled:bg-sky-900 disabled:text-sky-200 text-white font-bold py-1 px-3 rounded text-center cursor-pointer disabled:cursor-wait transition-colors"
+          className="flex items-center justify-center gap-2 px-4 py-2 mt-2 w-full text-[10px] font-bold tracking-widest uppercase rounded-full transition-all duration-300 backdrop-blur-md bg-[#131313]/80 border border-[#3cffd0] text-[#3cffd0] hover:bg-[#3cffd0] hover:text-[#131313] shadow-[0_0_10px_rgba(60,255,208,0.2)] hover:shadow-[0_0_20px_rgba(60,255,208,0.6)] disabled:opacity-50 disabled:cursor-wait"
         >
-          {isVideoLoading ? "Découpe en cours..." : "🎬 Lancer la vidéo"}
+          {isVideoLoading ? (
+            <>
+              <div className="w-3 h-3 border-2 border-[#3cffd0] border-t-transparent rounded-full animate-spin" />
+              <span>Extraction...</span>
+            </>
+          ) : (
+            <>
+              <span>🎬 Lancer la vidéo</span>
+            </>
+          )}
         </button>
       )}
     </div>

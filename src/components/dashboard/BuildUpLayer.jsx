@@ -36,9 +36,21 @@ export const BuildUpLayer = ({ displayData, focusedEventId, getEndCoordinates, s
         const eventId = event.opta_id ?? event.id;
         const cx = (event.x / 100) * 105;
         const cy = ((100 - event.y) / 100) * 68;
+        const ACTION_COLORS = {
+          'Pass': '#00ff88',
+          'Goal': '#f1c40f',
+          'Shot': '#ff3366',
+          'SavedShot': '#ffcc00',
+          'Tackle': '#3498db',
+          'Interception': '#2ecc71',
+          'Carry': '#00d9ff'
+        };
+
         const isSuccess = event.outcome === 1 || event.outcome === 'Successful';
-        const color = isSuccess ? '#3cffd0' : '#ff4d4d';
-        const isCarry = event.type === 'Carry' || event.type_id === 99 || event.type_name === 'Carry';
+        const actionType = event.type_name || event.type || '';
+        const baseColor = ACTION_COLORS[actionType.replace(/\s+/g, '')] || '#95a5a6';
+        const color = baseColor;
+        const isCarry = actionType.toLowerCase().includes('carry');
         const isFocused = eventId === focusedEventId;
         
         const endCoords = getEndCoordinates(event);
@@ -57,6 +69,7 @@ export const BuildUpLayer = ({ displayData, focusedEventId, getEndCoordinates, s
             key={`buildup-ev-${event.id || i}`} 
             className="cursor-help pointer-events-auto animate-in fade-in"
             style={{ ...animationStyle, opacity: focusedEventId && eventId !== focusedEventId ? 0.2 : 1 }}
+            filter="drop-shadow(0px 0px 4px rgba(255,255,255,0.3))"
             onMouseMove={(e) => {
               setHoveredEvent(event);
               setMousePos({ x: e.clientX, y: e.clientY });
@@ -76,10 +89,10 @@ export const BuildUpLayer = ({ displayData, focusedEventId, getEndCoordinates, s
                 x1={cx} y1={cy} 
                 x2={(endX / 100) * 105} 
                 y2={((100 - endY) / 100) * 68} 
-                stroke={isFocused ? "#fbbf24" : (isCarry ? '#5200ff' : color)} 
-                strokeWidth={isFocused ? "0.8" : (isCarry ? "0.4" : "0.3")} 
-                strokeOpacity={isFocused ? 1 : 0.8}
-                strokeDasharray={isCarry ? "5,5" : "none"}
+                stroke={isFocused ? "#fbbf24" : color} 
+                strokeWidth={isFocused ? "0.8" : (isCarry ? "0.5" : "0.4")} 
+                strokeOpacity={isFocused ? 1 : 0.75}
+                strokeDasharray={isCarry ? "none" : (actionType.toLowerCase().includes('pass') ? "1,1" : "none")}
                 markerEnd={!isCarry && isSuccess ? "url(#arrowhead)" : "none"}
                 style={{ color: isFocused ? "#fbbf24" : color }} // Pour le marker currentColor
                 className="transition-all duration-300"
@@ -87,13 +100,13 @@ export const BuildUpLayer = ({ displayData, focusedEventId, getEndCoordinates, s
             )}
 
             {/* Point d'impact / Forme de l'action */}
-            {event.type === 'Shot' || event.type === 'Goal' ? (
-              <circle 
-                cx={cx} cy={cy} r={isFocused ? "3" : "1.8"} 
+            {actionType.includes('Shot') || actionType.includes('Goal') ? (
+              <path
+                d={`M ${cx} ${cy-1.5} L ${cx+0.4} ${cy-0.4} L ${cx+1.5} ${cy-0.4} L ${cx+0.6} ${cy+0.3} L ${cx+0.9} ${cy+1.4} L ${cx} ${cy+0.7} L ${cx-0.9} ${cy+1.4} L ${cx-0.6} ${cy+0.3} L ${cx-1.5} ${cy-0.4} L ${cx-0.4} ${cy-0.4} Z`}
                 fill={isFocused ? "#fbbf24" : color} 
                 fillOpacity={0.9}
-                stroke="white" 
-                strokeWidth="0.3"
+                stroke={isSuccess ? "white" : "#454a54"} 
+                strokeWidth="0.2"
                 className="animate-pulse"
               />
             ) : isCarry ? (
@@ -102,7 +115,7 @@ export const BuildUpLayer = ({ displayData, focusedEventId, getEndCoordinates, s
                 y={cy - (isFocused ? 1.5 : 0.8)} 
                 width={isFocused ? "3" : "1.6"} 
                 height={isFocused ? "3" : "1.6"}
-                fill={isFocused ? "#fbbf24" : "#5200ff"} 
+                fill={isFocused ? "#fbbf24" : color} 
                 transform={`rotate(45, ${cx}, ${cy})`}
                 className="opacity-90"
               />
@@ -110,8 +123,8 @@ export const BuildUpLayer = ({ displayData, focusedEventId, getEndCoordinates, s
               <circle 
                 cx={cx} cy={cy} r={isFocused ? "2" : "1"} 
                 fill={isFocused ? "#fbbf24" : color} 
-                stroke="white"
-                strokeWidth={isFocused ? "0.3" : "0"}
+                stroke={isSuccess ? "white" : "#454a54"}
+                strokeWidth={isFocused ? "0.3" : "0.1"}
               />
             )}
 

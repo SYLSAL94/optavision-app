@@ -96,15 +96,17 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], advance
                           handleSequenceVideo(seq);
                         }}
                         disabled={loadingSequenceId !== null}
-                        className="min-w-[104px] bg-sky-500 hover:bg-sky-400 disabled:bg-sky-900 disabled:text-sky-200 text-white font-bold py-1.5 px-3 rounded text-center cursor-pointer disabled:cursor-wait transition-colors text-[10px] leading-tight flex items-center justify-center gap-1.5"
+                        className="flex items-center justify-center gap-2 px-4 py-1.5 min-w-[110px] text-[9px] font-bold tracking-widest uppercase rounded-full transition-all duration-300 backdrop-blur-md bg-[#131313]/80 border border-[#3cffd0] text-[#3cffd0] hover:bg-[#3cffd0] hover:text-[#131313] shadow-[0_0_10px_rgba(60,255,208,0.2)] hover:shadow-[0_0_20px_rgba(60,255,208,0.6)] disabled:opacity-50 disabled:cursor-wait"
                       >
                         {loadingSequenceId === seq.id ? (
                           <>
-                            <Loader2 size={12} className="animate-spin" />
-                            Découpe...
+                            <Loader2 size={10} className="animate-spin" />
+                            <span>Extraction</span>
                           </>
                         ) : (
-                          "🎬 Lancer"
+                          <>
+                            <span>🎬 Lancer</span>
+                          </>
                         )}
                       </button>
                       <TrendingUp size={14} className="text-[#3cffd0]" />
