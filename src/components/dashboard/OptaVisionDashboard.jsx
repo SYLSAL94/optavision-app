@@ -27,6 +27,19 @@ import ShotMapExplorer from './ShotMapExplorer';
 import VideoSettingsPanel from './VideoSettingsPanel';
 import { API_BASE_URL, OPTAVISION_API_URL } from '../../config';
 
+const SHOT_BODY_PART_IDS = {
+  head: 15,
+  right_foot: 20,
+  left_foot: 72
+};
+
+const SHOT_SITUATION_IDS = {
+  regular_play: 22,
+  fast_break: 23,
+  one_on_one: 89,
+  out_of_box: 18
+};
+
 /**
  * OptaVisionDashboard - Squelette UI/UX Premium (Style The Verge)
  * Aligné sur le Design System du projet Scouting.
@@ -75,8 +88,33 @@ const OptaVisionDashboard = ({ user }) => {
     receiver_id: [],
     opponent_id: []
   });
+  const [shotFilters, setShotFilters] = useState({
+    outcomes: [],
+    bodyParts: [],
+    situations: [],
+    distanceMax: null
+  });
 
-  const fetchEvents = async () => {
+  const appendShotMapParams = (params, filters) => {
+    params.set('types', '13,14,15,16');
+
+    const bodyParts = (filters?.bodyParts || [])
+      .map(part => SHOT_BODY_PART_IDS[part] ?? part)
+      .filter(Boolean);
+    if (bodyParts.length > 0) params.append('body_parts', bodyParts.join(','));
+
+    const situations = (filters?.situations || [])
+      .map(situation => SHOT_SITUATION_IDS[situation] ?? situation)
+      .filter(Boolean);
+    if (situations.length > 0) params.append('situations', situations.join(','));
+
+    if (filters?.outcomes?.length > 0) params.append('shot_outcomes', filters.outcomes.join(','));
+    if (filters?.distanceMax !== null && filters?.distanceMax !== undefined) {
+      params.append('distance_max', filters.distanceMax.toString());
+    }
+  };
+
+  const fetchEvents = async (baseFilters = explorationFilters, nextShotFilters = shotFilters, tool = activeTool) => {
     setLoading(true);
     setError(null);
 
@@ -86,30 +124,34 @@ const OptaVisionDashboard = ({ user }) => {
       limit: '1000'
     });
 
-    if (explorationFilters.startDate) params.append('start_date', explorationFilters.startDate);
-    if (explorationFilters.endDate) params.append('end_date', explorationFilters.endDate);
+    if (baseFilters.startDate) params.append('start_date', baseFilters.startDate);
+    if (baseFilters.endDate) params.append('end_date', baseFilters.endDate);
 
-    if (explorationFilters.matches?.length > 0) params.append('match_ids', explorationFilters.matches.join(','));
-    if (explorationFilters.types?.length > 0) params.append('types', explorationFilters.types.join(','));
-    if (explorationFilters.players?.length > 0) params.append('player_ids', explorationFilters.players.join(','));
-    if (explorationFilters.player_id?.length > 0) params.append('player_id', explorationFilters.player_id.join(','));
-    if (explorationFilters.receiver_id?.length > 0) params.append('receiver_id', explorationFilters.receiver_id.join(','));
-    if (explorationFilters.opponent_id?.length > 0) params.append('opponent_id', explorationFilters.opponent_id.join(','));
-    if (explorationFilters.teams?.length > 0) params.append('team_ids', explorationFilters.teams.join(','));
-    if (explorationFilters.min_xt > 0) params.append('min_xt', explorationFilters.min_xt.toString());
-    if (explorationFilters.start_min > 0) params.append('start_min', explorationFilters.start_min.toString());
-    if (explorationFilters.end_min < 95) params.append('end_min', explorationFilters.end_min.toString());
-    if (explorationFilters.outcome !== null) params.append('outcome', explorationFilters.outcome.toString());
-    if (explorationFilters.period_id?.length > 0) params.append('period_id', explorationFilters.period_id.join(','));
-    if (explorationFilters.location?.length > 0) params.append('location', explorationFilters.location.join(','));
-    if (explorationFilters.zone?.length > 0) params.append('zone', explorationFilters.zone.join(','));
-    if (explorationFilters.competition?.length > 0) params.append('competition', explorationFilters.competition.join(','));
-    if (explorationFilters.season?.length > 0) params.append('season', explorationFilters.season.join(','));
-    if (explorationFilters.week?.length > 0) params.append('week', explorationFilters.week.join(','));
-    if (explorationFilters.country?.length > 0) params.append('country', explorationFilters.country.join(','));
-    if (explorationFilters.phase?.length > 0) params.append('phase', explorationFilters.phase.join(','));
-    if (explorationFilters.stadium?.length > 0) params.append('stadium', explorationFilters.stadium.join(','));
-    if (explorationFilters.advanced_tactics?.length > 0) params.append('advanced_tactics', explorationFilters.advanced_tactics.join(','));
+    if (baseFilters.matches?.length > 0) params.append('match_ids', baseFilters.matches.join(','));
+    if (baseFilters.types?.length > 0) params.append('types', baseFilters.types.join(','));
+    if (baseFilters.players?.length > 0) params.append('player_ids', baseFilters.players.join(','));
+    if (baseFilters.player_id?.length > 0) params.append('player_id', baseFilters.player_id.join(','));
+    if (baseFilters.receiver_id?.length > 0) params.append('receiver_id', baseFilters.receiver_id.join(','));
+    if (baseFilters.opponent_id?.length > 0) params.append('opponent_id', baseFilters.opponent_id.join(','));
+    if (baseFilters.teams?.length > 0) params.append('team_ids', baseFilters.teams.join(','));
+    if (baseFilters.min_xt > 0) params.append('min_xt', baseFilters.min_xt.toString());
+    if (baseFilters.start_min > 0) params.append('start_min', baseFilters.start_min.toString());
+    if (baseFilters.end_min < 95) params.append('end_min', baseFilters.end_min.toString());
+    if (baseFilters.outcome !== null) params.append('outcome', baseFilters.outcome.toString());
+    if (baseFilters.period_id?.length > 0) params.append('period_id', baseFilters.period_id.join(','));
+    if (baseFilters.location?.length > 0) params.append('location', baseFilters.location.join(','));
+    if (baseFilters.zone?.length > 0) params.append('zone', baseFilters.zone.join(','));
+    if (baseFilters.competition?.length > 0) params.append('competition', baseFilters.competition.join(','));
+    if (baseFilters.season?.length > 0) params.append('season', baseFilters.season.join(','));
+    if (baseFilters.week?.length > 0) params.append('week', baseFilters.week.join(','));
+    if (baseFilters.country?.length > 0) params.append('country', baseFilters.country.join(','));
+    if (baseFilters.phase?.length > 0) params.append('phase', baseFilters.phase.join(','));
+    if (baseFilters.stadium?.length > 0) params.append('stadium', baseFilters.stadium.join(','));
+    if (baseFilters.advanced_tactics?.length > 0) params.append('advanced_tactics', baseFilters.advanced_tactics.join(','));
+
+    if (tool === 'shots') {
+      appendShotMapParams(params, nextShotFilters);
+    }
 
     const url = `${OPTAVISION_API_URL}/api/optavision/events?${params.toString()}`;
     console.log("🌐 Appel de l'API OptaVision vers :", url);
@@ -286,7 +328,7 @@ const OptaVisionDashboard = ({ user }) => {
   // Hydratation automatique
   useEffect(() => {
     fetchEvents();
-  }, [page, limit, explorationFilters]);
+  }, [page, limit, explorationFilters, activeTool]);
 
   return (
     <div className="min-h-screen bg-[#131313] text-white flex flex-col font-sans overflow-hidden">
@@ -437,7 +479,7 @@ const OptaVisionDashboard = ({ user }) => {
                       {activeTab === 'shots' && (
                         <TileSkeleton
                           title="Shot Map Analytique"
-                          desc="Visualisation spatiale des tirs et probabilités xG."
+                          desc="Visualisation spatiale des tirs et zones de frappe."
                           icon={<Target />}
                           color="text-red-500"
                           onClick={() => setActiveTool('shots')}
@@ -552,7 +594,18 @@ const OptaVisionDashboard = ({ user }) => {
                         onClose={() => setIsFilterOpen(false)} 
                       />
                     )}
-                    {activeTab === 'shots' && <ShotMapFilterPanel onClose={() => setIsFilterOpen(false)} />}
+                    {activeTab === 'shots' && (
+                      <ShotMapFilterPanel
+                        filters={shotFilters}
+                        onFilterChange={setShotFilters}
+                        onApply={(nextFilters) => {
+                          setShotFilters(nextFilters);
+                          fetchEvents(explorationFilters, nextFilters, 'shots');
+                          setIsFilterOpen(false);
+                        }}
+                        onClose={() => setIsFilterOpen(false)}
+                      />
+                    )}
                   </motion.div>
                 </>
               )}
