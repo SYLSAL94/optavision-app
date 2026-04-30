@@ -24,6 +24,7 @@ import ShotMapFilterPanel from './ShotMapFilterPanel';
 import EventExplorer from './EventExplorer';
 import BuildUpExplorer from './BuildUpExplorer';
 import ShotMapExplorer from './ShotMapExplorer';
+import VideoSettingsPanel from './VideoSettingsPanel';
 import { API_BASE_URL, OPTAVISION_API_URL } from '../../config';
 
 /**
@@ -46,6 +47,7 @@ const OptaVisionDashboard = ({ user }) => {
   const [activeTool, setActiveTool] = useState(null); // 'events', 'sequences', 'shots'
   const [view, setView] = useState('DASHBOARD');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [explorationFilters, setExplorationFilters] = useState({
     matches: [],
     types: [],
@@ -284,7 +286,10 @@ const OptaVisionDashboard = ({ user }) => {
                   <Bell size={20} />
                   <div className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 border-2 border-[#131313] rounded-full" />
                 </button>
-                <button className="w-10 h-10 flex items-center justify-center text-[#949494] hover:text-[#3cffd0] transition-colors">
+                <button 
+                  onClick={() => setIsSettingsOpen(true)}
+                  className="w-10 h-10 flex items-center justify-center text-[#949494] hover:text-[#3cffd0] transition-colors"
+                >
                   <Settings size={20} />
                 </button>
               </div>
@@ -511,6 +516,14 @@ const OptaVisionDashboard = ({ user }) => {
             </AnimatePresence>
           </div>
         )}
+
+        {/* ADMIN PANEL : VIDEO SETTINGS */}
+        <AnimatePresence>
+          {isSettingsOpen && (
+            <VideoSettingsPanel onClose={() => setIsSettingsOpen(false)} />
+          )}
+        </AnimatePresence>
+
       </div>
     </div>
   );
