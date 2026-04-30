@@ -11,6 +11,8 @@ import {
   Save
 } from 'lucide-react';
 
+import { API_BASE_URL } from '../../config';
+
 const VideoSettingsPanel = ({ onClose }) => {
   const [unassignedMatches, setUnassignedMatches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -24,8 +26,6 @@ const VideoSettingsPanel = ({ onClose }) => {
     half2: '00:00'
   });
 
-  const OPTAVISION_API_URL = "http://76.13.38.150:8503"; // Port standard pour l'API OptaVision
-
   useEffect(() => {
     fetchUnassigned();
   }, []);
@@ -33,12 +33,12 @@ const VideoSettingsPanel = ({ onClose }) => {
   const fetchUnassigned = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${OPTAVISION_API_URL}/api/optavision/configs/unassigned`);
+      const response = await fetch(`${API_BASE_URL}/api/optavision/configs/unassigned`);
       const data = await response.json();
       // Data Binding aligné sur le nouveau standard "items"
       setUnassignedMatches(Array.isArray(data.items) ? data.items : []);
     } catch (err) {
-      console.error("❌ Erreur chargement matchs non-assignés:", err);
+      console.error("🚨 DÉTAIL ERREUR FETCH VIDÉO :", err);
       setStatus({ type: 'error', msg: 'Impossible de charger les matchs.' });
     } finally {
       setLoading(false);
@@ -67,7 +67,7 @@ const VideoSettingsPanel = ({ onClose }) => {
     };
 
     try {
-      const response = await fetch(`${OPTAVISION_API_URL}/api/optavision/configs`, {
+      const response = await fetch(`${API_BASE_URL}/api/optavision/configs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
