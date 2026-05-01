@@ -16,7 +16,9 @@ import {
   Bell,
   User as UserIcon,
   LogOut,
-  ChevronDown
+  ChevronDown,
+  Shield,
+  Play
 } from 'lucide-react';
 import ExplorationFilterPanel from './ExplorationFilterPanel';
 import BuildUpFilterPanel from './BuildUpFilterPanel';
@@ -26,7 +28,7 @@ import EventExplorer from './EventExplorer';
 import BuildUpExplorer from './BuildUpExplorer';
 import ShotMapExplorer from './ShotMapExplorer';
 import RankingExplorer from './RankingExplorer';
-import VideoSettingsPanel from './VideoSettingsPanel';
+import SettingsModal from '../layout/SettingsModal';
 import { API_BASE_URL, OPTAVISION_API_URL } from '../../config';
 import { appendExplorationFilterParams } from './optaFilterParams';
 
@@ -269,6 +271,9 @@ const OptaVisionDashboard = ({ user }) => {
   const [stadiumsList, setStadiumsList] = useState([]);
   const [advancedMetricsList, setAdvancedMetricsList] = useState([]);
 
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState('profile');
+
   // Fetch Lookups (Auto-Discovery)
   useEffect(() => {
     const fetchMeta = async () => {
@@ -316,6 +321,12 @@ const OptaVisionDashboard = ({ user }) => {
     fetchEvents();
   }, [page, limit, explorationFilters, activeTool]);
 
+  const openSettings = (tab) => {
+    setSettingsTab(tab);
+    setIsSettingsOpen(true);
+    setIsUserMenuOpen(false);
+  };
+
   return (
     <div className="min-h-screen bg-[#131313] text-white flex flex-col font-sans overflow-hidden">
 
@@ -361,32 +372,74 @@ const OptaVisionDashboard = ({ user }) => {
               </div>
             </div>
 
-            {/* Espace Droite - User & Settings */}
+            {/* Espace Droite - User Menu & Theme Toggle */}
             <div className="hidden md:flex justify-end items-center gap-6 order-2 md:order-3">
-              <div className="flex items-center gap-2">
-                <button className="w-10 h-10 flex items-center justify-center text-[#949494] hover:text-white transition-colors relative">
-                  <Bell size={20} />
-                  <div className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 border-2 border-[#131313] rounded-full" />
-                </button>
+              <button className="w-10 h-10 flex items-center justify-center text-secondary-text hover:text-white bg-white/5 border border-white/10 rounded-full transition-all">
+                <Activity size={18} className="rotate-45" /> {/* Simulation icône soleil du screen */}
+              </button>
+
+              <div className="relative">
                 <button 
-                  onClick={() => setIsSettingsOpen(true)}
-                  className="w-10 h-10 flex items-center justify-center text-[#949494] hover:text-[#3cffd0] transition-colors"
+                  onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                  className={`flex items-center gap-4 pl-5 pr-2 py-1.5 rounded-full border transition-all cursor-pointer group ${isUserMenuOpen ? 'bg-white text-black border-white' : 'bg-white/5 text-white border-white/10 hover:border-white/20'}`}
                 >
-                  <Settings size={20} />
+                  <div className={`flex flex-col items-end ${isUserMenuOpen ? 'text-black' : 'text-white'}`}>
+                    <span className="verge-label-mono text-[10px] font-black leading-none uppercase">{user?.username || 'ADMIN'}</span>
+                    <span className={`verge-label-mono text-[8px] mt-1 tracking-tighter uppercase ${isUserMenuOpen ? 'text-black/60' : 'text-[#3cffd0]'}`}>ANALYST PRO</span>
+                  </div>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${isUserMenuOpen ? 'bg-black text-[#3cffd0]' : 'bg-[#2d2d2d] text-white group-hover:bg-[#3cffd0] group-hover:text-black'}`}>
+                    <UserIcon size={16} />
+                  </div>
+                  <ChevronDown size={14} className={`transition-transform duration-300 ${isUserMenuOpen ? 'rotate-180 text-black' : 'text-[#949494]'}`} />
                 </button>
-              </div>
 
-              <div className="h-10 w-px bg-white/10 mx-2" />
+                {/* Dropdown Menu */}
+                <AnimatePresence>
+                  {isUserMenuOpen && (
+                    <>
+                      <motion.div 
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        onClick={() => setIsUserMenuOpen(false)}
+                        className="fixed inset-0 z-[-1]"
+                      />
+                      <motion.div
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        className="absolute right-0 mt-3 w-72 bg-[#1a1a1a] border border-white/10 rounded-[4px] shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden z-[110] backdrop-blur-xl"
+                      >
+                        <div className="p-6 border-b border-white/5 bg-black/20">
+                          <p className="verge-label-mono text-[8px] text-[#949494] uppercase tracking-[0.2em] mb-1">Session Active</p>
+                          <p className="verge-label-mono text-sm font-black text-white uppercase">{user?.username || 'ADMIN'}</p>
+                        </div>
+                        
+                        <div className="p-2">
+                          <button onClick={() => openSettings('profile')} className="w-full flex items-center gap-4 px-4 py-3.5 hover:bg-white/5 rounded-[2px] transition-all group">
+                            <Settings size={16} className="text-[#949494] group-hover:text-[#3cffd0]" />
+                            <span className="verge-label-mono text-[10px] font-black text-[#949494] group-hover:text-white uppercase tracking-widest">Paramètres du compte</span>
+                          </button>
+                          
+                          <button onClick={() => openSettings('security')} className="w-full flex items-center gap-4 px-4 py-3.5 hover:bg-white/5 rounded-[2px] transition-all group">
+                            <Shield size={16} className="text-[#949494] group-hover:text-[#3cffd0]" />
+                            <span className="verge-label-mono text-[10px] font-black text-[#949494] group-hover:text-white uppercase tracking-widest">Sécurité & Accès</span>
+                          </button>
 
-              <div className="flex items-center gap-4 bg-white/5 pl-4 pr-2 py-1.5 rounded-full border border-white/5 hover:border-white/10 transition-all cursor-pointer group">
-                <div className="flex flex-col items-end">
-                  <span className="verge-label-mono text-[10px] text-white font-black leading-none">{user?.name || 'GUEST USER'}</span>
-                  <span className="verge-label-mono text-[8px] text-[#3cffd0] mt-1 tracking-tighter uppercase">ANALYST PRO</span>
-                </div>
-                <div className="w-8 h-8 bg-[#2d2d2d] rounded-full flex items-center justify-center text-white group-hover:bg-[#3cffd0] group-hover:text-black transition-all">
-                  <UserIcon size={16} />
-                </div>
-                <ChevronDown size={14} className="text-[#949494] mr-2" />
+                          <button onClick={() => openSettings('video-r2')} className="w-full flex items-center gap-4 px-4 py-3.5 hover:bg-white/5 rounded-[2px] transition-all group">
+                            <Play size={16} className="text-[#949494] group-hover:text-[#3cffd0]" />
+                            <span className="verge-label-mono text-[10px] font-black text-[#949494] group-hover:text-white uppercase tracking-widest">Config Video R2</span>
+                          </button>
+                        </div>
+
+                        <div className="p-2 border-t border-white/5 bg-black/10">
+                          <button className="w-full flex items-center gap-4 px-4 py-3.5 hover:bg-red-500/10 rounded-[2px] transition-all group">
+                            <LogOut size={16} className="text-[#949494] group-hover:text-red-500" />
+                            <span className="verge-label-mono text-[10px] font-black text-[#949494] group-hover:text-white uppercase tracking-widest">Déconnexion</span>
+                          </button>
+                        </div>
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
 
@@ -396,6 +449,7 @@ const OptaVisionDashboard = ({ user }) => {
 
       {/* MAIN VIEW AREA */}
       <div className={`flex-1 flex flex-col overflow-hidden ${activeTool ? 'p-0' : 'p-8 md:p-12 lg:p-20 gap-12'}`}>
+
 
         {/* DASHBOARD VIEW */}
         {view === 'DASHBOARD' && (
@@ -674,10 +728,15 @@ const OptaVisionDashboard = ({ user }) => {
           </div>
         )}
 
-        {/* ADMIN PANEL : VIDEO SETTINGS */}
+        {/* ADMIN PANEL : SETTINGS MODAL (PRO SPACE) */}
         <AnimatePresence>
           {isSettingsOpen && (
-            <VideoSettingsPanel onClose={() => setIsSettingsOpen(false)} />
+            <SettingsModal 
+              isOpen={isSettingsOpen} 
+              onClose={() => setIsSettingsOpen(false)} 
+              user={user}
+              initialTab={settingsTab}
+            />
           )}
         </AnimatePresence>
 
