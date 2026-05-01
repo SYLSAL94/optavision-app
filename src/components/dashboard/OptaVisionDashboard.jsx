@@ -4,6 +4,7 @@ import {
   Activity,
   TrendingUp,
   Target,
+  Trophy,
   Search,
   ChevronRight,
   Database,
@@ -24,8 +25,10 @@ import ShotMapFilterPanel from './ShotMapFilterPanel';
 import EventExplorer from './EventExplorer';
 import BuildUpExplorer from './BuildUpExplorer';
 import ShotMapExplorer from './ShotMapExplorer';
+import RankingExplorer from './RankingExplorer';
 import VideoSettingsPanel from './VideoSettingsPanel';
 import { API_BASE_URL, OPTAVISION_API_URL } from '../../config';
+import { appendExplorationFilterParams } from './optaFilterParams';
 
 /**
  * OptaVisionDashboard - Squelette UI/UX Premium (Style The Verge)
@@ -127,36 +130,7 @@ const OptaVisionDashboard = ({ user }) => {
       limit: '1000'
     });
 
-    if (requestFilters.startDate) params.append('start_date', requestFilters.startDate);
-    if (requestFilters.endDate) params.append('end_date', requestFilters.endDate);
-
-    if (requestFilters.matches?.length > 0) params.append('match_ids', requestFilters.matches.join(','));
-    if (requestFilters.types?.length > 0) params.append('types', requestFilters.types.join(','));
-    if (requestFilters.players?.length > 0) params.append('player_ids', requestFilters.players.join(','));
-    if (requestFilters.player_id?.length > 0) params.append('player_id', requestFilters.player_id.join(','));
-    if (requestFilters.receiver_id?.length > 0) params.append('receiver_id', requestFilters.receiver_id.join(','));
-    if (requestFilters.opponent_id?.length > 0) params.append('opponent_id', requestFilters.opponent_id.join(','));
-    if (requestFilters.teams?.length > 0) params.append('team_ids', requestFilters.teams.join(','));
-    if (requestFilters.min_xt > 0) params.append('min_xt', requestFilters.min_xt.toString());
-    if (requestFilters.start_min > 0) params.append('start_min', requestFilters.start_min.toString());
-    if (requestFilters.end_min < 95) params.append('end_min', requestFilters.end_min.toString());
-    if (requestFilters.outcome !== null) params.append('outcome', requestFilters.outcome.toString());
-    if (requestFilters.period_id?.length > 0) params.append('period_id', requestFilters.period_id.join(','));
-    if (requestFilters.location?.length > 0) params.append('location', requestFilters.location.join(','));
-    if (requestFilters.zone?.length > 0) params.append('zone', requestFilters.zone.join(','));
-    if (requestFilters.next_action_types?.length > 0) params.append('next_action_types', requestFilters.next_action_types.join(','));
-    if (requestFilters.exclude_types?.length > 0) params.append('exclude_types', requestFilters.exclude_types.join(','));
-    if (requestFilters.tactical_positions?.length > 0) params.append('tactical_positions', requestFilters.tactical_positions.join(','));
-    if (requestFilters.exclude_positions?.length > 0) params.append('exclude_positions', requestFilters.exclude_positions.join(','));
-    if (requestFilters.start_zones?.length > 0) params.append('start_zones', requestFilters.start_zones.join(','));
-    if (requestFilters.end_zones?.length > 0) params.append('end_zones', requestFilters.end_zones.join(','));
-    if (requestFilters.competition?.length > 0) params.append('competition', requestFilters.competition.join(','));
-    if (requestFilters.season?.length > 0) params.append('season', requestFilters.season.join(','));
-    if (requestFilters.week?.length > 0) params.append('week', requestFilters.week.join(','));
-    if (requestFilters.country?.length > 0) params.append('country', requestFilters.country.join(','));
-    if (requestFilters.phase?.length > 0) params.append('phase', requestFilters.phase.join(','));
-    if (requestFilters.stadium?.length > 0) params.append('stadium', requestFilters.stadium.join(','));
-    if (requestFilters.advanced_tactics?.length > 0) params.append('advanced_tactics', requestFilters.advanced_tactics.join(','));
+    appendExplorationFilterParams(params, requestFilters);
 
     if (tool === 'shots') {
       appendShotMapParams(params, nextShotFilters);
@@ -338,6 +312,7 @@ const OptaVisionDashboard = ({ user }) => {
 
   // Hydratation automatique
   useEffect(() => {
+    if (activeTool === 'sequences' || activeTool === 'ranking') return;
     fetchEvents();
   }, [page, limit, explorationFilters, activeTool]);
 
@@ -434,6 +409,7 @@ const OptaVisionDashboard = ({ user }) => {
                   <nav className="flex items-center gap-2 bg-white/5 border border-white/10 p-1.5 rounded-full w-fit">
                     {[
                       { id: 'exploration', label: 'Exploration (Événements)', icon: Activity },
+                      { id: 'ranking', label: 'Ranking Performance', icon: Trophy },
                       { id: 'buildup', label: 'Build-Up (Séquences)', icon: TrendingUp },
                       { id: 'shots', label: 'Shot Map (Tirs)', icon: Target },
                     ].map(tab => (
@@ -476,6 +452,15 @@ const OptaVisionDashboard = ({ user }) => {
                           desc="Flux brut enrichi de métriques AI (xT, Prog, Angles)."
                           icon={<Activity />}
                           onClick={() => setActiveTool('events')}
+                        />
+                      )}
+                      {activeTab === 'ranking' && (
+                        <TileSkeleton
+                          title="Ranking Performance"
+                          desc="Classement API-first des joueurs selon les filtres contextuels."
+                          icon={<Trophy />}
+                          color="text-[#ffd03c]"
+                          onClick={() => setActiveTool('ranking')}
                         />
                       )}
                       {activeTab === 'buildup' && (
@@ -544,6 +529,23 @@ const OptaVisionDashboard = ({ user }) => {
                           onPlayVideo={handlePlaySingleVideo}
                           isVideoLoading={isVideoLoading}
                         />
+                      ) : activeTool === 'ranking' ? (
+                        <RankingExplorer
+                          filters={explorationFilters}
+                          onFiltersChange={setExplorationFilters}
+                          matchesList={matchesList}
+                          availableActionTypes={availableActionTypes}
+                          availableNextActionTypes={availableNextActionTypes}
+                          competitionsList={competitionsList}
+                          seasonsList={seasonsList}
+                          weeksList={weeksList}
+                          countriesList={countriesList}
+                          phasesList={phasesList}
+                          stadiumsList={stadiumsList}
+                          advancedMetricsList={advancedMetricsList}
+                          teamsList={teamsList}
+                          playersList={playersList}
+                        />
                       ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center bg-[#131313] text-white/20">
                           <div className="verge-label-mono text-[10px] uppercase tracking-[0.5em]">
@@ -576,6 +578,25 @@ const OptaVisionDashboard = ({ user }) => {
                     className="fixed top-0 left-0 h-full z-[201]"
                   >
                     {activeTab === 'exploration' && (
+                      <ExplorationFilterPanel
+                        matchesList={matchesList}
+                        availableActionTypes={availableActionTypes}
+                        availableNextActionTypes={availableNextActionTypes}
+                        competitionsList={competitionsList}
+                        seasonsList={seasonsList}
+                        weeksList={weeksList}
+                        countriesList={countriesList}
+                        phasesList={phasesList}
+                        stadiumsList={stadiumsList}
+                        advancedMetricsList={advancedMetricsList}
+                        teamsList={teamsList}
+                        playersList={playersList}
+                        filters={explorationFilters}
+                        onFilterChange={setExplorationFilters}
+                        onClose={() => setIsFilterOpen(false)}
+                      />
+                    )}
+                    {activeTab === 'ranking' && (
                       <ExplorationFilterPanel
                         matchesList={matchesList}
                         availableActionTypes={availableActionTypes}
@@ -638,7 +659,7 @@ const OptaVisionDashboard = ({ user }) => {
 
             {/* FLOATING TOGGLE BUTTON (BOTTOM LEFT) - CONDITIONNEL */}
             <AnimatePresence>
-              {activeTool && (
+              {activeTool && activeTool !== 'ranking' && (
                 <motion.button
                   initial={{ opacity: 0, y: 50 }}
                   animate={{ opacity: 1, y: 0 }}

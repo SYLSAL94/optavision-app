@@ -1,18 +1,10 @@
 import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Trophy, 
-  ChevronRight, 
-  ChevronDown,
-  BarChart2, 
-  User, 
-  Target, 
-  Activity, 
   Database,
   ArrowUpDown,
   Filter,
   Layers,
-  ShieldAlert,
   Play,
   Loader2,
   X,
@@ -27,16 +19,6 @@ import { PitchSVG } from './PitchSVG';
 import { BuildUpLayer } from './BuildUpLayer';
 import { ExplorationLayer } from './ExplorationLayer';
 import { EventTooltip } from './EventTooltip';
-
-const ACTION_TYPES = [
-  { id: 'ALL', label: 'Toutes les actions', icon: <Layers size={14} />, color: '#ffffff' },
-  { id: 'Pass', label: 'Passes', icon: <Activity size={14} />, color: '#3cffd0' },
-  { id: 'BallReceipt', label: 'Réceptions', icon: <ChevronRight size={14} />, color: '#ffd03c' },
-  { id: 'Shot', label: 'Tirs', icon: <Target size={14} />, color: '#ff4d4d' },
-  { id: 'TakeOn', label: 'Dribbles (TakeOn)', icon: <Layers size={14} />, color: '#5200ff' },
-  { id: 'Interception', label: 'Interceptions', icon: <Database size={14} />, color: '#ffd03c' },
-  { id: 'Tackle', label: 'Tacles', icon: <ShieldAlert size={14} />, color: '#5200ff' },
-];
 
 const hasRenderablePlayerId = (event) => {
   const playerId = event?.player_id;
@@ -105,6 +87,7 @@ const toViewBoxString = ({ x, y, width, height }) => `${x} ${y} ${width} ${heigh
 
 const SIMPLEHEAT_SCRIPT_ID = 'simpleheat-script';
 const SIMPLEHEAT_SRC = 'https://cdn.jsdelivr.net/npm/simpleheat@0.4.0/simpleheat.min.js';
+const LIVE_FLUX_PAGE_SIZE = 20;
 let simpleheatLoadPromise = null;
 
 const ensureSimpleheat = () => {
@@ -135,41 +118,17 @@ const ensureSimpleheat = () => {
   return simpleheatLoadPromise;
 };
 
-const RankBadge = ({ rank }) => {
-  if (rank === 1) return (
-    <div className="w-10 h-10 bg-[#3cffd0] text-black flex items-center justify-center text-xs font-black rounded-[4px] shadow-[4px_4px_0px_rgba(60,255,208,0.2)]">
-      {rank}
-    </div>
-  );
-  if (rank <= 3) return (
-    <div className="w-10 h-10 bg-[#5200ff] text-white flex items-center justify-center text-xs font-black rounded-[4px] shadow-[4px_4px_0px_rgba(82,0,255,0.2)]">
-      {rank}
-    </div>
-  );
-  return (
-    <div className="w-10 h-10 bg-[#2d2d2d] text-[#949494] flex items-center justify-center text-xs font-black rounded-[4px] border border-white/5">
-      {rank}
-    </div>
-  );
-};
-
 const EventExplorer = ({ 
   data = [], 
   matchIds, 
   loading = false, 
   filters, 
-  advancedMetricsList = [], 
   playersList = [], 
   selectedSequence,
   isSequenceMode = false,
   onPlayVideo,
   isVideoLoading = false
 }) => {
-  const [selectedAction, setSelectedAction] = useState('ALL');
-  const [sortOrder, setSortOrder] = useState('desc');
-  const [isSelectOpen, setIsSelectOpen] = useState(false);
-  const [page, setPage] = useState(1);
-  const itemsPerPage = 10;
   const [generatingEventId, setGeneratingEventId] = useState(null);
   const [activeVideoUrl, setActiveVideoUrl] = useState(null);
   const [pitchView, setPitchView] = useState('full');
@@ -177,6 +136,7 @@ const EventExplorer = ({
   const [heatmapMode, setHeatmapMode] = useState('off');
   const [pitchStyle, setPitchStyle] = useState('standard');
   const [showEvents, setShowEvents] = useState(true);
+  const [liveFluxPage, setLiveFluxPage] = useState(1);
   const heatmapCanvasRef = useRef(null);
   const heatmapInstanceRef = useRef(null);
 
@@ -249,16 +209,6 @@ const EventExplorer = ({
     return null;
   }, []);
 
-  const combinedActions = useMemo(() => {
-    const advanced = advancedMetricsList.map(tag => ({
-      id: tag,
-      label: tag.replace(/^(is_|seq_)/, '').replace(/_/g, ' ').toUpperCase(),
-      icon: <Activity size={14} />,
-      color: '#949494'
-    }));
-    return [...ACTION_TYPES, ...advanced];
-  }, [advancedMetricsList]);
-
   const displayData = useMemo(() => {
     if (isSequenceMode) {
       if (!selectedSequence || !data?.sequences) return [];
@@ -273,19 +223,6 @@ const EventExplorer = ({
     const baseData = Array.isArray(data) ? data : (data?.items || []);
     let filtered = baseData.filter(e => hasRenderablePlayerId(e) && e.type !== 'Out' && e.type_id !== 5);
 
-    if (selectedAction && selectedAction !== 'ALL') {
-      const normalizedSelected = String(selectedAction).replace(/\s+/g, '').toLowerCase();
-      filtered = filtered.filter(event => {
-        if (selectedAction.startsWith('is_') || selectedAction.startsWith('seq_')) {
-          let m = event.advanced_metrics;
-          if (typeof m === 'string') try { m = JSON.parse(m); } catch(e) { m = {}; }
-          return m?.[selectedAction] === true || m?.[selectedAction] === 'true';
-        }
-        const eventType = event.type_name || event.type || String(event.type_id || '');
-        const normalizedEvent = String(eventType).replace(/\s+/g, '').toLowerCase();
-        return normalizedEvent === normalizedSelected || String(event.type_id) === String(selectedAction);
-      });
-    }
     const { localTeam, localOpponent } = filters || {};
     if (localTeam && localTeam !== 'ALL') {
       filtered = filtered.filter(e => String(e.team_id) === String(localTeam));
@@ -294,7 +231,7 @@ const EventExplorer = ({
       filtered = filtered.filter(e => String(e.team_id) !== String(localOpponent));
     }
     return filtered;
-  }, [data, filters, isSequenceMode, selectedSequence, selectedAction]);
+  }, [data, filters, isSequenceMode, selectedSequence]);
 
   const globalPlayerMap = useMemo(() => {
     const map = {};
@@ -316,39 +253,6 @@ const EventExplorer = ({
     return map;
   }, [data]);
 
-  const playerRanking = useMemo(() => {
-    if (actualSequenceMode || !displayData || displayData.length === 0) return [];
-    const counts = {};
-    const playerTeams = {};
-    const normalizedSelected = String(selectedAction).replace(/\s+/g, '').toLowerCase();
-
-    displayData.forEach(event => {
-      let isMatch = false;
-      if (selectedAction.startsWith('is_') || selectedAction.startsWith('seq_')) {
-        let m = event.advanced_metrics;
-        if (typeof m === 'string') try { m = JSON.parse(m); } catch(e) { m = {}; }
-        isMatch = m?.[selectedAction] === true || m?.[selectedAction] === 'true';
-      } else {
-        const eventType = event.type_name || event.type || String(event.type_id || '');
-        const normalizedEvent = String(eventType).replace(/\s+/g, '').toLowerCase();
-        isMatch = normalizedEvent === normalizedSelected || String(event.type_id) === String(selectedAction);
-      }
-      if (isMatch) {
-        const playerName = event.playerName || event.player_id;
-        if (playerName && playerName !== 'N/A') {
-          counts[playerName] = (counts[playerName] || 0) + 1;
-          playerTeams[playerName] = event.teamName || 'Unknown Team';
-        }
-      }
-    });
-    return Object.entries(counts)
-      .map(([name, count]) => ({ name, count, team: playerTeams[name] }))
-      .sort((a, b) => sortOrder === 'desc' ? b.count - a.count : a.count - b.count)
-      .map(p => ({ ...p, count: typeof p.count === 'number' && !Number.isInteger(p.count) ? p.count.toFixed(3) : p.count }));
-  }, [displayData, selectedAction, sortOrder, actualSequenceMode]);
-
-  const totalPages = actualSequenceMode ? 0 : Math.ceil(playerRanking.length / itemsPerPage);
-  const paginatedRanking = actualSequenceMode ? [] : playerRanking.slice((page - 1) * itemsPerPage, page * itemsPerPage);
   const mapEventCount = actualSequenceMode
     ? displayData.reduce((sum, seq) => sum + ((seq.events || []).length), 0)
     : displayData.length;
@@ -386,8 +290,25 @@ const EventExplorer = ({
       : displayData;
     return events.filter(hasRenderablePlayerId);
   }, [actualSequenceMode, displayData]);
+  const liveEventRows = useMemo(() => (
+    (actualSequenceMode ? displayData[0]?.events : displayData) || []
+  ), [actualSequenceMode, displayData]);
+  const successfulEventCount = useMemo(() => (
+    liveEventRows.filter(event => event.outcome === 1 || event.outcome === 'Successful').length
+  ), [liveEventRows]);
+  const globalSuccessRate = liveEventRows.length > 0
+    ? Math.round((successfulEventCount / liveEventRows.length) * 100)
+    : 0;
+  const liveFluxTotalPages = Math.max(1, Math.ceil(liveEventRows.length / LIVE_FLUX_PAGE_SIZE));
+  const currentLiveFluxPage = Math.min(liveFluxPage, liveFluxTotalPages);
+  const paginatedLiveEventRows = useMemo(() => {
+    const start = (currentLiveFluxPage - 1) * LIVE_FLUX_PAGE_SIZE;
+    return liveEventRows.slice(start, start + LIVE_FLUX_PAGE_SIZE);
+  }, [currentLiveFluxPage, liveEventRows]);
 
-  React.useEffect(() => { setPage(1); }, [selectedAction, sortOrder, displayData]);
+  React.useEffect(() => {
+    setLiveFluxPage(1);
+  }, [liveEventRows]);
   React.useEffect(() => {
     if (isEventLimitExceeded) {
       setShowEvents(false);
@@ -483,6 +404,138 @@ const EventExplorer = ({
     heatmapInstanceRef.current = null;
   }, []);
 
+  const renderLiveFlux = (className = "h-full bg-[#1a1a1a] border border-white/10 rounded-[4px] flex flex-col overflow-hidden") => (
+    <div className={className}>
+      <div className="px-6 py-4 border-b border-white/10 bg-[#2d2d2d] flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          <div className={`w-2 h-2 rounded-full ${loading ? 'bg-orange-500 animate-bounce' : 'bg-[#3cffd0] animate-pulse'}`} />
+          <span className="verge-label-mono text-[10px] text-white font-black uppercase tracking-[0.2em]">Flux Live Analyst</span>
+        </div>
+        <span className="verge-label-mono text-[9px] text-[#949494] bg-white/5 px-3 py-1 rounded-[2px] border border-white/5">
+          {liveEventRows.length.toLocaleString()} SELECTED
+        </span>
+      </div>
+      <div className="flex-1 overflow-y-auto styled-scrollbar-verge bg-black/20">
+        {!loading && liveEventRows.length > 0 ? (
+          paginatedLiveEventRows.map((e, i) => {
+            const parsedMetrics = parseAdvancedMetrics(e);
+            const typeLabel = parsedMetrics?.type_name || e.type_name || e.type_id;
+            const typeKey = String(typeLabel || '').replace(/\s+/g, '').toLowerCase();
+            const typeId = String(parsedMetrics?.type_id ?? e.type_id ?? '');
+            const getPlayerName = (id) => {
+              if (!id) return null;
+              return globalPlayerMap[String(id)] || String(id);
+            };
+            const receiverName = getPlayerName(parsedMetrics?.receiver || e.receiver_id || e.receiver);
+            const opponentName = getPlayerName(parsedMetrics?.opponent_id);
+            const xTLabel = formatSignedMetric(parsedMetrics?.xT);
+            const isProgressive = parsedMetrics?.is_progressive === true || parsedMetrics?.is_progressive === 'true';
+            const rawDuelWon = parsedMetrics?.duel_won === true || parsedMetrics?.duel_won === 'true';
+            const duelLost = parsedMetrics?.duel_lost === true || parsedMetrics?.duel_lost === 'true';
+            const isForcedDuelLoss = FORCED_DUEL_LOSS_KEYS.has(typeKey) || FORCED_DUEL_LOSS_IDS.has(typeId);
+            const duelWon = isForcedDuelLoss ? false : rawDuelWon;
+            const hasDuelResult = isForcedDuelLoss || rawDuelWon || duelLost;
+            const shotQuality = parsedMetrics?.shot_status
+              || parsedMetrics?.quality
+              || parsedMetrics?.chance_quality
+              || (parsedMetrics?.is_shot_big_chance ? 'Big Chance' : null)
+              || (Number.isFinite(Number(parsedMetrics?.xG)) ? `xG ${Number(parsedMetrics.xG).toFixed(2)}` : null);
+            const isPassLike = ['pass', 'carry', 'ballreceipt'].includes(typeKey);
+            const isDuelLike = DUEL_EVENT_KEYS.has(typeKey) || DUEL_EVENT_IDS.has(typeId);
+            const isShotLike = ['shot', 'goal', 'savedshot', 'missedshots'].includes(typeKey);
+
+            return (
+              <div
+                key={e.opta_id || e.id || `${currentLiveFluxPage}-${i}`}
+                onClick={() => {
+                  const eventId = e.opta_id ?? e.id;
+                  const nextFocused = eventId === activeFocusedEventId ? null : e;
+                  setFocusedEvent(nextFocused);
+                  setFocusedEventId(nextFocused ? eventId : null);
+                  setHoveredEvent(nextFocused);
+                }}
+                className={`flex items-center justify-between py-3 border-b border-white/[0.03] hover:bg-[#3cffd0]/5 transition-colors px-5 group cursor-pointer ${(e.opta_id ?? e.id) === activeFocusedEventId ? 'bg-[#3cffd0]/10 border-l-2 border-l-[#3cffd0]' : ''}`}
+              >
+                <div className="flex items-center gap-4 min-w-0 flex-1">
+                  <span className="verge-label-mono text-[9px] text-[#3cffd0] font-black w-14 shrink-0">
+                    {(e.cumulative_mins ?? 0).toFixed(1)}'
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="verge-label-mono text-[10px] text-white uppercase font-black tracking-tight truncate">{typeLabel}</span>
+                      {isProgressive && (
+                        <span className="verge-label-mono text-[7px] px-1.5 py-0.5 rounded-[2px] bg-[#3cffd0] text-black font-black uppercase">Prog</span>
+                      )}
+                    </div>
+                    <div className="verge-label-mono text-[9px] text-[#949494] group-hover:text-white transition-colors truncate mt-1">
+                      {e.playerName || globalPlayerMap[e.player_id] || e.player_id}
+                    </div>
+                    <div className="mt-1 flex items-center gap-2 overflow-hidden">
+                      {isPassLike && receiverName && (
+                        <span className="verge-label-mono text-[8px] text-[#949494] truncate">Vers: <span className="text-white/80">{receiverName}</span></span>
+                      )}
+                      {isPassLike && xTLabel && (
+                        <span className="verge-label-mono text-[8px] text-[#3cffd0] font-black">xT {xTLabel}</span>
+                      )}
+                      {isDuelLike && opponentName && (
+                        <span className="verge-label-mono text-[8px] text-[#949494] truncate">Contre: <span className="text-white/80">{opponentName}</span></span>
+                      )}
+                      {isDuelLike && hasDuelResult && (
+                        <span className={`verge-label-mono text-[7px] px-1.5 py-0.5 rounded-[2px] text-black font-black uppercase ${duelWon ? 'bg-[#3cffd0]' : 'bg-[#ff4d4d]'}`}>
+                          {duelWon ? 'Gagne' : 'Perdu'}
+                        </span>
+                      )}
+                      {isShotLike && shotQuality && (
+                        <span className="verge-label-mono text-[8px] text-[#ff4d4d] font-black truncate">{shotQuality}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={(evt) => handleGenerateClip(evt, e)}
+                  disabled={generatingEventId === (e.opta_id || e.id)}
+                  className={`w-8 h-8 flex items-center justify-center rounded-full border transition-all shrink-0 ${generatingEventId === (e.opta_id || e.id) ? 'bg-[#3cffd0]/20 border-[#3cffd0]' : 'border-white/10 hover:border-[#3cffd0] hover:bg-[#3cffd0] hover:text-black text-[#949494]'}`}
+                >
+                  {generatingEventId === (e.opta_id || e.id) ? (
+                    <Loader2 size={12} className="animate-spin text-[#3cffd0]" />
+                  ) : (
+                    <Play size={12} fill="currentColor" />
+                  )}
+                </button>
+              </div>
+            );
+          })
+        ) : (
+          <div className="h-full flex items-center justify-center opacity-10"><Database size={32} /></div>
+        )}
+      </div>
+      {liveEventRows.length > LIVE_FLUX_PAGE_SIZE && (
+        <div className="px-5 py-3 border-t border-white/10 bg-[#131313] flex items-center justify-between shrink-0">
+          <button
+            type="button"
+            disabled={currentLiveFluxPage <= 1}
+            onClick={() => setLiveFluxPage(page => Math.max(1, page - 1))}
+            className="px-3 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed rounded-[2px] verge-label-mono text-[9px] text-white font-black uppercase tracking-widest transition-all"
+          >
+            Prec
+          </button>
+          <div className="verge-label-mono text-[8px] text-[#949494] font-black tracking-widest">
+            PAGE <span className="text-[#3cffd0]">{currentLiveFluxPage}</span> / {liveFluxTotalPages}
+            <span className="ml-2 text-white/40">{liveEventRows.length.toLocaleString()} EVENTS</span>
+          </div>
+          <button
+            type="button"
+            disabled={currentLiveFluxPage >= liveFluxTotalPages}
+            onClick={() => setLiveFluxPage(page => Math.min(liveFluxTotalPages, page + 1))}
+            className="px-3 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed rounded-[2px] verge-label-mono text-[9px] text-white font-black uppercase tracking-widest transition-all"
+          >
+            Suiv
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="flex h-full w-full gap-8 animate-in fade-in zoom-in-95 duration-500 overflow-hidden">
       
@@ -496,7 +549,7 @@ const EventExplorer = ({
               <div>
                 <h3 className="verge-h3 text-white uppercase tracking-tighter font-black">Visualisation Spatiale</h3>
                 <p className="verge-label-mono text-[9px] text-[#3cffd0] uppercase tracking-[0.3em] font-bold mt-1">
-                  {selectedAction} ANALYSIS ({displayData.length} SELECTED)
+                  EVENT ANALYSIS ({displayData.length} SELECTED)
                 </p>
               </div>
             </div>
@@ -672,186 +725,23 @@ const EventExplorer = ({
           )}
         </div>
 
-        {/* FLUX LIVE ANALYST */}
-        <div className="h-56 bg-[#1a1a1a] border border-white/10 rounded-[4px] flex flex-col overflow-hidden">
-          <div className="px-6 py-4 border-b border-white/10 bg-[#2d2d2d] flex justify-between items-center">
-             <div className="flex items-center gap-4">
-               <div className={`w-2 h-2 rounded-full ${loading ? 'bg-orange-500 animate-bounce' : 'bg-[#3cffd0] animate-pulse'}`} />
-               <span className="verge-label-mono text-[10px] text-white font-black uppercase tracking-[0.2em]">Flux Live Analyst</span>
-             </div>
-             <span className="verge-label-mono text-[9px] text-[#949494] bg-white/5 px-3 py-1 rounded-[2px] border border-white/5">
-                {displayData.length.toLocaleString()} SELECTED
-              </span>
-          </div>
-          <div className="flex-1 overflow-y-auto styled-scrollbar-verge bg-black/20">
-             {!loading && (actualSequenceMode ? (displayData[0]?.events || []) : displayData).length > 0 ? (
-              ((actualSequenceMode ? displayData[0]?.events : displayData) || []).slice(0, 100).map((e, i) => {
-                const parsedMetrics = parseAdvancedMetrics(e);
-                const typeLabel = parsedMetrics?.type_name || e.type_name || e.type_id;
-                const typeKey = String(typeLabel || '').replace(/\s+/g, '').toLowerCase();
-                const typeId = String(parsedMetrics?.type_id ?? e.type_id ?? '');
-                const getPlayerName = (id) => {
-                  if (!id) return null;
-                  return globalPlayerMap[String(id)] || String(id);
-                };
-                const receiverName = getPlayerName(parsedMetrics?.receiver || e.receiver_id || e.receiver);
-                const opponentName = getPlayerName(parsedMetrics?.opponent_id);
-                const xTLabel = formatSignedMetric(parsedMetrics?.xT);
-                const isProgressive = parsedMetrics?.is_progressive === true || parsedMetrics?.is_progressive === 'true';
-                const rawDuelWon = parsedMetrics?.duel_won === true || parsedMetrics?.duel_won === 'true';
-                const duelLost = parsedMetrics?.duel_lost === true || parsedMetrics?.duel_lost === 'true';
-                const isForcedDuelLoss = FORCED_DUEL_LOSS_KEYS.has(typeKey) || FORCED_DUEL_LOSS_IDS.has(typeId);
-                const duelWon = isForcedDuelLoss ? false : rawDuelWon;
-                const hasDuelResult = isForcedDuelLoss || rawDuelWon || duelLost;
-                const shotQuality = parsedMetrics?.shot_status
-                  || parsedMetrics?.quality
-                  || parsedMetrics?.chance_quality
-                  || (parsedMetrics?.is_shot_big_chance ? 'Big Chance' : null)
-                  || (Number.isFinite(Number(parsedMetrics?.xG)) ? `xG ${Number(parsedMetrics.xG).toFixed(2)}` : null);
-                const isPassLike = ['pass', 'carry', 'ballreceipt'].includes(typeKey);
-                const isDuelLike = DUEL_EVENT_KEYS.has(typeKey) || DUEL_EVENT_IDS.has(typeId);
-                const isShotLike = ['shot', 'goal', 'savedshot', 'missedshots'].includes(typeKey);
-                return (
-                  <div 
-                    key={i} 
-                    onClick={() => {
-                      const eventId = e.opta_id ?? e.id;
-                      const nextFocused = eventId === activeFocusedEventId ? null : e;
-                      setFocusedEvent(nextFocused);
-                      setFocusedEventId(nextFocused ? eventId : null);
-                      setHoveredEvent(nextFocused);
-                    }}
-                    className={`flex items-center justify-between py-2 border-b border-white/[0.03] hover:bg-[#3cffd0]/5 transition-colors px-6 group cursor-pointer ${(e.opta_id ?? e.id) === activeFocusedEventId ? 'bg-[#3cffd0]/10 border-l-2 border-l-[#3cffd0]' : ''}`}
-                  >
-                   <div className="flex items-center gap-6 flex-1">
-                     <span className="verge-label-mono text-[10px] text-[#3cffd0] font-black w-20 shrink-0">
-                       {(e.cumulative_mins ?? 0).toFixed(1)}'
-                     </span>
-                     <span className="verge-label-mono text-[10px] text-white uppercase font-black tracking-tight w-28 shrink-0 truncate">
-                       {typeLabel}
-                     </span>
-                     <div className="min-w-0 flex-1">
-                       <div className="verge-label-mono text-[10px] text-[#949494] group-hover:text-white transition-colors truncate">
-                         {e.playerName || globalPlayerMap[e.player_id] || e.player_id}
-                       </div>
-                       <div className="mt-1 flex items-center gap-2 overflow-hidden">
-                         {isPassLike && receiverName && (
-                           <span className="verge-label-mono text-[8px] text-[#949494] truncate">Vers: <span className="text-white/80">{receiverName}</span></span>
-                         )}
-                         {isPassLike && xTLabel && (
-                           <span className="verge-label-mono text-[8px] text-[#3cffd0] font-black">xT {xTLabel}</span>
-                         )}
-                         {isProgressive && (
-                           <span className="verge-label-mono text-[7px] px-1.5 py-0.5 rounded-[2px] bg-[#3cffd0] text-black font-black uppercase">Prog</span>
-                         )}
-                         {isDuelLike && opponentName && (
-                           <span className="verge-label-mono text-[8px] text-[#949494] truncate">Contre: <span className="text-white/80">{opponentName}</span></span>
-                         )}
-                         {isDuelLike && hasDuelResult && (
-                           <span className={`verge-label-mono text-[7px] px-1.5 py-0.5 rounded-[2px] text-black font-black uppercase ${duelWon ? 'bg-[#3cffd0]' : 'bg-[#ff4d4d]'}`}>
-                             {duelWon ? 'Gagne' : 'Perdu'}
-                           </span>
-                         )}
-                         {isShotLike && shotQuality && (
-                           <span className="verge-label-mono text-[8px] text-[#ff4d4d] font-black truncate">{shotQuality}</span>
-                         )}
-                       </div>
-                     </div>
-                   </div>
-                   <div className="flex items-center gap-4 shrink-0">
-                      <div className="verge-label-mono text-[8px] text-[#2d2d2d] group-hover:text-[#3cffd0] transition-colors font-black">ID:{e.opta_id || e.id}</div>
-                      <button 
-                        onClick={(evt) => handleGenerateClip(evt, e)}
-                        disabled={generatingEventId === (e.opta_id || e.id)}
-                        className={`w-8 h-8 flex items-center justify-center rounded-full border transition-all ${generatingEventId === (e.opta_id || e.id) ? 'bg-[#3cffd0]/20 border-[#3cffd0]' : 'border-white/10 hover:border-[#3cffd0] hover:bg-[#3cffd0] hover:text-black text-[#949494]'}`}
-                      >
-                        {generatingEventId === (e.opta_id || e.id) ? (
-                          <Loader2 size={12} className="animate-spin text-[#3cffd0]" />
-                        ) : (
-                          <Play size={12} fill="currentColor" />
-                        )}
-                      </button>
-                    </div>
-                 </div>
-                );
-               })
-             ) : (
-               <div className="h-full flex items-center justify-center opacity-10"><Database size={32} /></div>
-             )}
-          </div>
+        {/* KPIs GLOBAUX */}
+        <div className="bg-[#1a1a1a] border border-white/10 rounded-[4px] grid grid-cols-3 overflow-hidden">
+          {[
+            ['Total Evenements', liveEventRows.length.toLocaleString(), 'text-white'],
+            ['Actions Reussies', successfulEventCount.toLocaleString(), 'text-[#3cffd0]'],
+            ['Taux Reussite', `${globalSuccessRate}%`, globalSuccessRate >= 60 ? 'text-[#3cffd0]' : 'text-[#ff4d4d]']
+          ].map(([label, value, color]) => (
+            <div key={label} className="p-6 border-r border-white/5 last:border-r-0 bg-black/20">
+              <div className="verge-label-mono text-[8px] text-[#949494] uppercase tracking-[0.25em] font-black">{label}</div>
+              <div className={`verge-label-mono text-3xl font-black mt-3 ${color}`}>{value}</div>
+            </div>
+          ))}
         </div>
+
       </div>
 
-      {!isSequenceMode && (
-        <div className="w-[450px] flex flex-col gap-0 bg-[#1a1a1a] border border-white/10 rounded-[4px] overflow-hidden shadow-[0_40px_100px_rgba(0,0,0,0.4)]">
-          <div className="p-8 border-b border-white/10 bg-[#2d2d2d]">
-            <div className="flex items-center gap-4 mb-8">
-              <Trophy className="text-[#3cffd0]" size={20} /><h3 className="verge-h3 text-white uppercase tracking-tighter font-black">Ranking Performance</h3>
-            </div>
-            <div className="relative">
-              <button onClick={() => setIsSelectOpen(!isSelectOpen)} className="w-full flex items-center justify-between px-6 py-4 bg-[#131313] border border-white/10 rounded-[2px] verge-label-mono text-[10px] text-white font-black hover:border-[#3cffd0]/50 transition-all">
-                <div className="flex items-center gap-4">
-                  {combinedActions.find(a => a.id === selectedAction)?.icon}
-                  <span className="uppercase tracking-widest">{combinedActions.find(a => a.id === selectedAction)?.label}</span>
-                </div>
-                <ChevronDown className={`text-[#949494] transition-transform ${isSelectOpen ? 'rotate-180' : ''}`} size={16} />
-              </button>
-              <AnimatePresence>
-                {isSelectOpen && (
-                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute top-full left-0 right-0 mt-2 bg-[#1a1a1a] border border-white/10 rounded-[2px] shadow-2xl z-[100] max-h-[300px] overflow-y-auto styled-scrollbar-verge">
-                    {combinedActions.map(type => (
-                      <button 
-                        key={type.id} 
-                        onClick={() => { 
-                          setSelectedAction(type.id); 
-                          setIsSelectOpen(false);
-                        }} 
-                        className={`w-full flex items-center gap-4 px-6 py-4 verge-label-mono text-[10px] font-black uppercase tracking-widest text-left transition-all border-b border-white/[0.03] ${selectedAction === type.id ? 'bg-[#3cffd0] text-black' : 'text-[#949494] hover:bg-white/5 hover:text-white'}`}
-                      >
-                        {type.icon}<span className="truncate">{type.label}</span>
-                      </button>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-hidden flex flex-col bg-[#131313]">
-            <div className="px-8 py-4 border-b border-white/5 flex items-center justify-between bg-black/40">
-               <span className="verge-label-mono text-[9px] text-[#949494] font-black uppercase tracking-widest">Leaderboard</span>
-               <button onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')} className="flex items-center gap-2 text-[#949494] hover:text-[#3cffd0] transition-colors">
-                  <ArrowUpDown size={12} /><span className="verge-label-mono text-[8px] uppercase font-black">Sort</span>
-               </button>
-            </div>
-            <div className="flex-1 overflow-y-auto styled-scrollbar-verge divide-y divide-white/[0.03] flex flex-col">
-               {paginatedRanking.length > 0 ? (
-                 <AnimatePresence mode="popLayout">
-                    {paginatedRanking.map((player, index) => (
-                      <motion.div key={player.name} layout initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="group flex items-center gap-6 p-6 hover:bg-[#3cffd0]/5 transition-all cursor-pointer relative">
-                        <RankBadge rank={(page - 1) * itemsPerPage + index + 1} />
-                        <div className="flex-1 min-w-0">
-                           <div className="verge-label-mono text-[13px] text-white font-black group-hover:text-[#3cffd0] transition-colors truncate uppercase tracking-tight">{player.name}</div>
-                           <div className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest mt-1 opacity-60">{player.team}</div>
-                        </div>
-                        <div className="text-right flex flex-col items-end">
-                           <span className="verge-label-mono text-3xl font-black text-[#3cffd0] leading-none tracking-tighter">{player.count}</span>
-                        </div>
-                      </motion.div>
-                    ))}
-                 </AnimatePresence>
-               ) : <div className="flex-1 flex flex-col items-center justify-center p-20 text-center opacity-20"><BarChart2 size={48} /><div className="verge-label-mono text-[11px] font-black uppercase tracking-[0.3em]">No Data Profile</div></div>}
-            </div>
-            {totalPages > 1 && (
-              <div className="p-4 border-t border-white/10 bg-[#131313] flex items-center justify-between">
-                <button disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))} className="px-4 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-30 rounded-[2px] verge-label-mono text-[10px] text-white font-black uppercase tracking-widest">Prev</button>
-                <div className="verge-label-mono text-[9px] text-[#949494] font-black tracking-widest">PAGE <span className="text-[#3cffd0]">{page}</span> / {totalPages}</div>
-                <button disabled={page === totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} className="px-4 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-30 rounded-[2px] verge-label-mono text-[10px] text-white font-black uppercase tracking-widest">Next</button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {renderLiveFlux("w-[450px] shrink-0 bg-[#1a1a1a] border border-white/10 rounded-[4px] flex flex-col overflow-hidden shadow-[0_40px_100px_rgba(0,0,0,0.4)]")}
       {/* MODALE LECTEUR VIDÉO (GLASSMORPHISM) */}
       <AnimatePresence>
         {activeVideoUrl && (
