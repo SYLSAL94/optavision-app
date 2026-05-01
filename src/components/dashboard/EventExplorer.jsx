@@ -34,6 +34,13 @@ const ACTION_TYPES = [
   { id: 'Tackle', label: 'Tacles', icon: <ShieldAlert size={14} />, color: '#5200ff' },
 ];
 
+const hasRenderablePlayerId = (event) => {
+  const playerId = event?.player_id;
+  return playerId !== null
+    && playerId !== undefined
+    && String(playerId).trim() !== '';
+};
+
 const RankBadge = ({ rank }) => {
   if (rank === 1) return (
     <div className="w-10 h-10 bg-[#3cffd0] text-black flex items-center justify-center text-xs font-black rounded-[4px] shadow-[4px_4px_0px_rgba(60,255,208,0.2)]">
@@ -154,10 +161,16 @@ const EventExplorer = ({
   const displayData = useMemo(() => {
     if (isSequenceMode) {
       if (!selectedSequence || !data?.sequences) return [];
-      return data.sequences.filter(seq => seq.seq_uuid === selectedSequence || seq.sub_sequence_id === selectedSequence);
+      return data.sequences
+        .filter(seq => seq.seq_uuid === selectedSequence || seq.sub_sequence_id === selectedSequence)
+        .map(seq => ({
+          ...seq,
+          events: (seq.events || []).filter(hasRenderablePlayerId)
+        }))
+        .filter(seq => seq.events.length > 0);
     }
     const baseData = Array.isArray(data) ? data : (data?.items || []);
-    let filtered = baseData.filter(e => e.type !== 'Out' && e.type_id !== 5);
+    let filtered = baseData.filter(e => hasRenderablePlayerId(e) && e.type !== 'Out' && e.type_id !== 5);
 
     if (selectedAction && selectedAction !== 'ALL') {
       const normalizedSelected = String(selectedAction).replace(/\s+/g, '').toLowerCase();
