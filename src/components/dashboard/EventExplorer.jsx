@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 
 import { API_BASE_URL } from '../../config';
+import { pollVideoJob } from '../../utils/videoJobs';
 import { PitchSVG } from './PitchSVG';
 import { BuildUpLayer } from './BuildUpLayer';
 import { ExplorationLayer } from './ExplorationLayer';
@@ -228,11 +229,20 @@ const EventExplorer = ({
         })
       });
       const data = await response.json();
-      if (response.ok && data.video_url) {
+      if (!response.ok) {
+        throw new Error(data.detail || "Erreur lancement generation video");
+      }
+      if (data.job_id) {
+        const videoUrl = await pollVideoJob(data.job_id);
+        setActiveVideoUrl(videoUrl);
+      } else if (data.video_url) {
         setActiveVideoUrl(data.video_url);
+      } else {
+        throw new Error(data.detail || "Aucune URL video retournee par l'API");
       }
     } catch (err) {
       console.error("❌ Erreur génération clip:", err);
+      alert(err.message || "Erreur generation video");
     } finally {
       setGeneratingEventId(null);
     }

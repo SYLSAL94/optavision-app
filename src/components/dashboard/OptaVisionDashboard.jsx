@@ -31,6 +31,7 @@ import RankingExplorer from './RankingExplorer';
 import SettingsModal from '../layout/SettingsModal';
 import { API_BASE_URL, OPTAVISION_API_URL } from '../../config';
 import { appendExplorationFilterParams } from './optaFilterParams';
+import { pollVideoJob } from '../../utils/videoJobs';
 
 /**
  * OptaVisionDashboard - Squelette UI/UX Premium (Style The Verge)
@@ -210,10 +211,20 @@ const OptaVisionDashboard = ({ user }) => {
         body: JSON.stringify(requestPayload)
       });
       const payload = await response.json();
-      if (!response.ok || !payload.video_url) {
+      if (!response.ok) {
         throw new Error(payload.detail || "Aucune URL vidéo retournée par l'API");
       }
+      if (payload.job_id) {
+        return await pollVideoJob(payload.job_id);
+      }
+      if (!payload.video_url) {
+        throw new Error(payload.detail || "Aucune URL video retournee par l'API");
+      }
       return payload.video_url;
+    } catch (err) {
+      console.error("Erreur generation video:", err);
+      alert(err.message || "Erreur generation video");
+      return null;
     } finally {
       setIsVideoLoading(false);
     }
