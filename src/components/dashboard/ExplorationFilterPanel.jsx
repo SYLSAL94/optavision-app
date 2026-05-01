@@ -1,24 +1,17 @@
-import React, { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useMemo } from 'react';
 import { 
-  Filter, 
   Activity, 
-  Map as MapIcon, 
   Zap, 
   SlidersHorizontal, 
   RotateCcw, 
   Check,
-  Search,
-  ChevronDown,
   User,
   Target,
-  X,
   Database
 } from 'lucide-react';
 import AccordionSection from './AccordionSection';
 import MultiSelectWithChips from '../ui/MultiSelectWithChips';
 import TacticalPositionPicker from './TacticalPositionPicker';
-import DualRangeSlider from '../ui/DualRangeSlider';
 
 /**
  * ExplorationFilterPanel - Version Dynamique (Auto-Discovery)
@@ -27,6 +20,7 @@ import DualRangeSlider from '../ui/DualRangeSlider';
 const ExplorationFilterPanel = ({ 
   matchesList = [], 
   availableActionTypes = [], 
+  availableNextActionTypes = [],
   competitionsList = [],
   seasonsList = [],
   weeksList = [],
@@ -53,15 +47,6 @@ const ExplorationFilterPanel = ({
   // BOUCLIER ANTI-SPAM : État local pour les modifications en cours
   const [pendingFilters, setPendingFilters] = useState({ ...filters });
 
-  const toggleFilter = (category, value) => {
-    const filterValue = typeof value === 'object' ? value.id : value;
-    const current = pendingFilters[category] || [];
-    const updated = current.includes(filterValue)
-      ? current.filter(v => v !== filterValue)
-      : [...current, filterValue];
-    setPendingFilters({ ...pendingFilters, [category]: updated });
-  };
-
   const updateNumericFilter = (category, value) => {
     setPendingFilters({ ...pendingFilters, [category]: value });
   };
@@ -85,7 +70,12 @@ const ExplorationFilterPanel = ({
       country: [],
       phase: [],
       stadium: [],
-      stadium: [],
+      next_action_types: [],
+      exclude_types: [],
+      tactical_positions: [],
+      exclude_positions: [],
+      start_zones: [],
+      end_zones: [],
       advanced_tactics: [],
       startDate: '',
       endDate: '',
@@ -239,7 +229,7 @@ const ExplorationFilterPanel = ({
           icon={<Activity size={18} />}
           isOpen={openSection === 'primary'}
           onToggle={() => setOpenSection(openSection === 'primary' ? null : 'primary')}
-          badge={(pendingFilters.types?.length || 0) + (pendingFilters.players?.length || 0)}
+          badge={(pendingFilters.types?.length || 0) + (pendingFilters.exclude_types?.length || 0) + (pendingFilters.next_action_types?.length || 0) + (pendingFilters.players?.length || 0)}
         >
           <div className="space-y-10">
             <MultiSelectWithChips 
@@ -251,6 +241,22 @@ const ExplorationFilterPanel = ({
             />
 
 
+
+            <MultiSelectWithChips 
+              label="Action Suivante" 
+              options={availableNextActionTypes.length > 0 ? availableNextActionTypes : availableActionTypes} 
+              selected={pendingFilters.next_action_types || []} 
+              onChange={(vals) => setPendingFilters({ ...pendingFilters, next_action_types: vals })} 
+              placeholder="Sélectionner..." 
+            />
+
+            <MultiSelectWithChips 
+              label="Exclure Types" 
+              options={availableActionTypes} 
+              selected={pendingFilters.exclude_types || []} 
+              onChange={(vals) => setPendingFilters({ ...pendingFilters, exclude_types: vals })} 
+              placeholder="Aucune exclusion" 
+            />
 
             <MultiSelectWithChips 
               label="Sélection des Joueurs" 
@@ -317,7 +323,7 @@ const ExplorationFilterPanel = ({
           icon={<Target size={18} />}
           isOpen={openSection === 'context'}
           onToggle={() => setOpenSection(openSection === 'context' ? null : 'context')}
-          badge={(pendingFilters.period_id ? 1 : 0) + (pendingFilters.location ? 1 : 0) + (pendingFilters.zone ? 1 : 0)}
+          badge={(pendingFilters.period_id?.length || 0) + (pendingFilters.location?.length || 0) + (pendingFilters.tactical_positions?.length || 0) + (pendingFilters.exclude_positions?.length || 0) + (pendingFilters.start_zones?.length || 0) + (pendingFilters.end_zones?.length || 0)}
         >
           <div className="space-y-10">
             <MultiSelectWithChips 
@@ -336,12 +342,42 @@ const ExplorationFilterPanel = ({
               placeholder="Sélectionner..." 
             />
 
-            <div className="space-y-4">
-              <label className="verge-label-mono text-[10px] text-hazard-white/40 mb-4 block uppercase tracking-widest font-black group-hover:text-hazard-white transition-colors">Zone Tactique (Visual)</label>
-              <TacticalPositionPicker 
-                selectedPositions={pendingFilters.zone || []}
-                onChange={(vals) => setPendingFilters({ ...pendingFilters, zone: vals })}
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-4">
+                <label className="verge-label-mono text-[10px] text-hazard-white/40 mb-4 block uppercase tracking-widest font-black group-hover:text-hazard-white transition-colors">Positions Tactiques</label>
+                <TacticalPositionPicker 
+                  selectedPositions={pendingFilters.tactical_positions || []}
+                  onChange={(vals) => setPendingFilters({ ...pendingFilters, tactical_positions: vals })}
+                />
+              </div>
+
+              <div className="space-y-4">
+                <label className="verge-label-mono text-[10px] text-hazard-white/40 mb-4 block uppercase tracking-widest font-black group-hover:text-hazard-white transition-colors">Exclure Positions</label>
+                <TacticalPositionPicker 
+                  selectedPositions={pendingFilters.exclude_positions || []}
+                  onChange={(vals) => setPendingFilters({ ...pendingFilters, exclude_positions: vals })}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-4">
+                <label className="verge-label-mono text-[10px] text-hazard-white/40 mb-4 block uppercase tracking-widest font-black group-hover:text-hazard-white transition-colors">Zone de départ</label>
+                <TacticalPositionPicker 
+                  variant="fieldZones"
+                  selectedPositions={pendingFilters.start_zones || []}
+                  onChange={(vals) => setPendingFilters({ ...pendingFilters, start_zones: vals })}
+                />
+              </div>
+
+              <div className="space-y-4">
+                <label className="verge-label-mono text-[10px] text-hazard-white/40 mb-4 block uppercase tracking-widest font-black group-hover:text-hazard-white transition-colors">Zone d'arrivée</label>
+                <TacticalPositionPicker 
+                  variant="fieldZones"
+                  selectedPositions={pendingFilters.end_zones || []}
+                  onChange={(vals) => setPendingFilters({ ...pendingFilters, end_zones: vals })}
+                />
+              </div>
             </div>
           </div>
         </AccordionSection>
@@ -476,45 +512,5 @@ const FilterGroup = ({ label, children }) => (
     {children}
   </div>
 );
-
-const MultiSelectDropdown = ({ options, selectedValues, onChange, placeholder }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  return (
-    <div className="relative w-full">
-      <div 
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white flex justify-between items-center cursor-pointer hover:border-[#3cffd0] transition-colors"
-      >
-        <span className="truncate pr-4">
-          {selectedValues.length === 0 ? placeholder : 
-           selectedValues.length === 1 ? options.find(o => String(o.value) === String(selectedValues[0]))?.label || placeholder :
-           `${selectedValues.length} SÉLECTION(S)`}
-        </span>
-        <ChevronDown size={14} className={`flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-      </div>
-      {isOpen && (
-        <div className="absolute top-full left-0 w-full mt-1 bg-[#1a1a1a] border border-[#3cffd0]/30 z-[999] max-h-64 overflow-y-auto styled-scrollbar-verge shadow-[0_20px_50px_rgba(0,0,0,0.8)]">
-
-          {options.map(opt => {
-            const isSelected = selectedValues.some(v => String(v) === String(opt.value));
-            return (
-              <div 
-                key={opt.value}
-                onClick={() => {
-                  if (isSelected) onChange(selectedValues.filter(v => String(v) !== String(opt.value)));
-                  else onChange([...selectedValues, opt.value]);
-                }}
-                className={`p-3 border-b border-white/5 verge-label-mono text-[9px] uppercase cursor-pointer flex justify-between items-center hover:bg-white/5 transition-colors ${isSelected ? 'text-[#3cffd0] bg-[#3cffd0]/5' : 'text-[#949494]'}`}
-              >
-                {opt.label}
-                {isSelected && <Check size={12} />}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-};
 
 export default ExplorationFilterPanel;

@@ -67,7 +67,12 @@ const OptaVisionDashboard = ({ user }) => {
     country: [],
     phase: [],
     stadium: [],
-    stadium: [],
+    next_action_types: [],
+    exclude_types: [],
+    tactical_positions: [],
+    exclude_positions: [],
+    start_zones: [],
+    end_zones: [],
     advanced_tactics: [],
     startDate: '',
     endDate: '',
@@ -139,6 +144,12 @@ const OptaVisionDashboard = ({ user }) => {
     if (requestFilters.period_id?.length > 0) params.append('period_id', requestFilters.period_id.join(','));
     if (requestFilters.location?.length > 0) params.append('location', requestFilters.location.join(','));
     if (requestFilters.zone?.length > 0) params.append('zone', requestFilters.zone.join(','));
+    if (requestFilters.next_action_types?.length > 0) params.append('next_action_types', requestFilters.next_action_types.join(','));
+    if (requestFilters.exclude_types?.length > 0) params.append('exclude_types', requestFilters.exclude_types.join(','));
+    if (requestFilters.tactical_positions?.length > 0) params.append('tactical_positions', requestFilters.tactical_positions.join(','));
+    if (requestFilters.exclude_positions?.length > 0) params.append('exclude_positions', requestFilters.exclude_positions.join(','));
+    if (requestFilters.start_zones?.length > 0) params.append('start_zones', requestFilters.start_zones.join(','));
+    if (requestFilters.end_zones?.length > 0) params.append('end_zones', requestFilters.end_zones.join(','));
     if (requestFilters.competition?.length > 0) params.append('competition', requestFilters.competition.join(','));
     if (requestFilters.season?.length > 0) params.append('season', requestFilters.season.join(','));
     if (requestFilters.week?.length > 0) params.append('week', requestFilters.week.join(','));
@@ -274,6 +285,16 @@ const OptaVisionDashboard = ({ user }) => {
     }
   };
 
+  const [availableActionTypes, setAvailableActionTypes] = useState([]);
+  const [availableNextActionTypes, setAvailableNextActionTypes] = useState([]);
+  const [competitionsList, setCompetitionsList] = useState([]);
+  const [seasonsList, setSeasonsList] = useState([]);
+  const [weeksList, setWeeksList] = useState([]);
+  const [countriesList, setCountriesList] = useState([]);
+  const [phasesList, setPhasesList] = useState([]);
+  const [stadiumsList, setStadiumsList] = useState([]);
+  const [advancedMetricsList, setAdvancedMetricsList] = useState([]);
+
   // Fetch Lookups (Auto-Discovery)
   useEffect(() => {
     const fetchMeta = async () => {
@@ -294,6 +315,7 @@ const OptaVisionDashboard = ({ user }) => {
         setPhasesList(meta.phases || []);
         setStadiumsList(meta.stadiums || []);
         setAdvancedMetricsList(meta.advanced_metrics_keys || []);
+        setAvailableNextActionTypes(meta.next_action_types || meta.action_types || []);
         
         // Unification du dictionnaire des équipes (ID -> Name)
         const teamObjects = meta.teams 
@@ -313,15 +335,6 @@ const OptaVisionDashboard = ({ user }) => {
     };
     fetchMeta();
   }, []);
-
-  const [availableActionTypes, setAvailableActionTypes] = useState([]);
-  const [competitionsList, setCompetitionsList] = useState([]);
-  const [seasonsList, setSeasonsList] = useState([]);
-  const [weeksList, setWeeksList] = useState([]);
-  const [countriesList, setCountriesList] = useState([]);
-  const [phasesList, setPhasesList] = useState([]);
-  const [stadiumsList, setStadiumsList] = useState([]);
-  const [advancedMetricsList, setAdvancedMetricsList] = useState([]);
 
   // Hydratation automatique
   useEffect(() => {
@@ -566,6 +579,7 @@ const OptaVisionDashboard = ({ user }) => {
                       <ExplorationFilterPanel
                         matchesList={matchesList}
                         availableActionTypes={availableActionTypes}
+                        availableNextActionTypes={availableNextActionTypes}
                         competitionsList={competitionsList}
                         seasonsList={seasonsList}
                         weeksList={weeksList}
