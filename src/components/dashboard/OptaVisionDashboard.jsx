@@ -186,9 +186,16 @@ const OptaVisionDashboard = ({ user }) => {
 
     setIsVideoLoading(true);
     try {
+      // Récupération de la config globale (buffers FFmpeg)
+      const savedConfig = localStorage.getItem('optavision_video_config');
+      const videoCfg = savedConfig ? JSON.parse(savedConfig) : { before_buffer: 3, after_buffer: 5, min_clip_gap: 0.5 };
+
       const requestPayload = {
         match_id: matchId,
         event_id: eventId,
+        before_buffer: videoCfg.before_buffer,
+        after_buffer: videoCfg.after_buffer,
+        min_clip_gap: videoCfg.min_clip_gap,
         ...(isSequence ? {
           event_ids: event.events.map((item) => item.opta_id || item.id).filter(Boolean),
           sequence_id: event.sub_sequence_id || event.seq_uuid || event.id,

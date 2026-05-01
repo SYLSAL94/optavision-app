@@ -28,7 +28,8 @@ const VideoSettingsPanel = ({ onClose }) => {
 
   const [formData, setFormData] = useState({
     match_id: '',
-    r2_video_key: '',
+    r2_video_key_m1: '',
+    r2_video_key_m2: '',
     half1: '00:00',
     half2: '00:00'
   });
@@ -111,8 +112,8 @@ const VideoSettingsPanel = ({ onClose }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.match_id || !formData.r2_video_key) {
-      setStatus({ type: 'error', msg: 'Veuillez remplir tous les champs obligatoires.' });
+    if (!formData.match_id || !formData.r2_video_key_m1) {
+      setStatus({ type: 'error', msg: 'Veuillez au moins renseigner la vidéo de la 1ère mi-temps.' });
       return;
     }
 
@@ -121,7 +122,8 @@ const VideoSettingsPanel = ({ onClose }) => {
 
     const payload = {
       match_id: formData.match_id,
-      r2_video_key: formData.r2_video_key,
+      r2_video_key_m1: formData.r2_video_key_m1,
+      r2_video_key_m2: formData.r2_video_key_m2,
       ui_config: {
         periods: {
           half1: formData.half1,
@@ -143,7 +145,7 @@ const VideoSettingsPanel = ({ onClose }) => {
       // Rafraichir la liste
       fetchUnassigned();
       fetchAvailableVideos();
-      setFormData({ match_id: '', r2_video_key: '', half1: '00:00', half2: '00:00' });
+      setFormData({ match_id: '', r2_video_key_m1: '', r2_video_key_m2: '', half1: '00:00', half2: '00:00' });
     } catch (err) {
       setStatus({ type: 'error', msg: 'Erreur lors de la sauvegarde.' });
     } finally {
@@ -243,30 +245,51 @@ const VideoSettingsPanel = ({ onClose }) => {
             </select>
           </div>
 
-          {/* SECTION 2 : R2 STORAGE */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-4">
-              <label className={labelClassName}>
-                <Settings size={12} className="text-[#3cffd0]" />
-                Cle Video Cloudflare R2
-              </label>
-              <span className="verge-label-mono text-[9px] text-[#3cffd0] uppercase tracking-widest">
-                {availableVideos.length} videos libres
-              </span>
+          {/* SECTION 2 : R2 STORAGE (SPLIT M1/M2) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <label className={labelClassName}>
+                  <Settings size={12} className="text-[#3cffd0]" />
+                  Vidéo 1ère Mi-Temps (M1)
+                </label>
+              </div>
+              <select
+                value={formData.r2_video_key_m1}
+                onChange={(e) => setFormData({ ...formData, r2_video_key_m1: e.target.value })}
+                className={inputClassName}
+                disabled={videosLoading}
+              >
+                <option value="">{videosLoading ? 'Scan R2...' : '--- Source M1 ---'}</option>
+                {availableVideos.map(video => (
+                  <option key={video.key} value={video.key}>
+                    {formatVideoLabel(video)}
+                  </option>
+                ))}
+              </select>
             </div>
-            <select
-              value={formData.r2_video_key}
-              onChange={(e) => setFormData({ ...formData, r2_video_key: e.target.value })}
-              className={inputClassName}
-              disabled={videosLoading}
-            >
-              <option value="">{videosLoading ? 'Scan R2 en cours...' : '--- Choisir une video R2 ---'}</option>
-              {availableVideos.map(video => (
-                <option key={video.key} value={video.key}>
-                  {formatVideoLabel(video)}
-                </option>
-              ))}
-            </select>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <label className={labelClassName}>
+                  <Settings size={12} className="text-white/40" />
+                  Vidéo 2ème Mi-Temps (M2)
+                </label>
+              </div>
+              <select
+                value={formData.r2_video_key_m2}
+                onChange={(e) => setFormData({ ...formData, r2_video_key_m2: e.target.value })}
+                className={inputClassName}
+                disabled={videosLoading}
+              >
+                <option value="">{videosLoading ? 'Scan R2...' : '--- Source M2 (Optionnel) ---'}</option>
+                {availableVideos.map(video => (
+                  <option key={video.key} value={video.key}>
+                    {formatVideoLabel(video)}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* SECTION 3 : TIMING / OFFSETS */}

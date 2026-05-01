@@ -160,6 +160,48 @@ const EventExplorer = ({
   const heatmapInstanceRef = useRef(null);
   const [playlist, setPlaylist] = useState([]);
   const [playlistIndex, setPlaylistIndex] = useState(-1);
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const handleDownloadMix = async () => {
+    if (liveEventRows.length === 0) return;
+    setIsDownloading(true);
+    try {
+      const savedConfig = localStorage.getItem('optavision_video_config');
+      const videoCfg = savedConfig ? JSON.parse(savedConfig) : { before_buffer: 3, after_buffer: 5, min_clip_gap: 0.5 };
+      
+      const eventIds = liveEventRows.map(e => e.opta_id || e.id);
+      const matchId = liveEventRows[0].match_id || liveEventRows[0].matchId || matchIds?.[0];
+
+      const response = await fetch(`${API_BASE_URL}/api/optavision/download-mix`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          match_id: matchId,
+          event_ids: eventIds,
+          before_buffer: videoCfg.before_buffer,
+          after_buffer: videoCfg.after_buffer,
+          min_clip_gap: videoCfg.min_clip_gap
+        })
+      });
+
+      if (!response.ok) throw new Error('Erreur lors du mixage vidéo');
+
+      // Récupération du fichier binaire
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `OptaVision_Mix_${matchId}_${eventIds.length}_clips.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error("❌ Erreur téléchargement mix:", err);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   const handleGenerateClip = async (e, event) => {
     e.stopPropagation();
@@ -170,10 +212,20 @@ const EventExplorer = ({
 
     setGeneratingEventId(eventId);
     try {
+      // Récupération de la config globale (buffers FFmpeg)
+      const savedConfig = localStorage.getItem('optavision_video_config');
+      const videoCfg = savedConfig ? JSON.parse(savedConfig) : { before_buffer: 3, after_buffer: 5, min_clip_gap: 0.5 };
+
       const response = await fetch(`${API_BASE_URL}/api/optavision/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ match_id: matchId, event_id: eventId })
+        body: JSON.stringify({ 
+          match_id: matchId, 
+          event_id: eventId,
+          before_buffer: videoCfg.before_buffer,
+          after_buffer: videoCfg.after_buffer,
+          min_clip_gap: videoCfg.min_clip_gap
+        })
       });
       const data = await response.json();
       if (response.ok && data.video_url) {
@@ -559,13 +611,30 @@ const EventExplorer = ({
                 }
               }}
               className={`px-3 py-1.5 rounded-[2px] verge-label-mono text-[9px] font-black uppercase flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(60,255,208,0.3)] ${generatingEventId === 'batch' ? 'bg-[#3cffd0]/20 text-[#3cffd0] cursor-wait' : 'bg-[#3cffd0] hover:bg-[#2edeb4] text-black cursor-pointer'}`}
+              title="Lancer la lecture en rafale"
             >
               {generatingEventId === 'batch' ? (
                 <Loader2 size={10} className="animate-spin" />
               ) : (
                 <Play size={10} fill="currentColor" />
               )}
-              Lancer Rafale ({selectedSpatialEventCount})
+              Rafale ({selectedSpatialEventCount})
+            </button>
+          )}
+          {selectedSpatialEventCount > 0 && (
+            <button
+              type="button"
+              disabled={isDownloading}
+              onClick={handleDownloadMix}
+              className={`px-3 py-1.5 rounded-[2px] verge-label-mono text-[9px] font-black uppercase flex items-center gap-2 transition-all border border-white/10 ${isDownloading ? 'bg-white/10 text-[#949494] cursor-wait' : 'bg-black/40 hover:bg-white/10 text-white cursor-pointer'}`}
+              title="Télécharger le mixage physique (MP4)"
+            >
+              {isDownloading ? (
+                <Loader2 size={10} className="animate-spin" />
+              ) : (
+                <Download size={10} />
+              )}
+              Mixage
             </button>
           )}
           <span className="verge-label-mono text-[9px] text-[#949494] bg-white/5 px-3 py-1.5 rounded-[2px] border border-white/5">

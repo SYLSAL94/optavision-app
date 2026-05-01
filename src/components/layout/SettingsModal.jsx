@@ -38,10 +38,27 @@ const SettingsModal = ({ isOpen, onClose, user, initialTab = 'profile' }) => {
   
   const [formData, setFormData] = useState({
     match_id: '',
-    r2_video_key: '',
+    r2_video_key_m1: '',
+    r2_video_key_m2: '',
     half1: '00:00',
     half2: '00:00'
   });
+
+  // --- LOGIQUE CONFIGURATIONS GLOBALES (localStorage) ---
+  const [globalVideoConfig, setGlobalVideoConfig] = useState(() => {
+    const saved = localStorage.getItem('optavision_video_config');
+    return saved ? JSON.parse(saved) : {
+      before_buffer: 3,
+      after_buffer: 5,
+      min_clip_gap: 0.5
+    };
+  });
+
+  const updateGlobalConfig = (key, value) => {
+    const next = { ...globalVideoConfig, [key]: parseFloat(value) || 0 };
+    setGlobalVideoConfig(next);
+    localStorage.setItem('optavision_video_config', JSON.stringify(next));
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -98,7 +115,8 @@ const SettingsModal = ({ isOpen, onClose, user, initialTab = 'profile' }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           match_id: formData.match_id,
-          r2_video_key: formData.r2_video_key,
+          r2_video_key_m1: formData.r2_video_key_m1,
+          r2_video_key_m2: formData.r2_video_key_m2,
           ui_config: { periods: { half1: formData.half1, half2: formData.half2 } }
         })
       });
@@ -259,20 +277,37 @@ const SettingsModal = ({ isOpen, onClose, user, initialTab = 'profile' }) => {
                             </select>
                         </div>
 
-                        {/* SELECTEUR VIDEO R2 */}
-                        <div className="space-y-4">
-                            <label className={labelClassName}><Play size={12} className="text-jelly-mint" /> CLE VIDEO CLOUDFLARE R2</label>
-                            <select 
-                              className={inputClassName}
-                              value={formData.r2_video_key}
-                              onChange={(e) => setFormData({...formData, r2_video_key: e.target.value})}
-                              disabled={loadingR2}
-                            >
-                                <option value="">{loadingR2 ? 'Scan R2 en cours...' : '--- Choisir une video ---'}</option>
-                                {availableVideos.map(v => (
-                                    <option key={v.key} value={v.key}>{v.key}</option>
-                                ))}
-                            </select>
+                        {/* SELECTEURS VIDEO R2 (M1/M2) */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-4">
+                                <label className={labelClassName}><Play size={12} className="text-jelly-mint" /> VIDÉO 1ère MI-TEMPS (M1)</label>
+                                <select 
+                                  className={inputClassName}
+                                  value={formData.r2_video_key_m1}
+                                  onChange={(e) => setFormData({...formData, r2_video_key_m1: e.target.value})}
+                                  disabled={loadingR2}
+                                >
+                                    <option value="">{loadingR2 ? 'Scan R2...' : '--- Source M1 ---'}</option>
+                                    {availableVideos.map(v => (
+                                        <option key={v.key} value={v.key}>{v.key}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="space-y-4">
+                                <label className={labelClassName}><Play size={12} className="text-white/40" /> VIDÉO 2ème MI-TEMPS (M2)</label>
+                                <select 
+                                  className={inputClassName}
+                                  value={formData.r2_video_key_m2}
+                                  onChange={(e) => setFormData({...formData, r2_video_key_m2: e.target.value})}
+                                  disabled={loadingR2}
+                                >
+                                    <option value="">{loadingR2 ? 'Scan R2...' : '--- Source M2 (Optionnel) ---'}</option>
+                                    {availableVideos.map(v => (
+                                        <option key={v.key} value={v.key}>{v.key}</option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
 
                         {/* OFFSETS */}
@@ -297,6 +332,49 @@ const SettingsModal = ({ isOpen, onClose, user, initialTab = 'profile' }) => {
                         <button type="submit" disabled={submittingR2 || !formData.match_id} className="w-full bg-jelly-mint text-absolute-black py-5 rounded-[2px] verge-label-mono text-[12px] font-black uppercase tracking-[0.3em] flex items-center justify-center gap-4 hover:shadow-[0_0_20px_rgba(60,255,208,0.3)] transition-all disabled:opacity-30">
                             {submittingR2 ? <Loader2 size={20} className="animate-spin" /> : <><Save size={18} /> ASSOCIER LA VIDEO R2 <ArrowRight size={18} /></>}
                         </button>
+
+                        <div className="pt-10 border-t border-white/5 space-y-8">
+                            <div className="flex items-center gap-4">
+                                <Settings size={16} className="text-jelly-mint" />
+                                <h5 className="verge-label-mono text-[11px] font-black text-hazard-white uppercase tracking-[0.2em]">Configuration Globale Vidéo (FFmpeg)</h5>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div className="space-y-3">
+                                    <label className={labelClassName}>Buffer Avant (sec)</label>
+                                    <input 
+                                        type="number" 
+                                        step="0.5"
+                                        className={inputClassName} 
+                                        value={globalVideoConfig.before_buffer}
+                                        onChange={(e) => updateGlobalConfig('before_buffer', e.target.value)}
+                                    />
+                                </div>
+                                <div className="space-y-3">
+                                    <label className={labelClassName}>Buffer Après (sec)</label>
+                                    <input 
+                                        type="number" 
+                                        step="0.5"
+                                        className={inputClassName} 
+                                        value={globalVideoConfig.after_buffer}
+                                        onChange={(e) => updateGlobalConfig('after_buffer', e.target.value)}
+                                    />
+                                </div>
+                                <div className="space-y-3">
+                                    <label className={labelClassName}>Fusion Tolérance (sec)</label>
+                                    <input 
+                                        type="number" 
+                                        step="0.1"
+                                        className={inputClassName} 
+                                        value={globalVideoConfig.min_clip_gap}
+                                        onChange={(e) => updateGlobalConfig('min_clip_gap', e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                            <p className="verge-label-mono text-[8px] text-secondary-text/40 uppercase tracking-widest italic">
+                                * Ces paramètres s'appliquent automatiquement à toutes les générations de clips et de rafales.
+                            </p>
+                        </div>
                     </form>
                 </div>
             )}
