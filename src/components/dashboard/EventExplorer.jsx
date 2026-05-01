@@ -11,7 +11,9 @@ import {
   Eye,
   EyeOff,
   Download,
-  Palette
+  Palette, Square,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 
 import { API_BASE_URL } from '../../config';
@@ -30,7 +32,7 @@ const hasRenderablePlayerId = (event) => {
 const parseAdvancedMetrics = (event) => {
   let parsed = event?.advanced_metrics;
   if (typeof parsed === 'string') {
-    try { parsed = JSON.parse(parsed); } catch (e) { parsed = {}; }
+    try { parsed = JSON.parse(parsed); } catch { parsed = {}; }
   }
   return parsed && typeof parsed === 'object' ? parsed : {};
 };
@@ -88,7 +90,23 @@ const toViewBoxString = ({ x, y, width, height }) => `${x} ${y} ${width} ${heigh
 const SIMPLEHEAT_SCRIPT_ID = 'simpleheat-script';
 const SIMPLEHEAT_SRC = 'https://cdn.jsdelivr.net/npm/simpleheat@0.4.0/simpleheat.min.js';
 const LIVE_FLUX_PAGE_SIZE = 20;
+const EMPTY_SELECTION_BOX = {
+  startX: null,
+  startY: null,
+  endX: null,
+  endY: null,
+  isDrawing: false
+};
+const MIN_SELECTION_SIZE = 0.6;
 let simpleheatLoadPromise = null;
+
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+const countDisplayEvents = (items, sequenceMode) => (
+  sequenceMode
+    ? items.reduce((sum, seq) => sum + ((seq.events || []).length), 0)
+    : items.length
+);
 
 const ensureSimpleheat = () => {
   if (typeof window === 'undefined') return Promise.resolve(null);
@@ -137,8 +155,11 @@ const EventExplorer = ({
   const [pitchStyle, setPitchStyle] = useState('standard');
   const [showEvents, setShowEvents] = useState(true);
   const [liveFluxPage, setLiveFluxPage] = useState(1);
+  const [selectionBox, setSelectionBox] = useState(EMPTY_SELECTION_BOX);
   const heatmapCanvasRef = useRef(null);
   const heatmapInstanceRef = useRef(null);
+  const [playlist, setPlaylist] = useState([]);
+  const [playlistIndex, setPlaylistIndex] = useState(-1);
 
   const handleGenerateClip = async (e, event) => {
     e.stopPropagation();
@@ -192,7 +213,7 @@ const EventExplorer = ({
   const getEndCoordinates = useCallback((event) => {
     let metrics = event.advanced_metrics || {};
     if (typeof metrics === 'string') {
-      try { metrics = JSON.parse(metrics); } catch (e) { metrics = {}; }
+      try { metrics = JSON.parse(metrics); } catch { metrics = {}; }
     }
     const ex = metrics.end_x ?? metrics.endX ?? event.end_x ?? event.endX;
     const ey = metrics.end_y ?? metrics.endY ?? event.end_y ?? event.endY;
@@ -253,13 +274,6 @@ const EventExplorer = ({
     return map;
   }, [data]);
 
-  const mapEventCount = actualSequenceMode
-    ? displayData.reduce((sum, seq) => sum + ((seq.events || []).length), 0)
-    : displayData.length;
-  const isEventLimitExceeded = mapEventCount > 1000;
-  const pitchDisplayData = showEvents
-    ? displayData
-    : (actualSequenceMode ? displayData.map(seq => ({ ...seq, events: [] })) : []);
   const selectedPitchStyle = PITCH_STYLE_CONFIGS[pitchStyle] || PITCH_STYLE_CONFIGS.standard;
   const pitchViewBox = useMemo(() => getPitchViewBox(orientation, pitchView), [orientation, pitchView]);
   const pitchViewBoxString = useMemo(() => toViewBoxString(pitchViewBox), [pitchViewBox]);
@@ -284,15 +298,128 @@ const EventExplorer = ({
       y: ((100 - numericY) / 100) * PITCH_DIMENSIONS.height
     };
   }, [orientation]);
+
+  const getPitchSvgPoint = useCallback((event) => {
+    const svg = event.currentTarget;
+    if (!svg?.createSVGPoint) return null;
+
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return null;
+
+    const point = svg.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+
+    const svgPoint = point.matrixTransform(matrix.inverse());
+    return {
+      x: clamp(svgPoint.x, pitchViewBox.x, pitchViewBox.x + pitchViewBox.width),
+      y: clamp(svgPoint.y, pitchViewBox.y, pitchViewBox.y + pitchViewBox.height)
+    };
+  }, [pitchViewBox]);
+
+  const handlePitchMouseDown = useCallback((event) => {
+    if (event.button !== 0 || loading) return;
+    const point = getPitchSvgPoint(event);
+    if (!point) return;
+
+    event.preventDefault();
+    setFocusedEvent(null);
+    setFocusedEventId(null);
+    setHoveredEvent(null);
+    setSelectionBox({
+      startX: point.x,
+      startY: point.y,
+      endX: point.x,
+      endY: point.y,
+      isDrawing: true
+    });
+  }, [getPitchSvgPoint, loading]);
+
+  const handlePitchMouseMove = useCallback((event) => {
+    const point = getPitchSvgPoint(event);
+    if (!point) return;
+
+    setSelectionBox(prev => {
+      if (!prev.isDrawing) return prev;
+      return { ...prev, endX: point.x, endY: point.y };
+    });
+  }, [getPitchSvgPoint]);
+
+  const handlePitchMouseUp = useCallback((event) => {
+    const point = getPitchSvgPoint(event);
+
+    setSelectionBox(prev => {
+      if (!prev.isDrawing) return prev;
+      const next = point ? { ...prev, endX: point.x, endY: point.y } : prev;
+      const width = Math.abs(next.endX - next.startX);
+      const height = Math.abs(next.endY - next.startY);
+      if (width < MIN_SELECTION_SIZE || height < MIN_SELECTION_SIZE) {
+        return { ...EMPTY_SELECTION_BOX };
+      }
+      return { ...next, isDrawing: false };
+    });
+  }, [getPitchSvgPoint]);
+
+  const selectionBounds = useMemo(() => {
+    const { startX, startY, endX, endY } = selectionBox;
+    if (![startX, startY, endX, endY].every(Number.isFinite)) return null;
+
+    const x = Math.min(startX, endX);
+    const y = Math.min(startY, endY);
+    const width = Math.abs(endX - startX);
+    const height = Math.abs(endY - startY);
+
+    if (width < MIN_SELECTION_SIZE || height < MIN_SELECTION_SIZE) return null;
+    return {
+      x,
+      y,
+      width,
+      height,
+      xMax: x + width,
+      yMax: y + height
+    };
+  }, [selectionBox]);
+
+  const spatialDisplayData = useMemo(() => {
+    if (!selectionBounds) return displayData;
+
+    const isInsideSelection = (event) => {
+      const point = projectPoint(event.x, event.y);
+      return point
+        && point.x >= selectionBounds.x
+        && point.x <= selectionBounds.xMax
+        && point.y >= selectionBounds.y
+        && point.y <= selectionBounds.yMax;
+    };
+
+    if (actualSequenceMode) {
+      return displayData
+        .map(seq => ({
+          ...seq,
+          events: (seq.events || []).filter(isInsideSelection)
+        }))
+        .filter(seq => seq.events.length > 0);
+    }
+
+    return displayData.filter(isInsideSelection);
+  }, [actualSequenceMode, displayData, projectPoint, selectionBounds]);
+
+  const mapEventCount = countDisplayEvents(spatialDisplayData, actualSequenceMode);
+  const selectedSpatialEventCount = selectionBounds ? mapEventCount : 0;
+  const isEventLimitExceeded = mapEventCount > 1000;
+  const shouldShowEvents = showEvents && !isEventLimitExceeded;
+  const pitchDisplayData = shouldShowEvents
+    ? spatialDisplayData
+    : (actualSequenceMode ? spatialDisplayData.map(seq => ({ ...seq, events: [] })) : []);
   const heatmapEvents = useMemo(() => {
     const events = actualSequenceMode
-      ? displayData.flatMap(seq => seq.events || [])
-      : displayData;
+      ? spatialDisplayData.flatMap(seq => seq.events || [])
+      : spatialDisplayData;
     return events.filter(hasRenderablePlayerId);
-  }, [actualSequenceMode, displayData]);
+  }, [actualSequenceMode, spatialDisplayData]);
   const liveEventRows = useMemo(() => (
-    (actualSequenceMode ? displayData[0]?.events : displayData) || []
-  ), [actualSequenceMode, displayData]);
+    (actualSequenceMode ? spatialDisplayData[0]?.events : spatialDisplayData) || []
+  ), [actualSequenceMode, spatialDisplayData]);
   const successfulEventCount = useMemo(() => (
     liveEventRows.filter(event => event.outcome === 1 || event.outcome === 'Successful').length
   ), [liveEventRows]);
@@ -307,13 +434,22 @@ const EventExplorer = ({
   }, [currentLiveFluxPage, liveEventRows]);
 
   React.useEffect(() => {
-    setLiveFluxPage(1);
-  }, [liveEventRows]);
+    setSelectionBox({ ...EMPTY_SELECTION_BOX });
+    setPlaylist([]);
+    setPlaylistIndex(-1);
+  }, [matchIds]);
+
   React.useEffect(() => {
-    if (isEventLimitExceeded) {
-      setShowEvents(false);
+    if (playlistIndex >= 0 && playlistIndex < playlist.length) {
+      const playNext = async () => {
+        setGeneratingEventId('batch');
+        await handlePlayFocusedVideo(playlist[playlistIndex]);
+        setGeneratingEventId(null);
+      };
+      playNext();
     }
-  }, [isEventLimitExceeded]);
+  }, [playlistIndex, playlist]);
+
   React.useEffect(() => {
     const canvas = heatmapCanvasRef.current;
     if (!canvas) return;
@@ -406,14 +542,36 @@ const EventExplorer = ({
 
   const renderLiveFlux = (className = "h-full bg-[#1a1a1a] border border-white/10 rounded-[4px] flex flex-col overflow-hidden") => (
     <div className={className}>
-      <div className="px-6 py-4 border-b border-white/10 bg-[#2d2d2d] flex justify-between items-center">
+      <div className="px-6 py-4 border-b border-white/10 bg-[#2d2d2d] flex justify-between items-center shrink-0">
         <div className="flex items-center gap-4">
           <div className={`w-2 h-2 rounded-full ${loading ? 'bg-orange-500 animate-bounce' : 'bg-[#3cffd0] animate-pulse'}`} />
           <span className="verge-label-mono text-[10px] text-white font-black uppercase tracking-[0.2em]">Flux Live Analyst</span>
         </div>
-        <span className="verge-label-mono text-[9px] text-[#949494] bg-white/5 px-3 py-1 rounded-[2px] border border-white/5">
-          {liveEventRows.length.toLocaleString()} SELECTED
-        </span>
+        <div className="flex items-center gap-2">
+          {selectedSpatialEventCount > 0 && (
+            <button
+              type="button"
+              disabled={generatingEventId === 'batch'}
+              onClick={() => {
+                if (liveEventRows.length > 0) {
+                  setPlaylist(liveEventRows);
+                  setPlaylistIndex(0);
+                }
+              }}
+              className={`px-3 py-1.5 rounded-[2px] verge-label-mono text-[9px] font-black uppercase flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(60,255,208,0.3)] ${generatingEventId === 'batch' ? 'bg-[#3cffd0]/20 text-[#3cffd0] cursor-wait' : 'bg-[#3cffd0] hover:bg-[#2edeb4] text-black cursor-pointer'}`}
+            >
+              {generatingEventId === 'batch' ? (
+                <Loader2 size={10} className="animate-spin" />
+              ) : (
+                <Play size={10} fill="currentColor" />
+              )}
+              Lancer Rafale ({selectedSpatialEventCount})
+            </button>
+          )}
+          <span className="verge-label-mono text-[9px] text-[#949494] bg-white/5 px-3 py-1.5 rounded-[2px] border border-white/5">
+            {liveEventRows.length.toLocaleString()} SELECTED
+          </span>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto styled-scrollbar-verge bg-black/20">
         {!loading && liveEventRows.length > 0 ? (
@@ -550,7 +708,7 @@ const EventExplorer = ({
               <div>
                 <h3 className="verge-h3 text-white uppercase tracking-tighter font-black">Visualisation Spatiale</h3>
                 <p className="verge-label-mono text-[9px] text-[#3cffd0] uppercase tracking-[0.3em] font-bold mt-1">
-                  EVENT ANALYSIS ({displayData.length} SELECTED)
+                  EVENT ANALYSIS ({mapEventCount} SELECTED)
                 </p>
               </div>
             </div>
@@ -577,7 +735,10 @@ const EventExplorer = ({
                   <button
                     key={value}
                     type="button"
-                    onClick={() => setPitchView(value)}
+                    onClick={() => {
+                      setPitchView(value);
+                      setSelectionBox({ ...EMPTY_SELECTION_BOX });
+                    }}
                     className={`verge-label-mono rounded-[3px] px-3 py-1.5 text-[9px] font-black uppercase transition-all ${pitchView === value ? 'bg-[#3cffd0] text-black' : 'text-[#949494] hover:bg-white/10 hover:text-white'}`}
                   >
                     {label}
@@ -587,7 +748,10 @@ const EventExplorer = ({
 
               <button
                 type="button"
-                onClick={() => setOrientation(prev => prev === 'horizontal' ? 'vertical' : 'horizontal')}
+                onClick={() => {
+                  setOrientation(prev => prev === 'horizontal' ? 'vertical' : 'horizontal');
+                  setSelectionBox({ ...EMPTY_SELECTION_BOX });
+                }}
                 className="verge-label-mono flex items-center gap-2 rounded-[4px] border border-white/10 bg-black/25 px-3 py-2 text-[9px] font-black uppercase text-[#d8d8d8] transition-all hover:border-[#3cffd0]/50 hover:text-[#3cffd0]"
               >
                 <ArrowUpDown size={13} />
@@ -634,11 +798,28 @@ const EventExplorer = ({
                 type="button"
                 onClick={() => setShowEvents(prev => !prev)}
                 disabled={isEventLimitExceeded}
-                className={`verge-label-mono flex items-center gap-2 rounded-[4px] border px-3 py-2 text-[9px] font-black uppercase transition-all ${showEvents && !isEventLimitExceeded ? 'border-[#3cffd0]/60 bg-[#3cffd0]/15 text-[#3cffd0]' : 'border-white/10 bg-black/25 text-[#949494]'} disabled:cursor-not-allowed disabled:border-[#ff4d4d]/30 disabled:bg-[#ff4d4d]/10 disabled:text-[#ff8a8a]`}
+                className={`verge-label-mono flex items-center gap-2 rounded-[4px] border px-3 py-2 text-[9px] font-black uppercase transition-all ${shouldShowEvents ? 'border-[#3cffd0]/60 bg-[#3cffd0]/15 text-[#3cffd0]' : 'border-white/10 bg-black/25 text-[#949494]'} disabled:cursor-not-allowed disabled:border-[#ff4d4d]/30 disabled:bg-[#ff4d4d]/10 disabled:text-[#ff8a8a]`}
               >
                 {showEvents ? <Eye size={13} /> : <EyeOff size={13} />}
                 {isEventLimitExceeded ? 'Shield on' : 'Events'}
               </button>
+              <div
+                className={`verge-label-mono flex items-center gap-2 rounded-[4px] border px-3 py-2 text-[9px] font-black uppercase transition-all ${selectionBounds ? 'border-[#5200ff]/60 bg-[#5200ff]/10 text-[#b9a7ff]' : 'border-white/5 bg-black/10 text-[#444]'}`}
+              >
+                <Square size={13} className={selectionBounds ? "text-[#b9a7ff]" : "text-[#333]"} />
+                Sélecteur {selectionBounds ? 'Actif' : 'Prêt'}
+              </div>
+              {selectionBounds && (
+                <button
+                  type="button"
+                  onClick={() => setSelectionBox({ ...EMPTY_SELECTION_BOX })}
+                  className="verge-label-mono flex items-center gap-2 rounded-[4px] border border-white/10 bg-black/25 px-3 py-2 text-[9px] font-black uppercase text-[#949494] transition-all hover:border-[#5200ff]/60 hover:text-white"
+                  title="Effacer la sélection spatiale"
+                >
+                  <X size={13} />
+                  Zone
+                </button>
+              )}
               <button
                 type="button"
                 disabled
@@ -653,12 +834,16 @@ const EventExplorer = ({
 
           <PitchSVG
             loading={loading}
-            hasData={displayData.length > 0 || isSequenceMode}
+            hasData={spatialDisplayData.length > 0 || isSequenceMode}
             orientation={orientation}
             pitchStyleConfig={selectedPitchStyle}
             viewBox={pitchViewBoxString}
             canvasRef={heatmapCanvasRef}
             heatmapVisible={heatmapMode !== 'off' && heatmapEvents.length > 0}
+            onMouseDown={handlePitchMouseDown}
+            onMouseMove={handlePitchMouseMove}
+            onMouseUp={handlePitchMouseUp}
+            className="cursor-crosshair"
             onClearFocus={() => {
               setFocusedEvent(null);
               setFocusedEventId(null);
@@ -699,6 +884,20 @@ const EventExplorer = ({
                 setFocusedEvent={setFocusedEvent}
                 setFocusedEventId={setFocusedEventId}
                 projectPoint={projectPoint}
+              />
+            )}
+            {selectionBounds && (
+              <rect
+                x={selectionBounds.x}
+                y={selectionBounds.y}
+                width={selectionBounds.width}
+                height={selectionBounds.height}
+                fill="rgba(82, 0, 255, 0.2)"
+                stroke="#5200ff"
+                strokeWidth="0.45"
+                strokeDasharray="1.4 0.8"
+                pointerEvents="none"
+                className="transition-all duration-75"
               />
             )}
           </PitchSVG>
@@ -765,7 +964,11 @@ const EventExplorer = ({
                   <span className="verge-label-mono text-[10px] text-white font-black uppercase tracking-[0.2em]">Live Video Feed</span>
                 </div>
                 <button 
-                  onClick={() => setActiveVideoUrl(null)}
+                  onClick={() => {
+                    setActiveVideoUrl(null);
+                    setPlaylist([]);
+                    setPlaylistIndex(-1);
+                  }}
                   className="w-10 h-10 flex items-center justify-center bg-white/10 hover:bg-red-500 rounded-full text-white transition-all group"
                 >
                   <X size={20} className="group-hover:rotate-90 transition-transform" />
@@ -773,13 +976,62 @@ const EventExplorer = ({
               </div>
 
               {/* LECTEUR VIDÉO */}
-              <div className="aspect-video bg-black flex items-center justify-center">
+              <div className="aspect-video bg-black flex items-center justify-center relative">
                 <video 
                   src={activeVideoUrl} 
                   controls 
                   autoPlay 
+                  onEnded={() => {
+                    if (playlistIndex >= 0 && playlistIndex < playlist.length - 1) {
+                      setPlaylistIndex(prev => prev + 1);
+                    }
+                  }}
                   className="w-full h-full object-contain"
                 />
+                
+                {playlist.length > 0 && (
+                  <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-between px-4 pointer-events-none z-30">
+                    <button
+                      onClick={() => setPlaylistIndex(prev => Math.max(0, prev - 1))}
+                      disabled={playlistIndex === 0}
+                      className="w-12 h-12 flex items-center justify-center bg-black/50 hover:bg-[#3cffd0] hover:text-black text-white rounded-full border border-white/10 pointer-events-auto transition-all disabled:opacity-0 disabled:pointer-events-none group"
+                    >
+                      <ChevronLeft size={24} className="group-hover:scale-110 transition-transform" />
+                    </button>
+                    <button
+                      onClick={() => setPlaylistIndex(prev => Math.min(playlist.length - 1, prev + 1))}
+                      disabled={playlistIndex === playlist.length - 1}
+                      className="w-12 h-12 flex items-center justify-center bg-black/50 hover:bg-[#3cffd0] hover:text-black text-white rounded-full border border-white/10 pointer-events-auto transition-all disabled:opacity-0 disabled:pointer-events-none group"
+                    >
+                      <ChevronRight size={24} className="group-hover:scale-110 transition-transform" />
+                    </button>
+                  </div>
+                )}
+
+                {playlist.length > 0 && (
+                  <div className="absolute bottom-10 left-1/2 -translate-x-1/2 px-6 py-2.5 bg-black/80 backdrop-blur-xl rounded-full border border-white/10 flex items-center gap-4 z-20 shadow-2xl">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-[#3cffd0] rounded-full animate-pulse" />
+                      <span className="verge-label-mono text-[10px] text-white font-black uppercase tracking-widest">
+                        RAFALE ACTIVE
+                      </span>
+                    </div>
+                    <div className="w-[1px] h-4 bg-white/10" />
+                    <span className="verge-label-mono text-[10px] text-[#3cffd0] font-black uppercase">
+                      CLIP {playlistIndex + 1} / {playlist.length}
+                    </span>
+                    <div className="w-[1px] h-4 bg-white/10" />
+                    <div className="flex gap-1">
+                      {playlist.slice(0, 20).map((_, idx) => (
+                        <div 
+                          key={idx} 
+                          className={`w-1.5 h-1.5 rounded-full transition-all ${idx === playlistIndex ? 'bg-[#3cffd0] scale-125' : 'bg-white/20'}`} 
+                        />
+                      ))}
+                      {playlist.length > 20 && <span className="text-white/40 text-[8px] ml-1">...</span>}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* FOOTER MODALE */}

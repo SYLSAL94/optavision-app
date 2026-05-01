@@ -1,9 +1,8 @@
-import React from 'react';
 
 /**
  * PITCH_DIMENSIONS - Constantes de base pour le tracé du terrain (Standard FIFA)
  */
-export const PITCH_DIMENSIONS = {
+const PITCH_DIMENSIONS = {
   WIDTH: 105,
   HEIGHT: 68,
   CENTER_X: 105 / 2,
@@ -84,7 +83,10 @@ export const FootballPitch = ({
   children,
   className = "",
   viewBox,
-  onClick
+  onClick,
+  onMouseDown,
+  onMouseMove,
+  onMouseUp
 }) => {
   const computedViewBox = viewBox || (orientation === 'horizontal'
     ? `0 0 ${PITCH_DIMENSIONS.WIDTH} ${PITCH_DIMENSIONS.HEIGHT}` 
@@ -97,6 +99,9 @@ export const FootballPitch = ({
       className={`w-full h-full ${className}`}
       style={{ backgroundColor: style.background }}
       onClick={onClick}
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMove}
+      onMouseUp={onMouseUp}
     >
       {orientation === 'horizontal' ? <HorizontalPitch style={style} /> : <VerticalPitch style={style} />}
       {children}
