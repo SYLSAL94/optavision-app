@@ -537,10 +537,11 @@ const EventExplorer = ({
   );
 
   return (
-    <div className="flex h-full w-full gap-8 animate-in fade-in zoom-in-95 duration-500 overflow-hidden">
+    <div className="flex flex-col h-screen w-full gap-4 lg:gap-6 animate-in fade-in zoom-in-95 duration-500 overflow-hidden p-0 bg-[#050505]">
       
-      <div className="flex-1 flex flex-col gap-8 min-w-0">
-        <div className="bg-[#1a1a1a] border border-white/10 rounded-[4px] p-8 flex flex-col gap-6 relative overflow-hidden group flex-1">
+      {/* ÉTAGE SUPÉRIEUR : MAP + FLUX (75% ou Full) */}
+      <div className={`${isSequenceMode ? 'h-full' : 'h-[75%]'} flex flex-col lg:flex-row gap-4 lg:gap-6 min-h-0`}>
+        <div className="flex-1 bg-[#1a1a1a] border border-white/10 rounded-[4px] p-4 lg:p-8 flex flex-col gap-6 relative overflow-hidden group">
           <div className="absolute inset-0 bg-gradient-to-b from-[#3cffd0]/2 to-transparent pointer-events-none" />
           
           <div className="flex justify-between items-center relative z-10 border-b border-white/5 pb-6">
@@ -724,24 +725,24 @@ const EventExplorer = ({
             </div>
           )}
         </div>
+        {!isSequenceMode && renderLiveFlux("w-full lg:w-[40%] h-full shrink-0 bg-[#1a1a1a] border border-white/10 rounded-[4px] flex flex-col overflow-hidden shadow-[0_40px_100px_rgba(0,0,0,0.4)]")}
+      </div>
 
-        {/* KPIs GLOBAUX */}
-        <div className="bg-[#1a1a1a] border border-white/10 rounded-[4px] grid grid-cols-3 overflow-hidden">
+      {/* ÉTAGE INFÉRIEUR : KPIs GLOBAUX (20% Hauteur) - Uniquement en mode Exploration */}
+      {!isSequenceMode && (
+        <div className="h-[20%] bg-[#1a1a1a] border border-white/10 rounded-[4px] grid grid-cols-1 md:grid-cols-3 overflow-hidden shrink-0 shadow-2xl">
           {[
             ['Total Evenements', liveEventRows.length.toLocaleString(), 'text-white'],
             ['Actions Reussies', successfulEventCount.toLocaleString(), 'text-[#3cffd0]'],
             ['Taux Reussite', `${globalSuccessRate}%`, globalSuccessRate >= 60 ? 'text-[#3cffd0]' : 'text-[#ff4d4d]']
           ].map(([label, value, color]) => (
-            <div key={label} className="p-6 border-r border-white/5 last:border-r-0 bg-black/20">
+            <div key={label} className="p-6 border-r border-white/5 last:border-r-0 bg-black/20 flex flex-col justify-center">
               <div className="verge-label-mono text-[8px] text-[#949494] uppercase tracking-[0.25em] font-black">{label}</div>
               <div className={`verge-label-mono text-3xl font-black mt-3 ${color}`}>{value}</div>
             </div>
           ))}
         </div>
-
-      </div>
-
-      {renderLiveFlux("w-[450px] shrink-0 bg-[#1a1a1a] border border-white/10 rounded-[4px] flex flex-col overflow-hidden shadow-[0_40px_100px_rgba(0,0,0,0.4)]")}
+      )}
       {/* MODALE LECTEUR VIDÉO (GLASSMORPHISM) */}
       <AnimatePresence>
         {activeVideoUrl && (

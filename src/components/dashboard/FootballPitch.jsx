@@ -83,7 +83,8 @@ export const FootballPitch = ({
   orientation = 'horizontal', 
   children,
   className = "",
-  viewBox
+  viewBox,
+  onClick
 }) => {
   const computedViewBox = viewBox || (orientation === 'horizontal'
     ? `0 0 ${PITCH_DIMENSIONS.WIDTH} ${PITCH_DIMENSIONS.HEIGHT}` 
@@ -95,6 +96,7 @@ export const FootballPitch = ({
       preserveAspectRatio="xMidYMid meet"
       className={`w-full h-full ${className}`}
       style={{ backgroundColor: style.background }}
+      onClick={onClick}
     >
       {orientation === 'horizontal' ? <HorizontalPitch style={style} /> : <VerticalPitch style={style} />}
       {children}
