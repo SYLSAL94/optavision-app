@@ -41,6 +41,14 @@ const hasRenderablePlayerId = (event) => {
     && String(playerId).trim() !== '';
 };
 
+const parseAdvancedMetrics = (event) => {
+  let parsed = event?.advanced_metrics;
+  if (typeof parsed === 'string') {
+    try { parsed = JSON.parse(parsed); } catch (e) { parsed = {}; }
+  }
+  return parsed && typeof parsed === 'object' ? parsed : {};
+};
+
 const RankBadge = ({ rank }) => {
   if (rank === 1) return (
     <div className="w-10 h-10 bg-[#3cffd0] text-black flex items-center justify-center text-xs font-black rounded-[4px] shadow-[4px_4px_0px_rgba(60,255,208,0.2)]">
@@ -361,7 +369,9 @@ const EventExplorer = ({
           </div>
           <div className="flex-1 overflow-y-auto styled-scrollbar-verge bg-black/20">
              {!loading && (actualSequenceMode ? (displayData[0]?.events || []) : displayData).length > 0 ? (
-               ((actualSequenceMode ? displayData[0]?.events : displayData) || []).slice(0, 100).map((e, i) => (
+               ((actualSequenceMode ? displayData[0]?.events : displayData) || []).slice(0, 100).map((e, i) => {
+                const parsedMetrics = parseAdvancedMetrics(e);
+                return (
                   <div 
                     key={i} 
                     onClick={() => {
@@ -378,7 +388,7 @@ const EventExplorer = ({
                        {(e.cumulative_mins ?? 0).toFixed(1)}'
                      </span>
                      <span className="verge-label-mono text-[10px] text-white uppercase font-black tracking-tight w-28 shrink-0 truncate">
-                       {e.type_name || e.type || e.type_id}
+                       {parsedMetrics?.type_name || e.type_name || e.type_id}
                      </span>
                      <span className="verge-label-mono text-[10px] text-[#949494] group-hover:text-white transition-colors w-32 shrink-0 truncate">
                        {e.playerName || globalPlayerMap[e.player_id] || e.player_id}
@@ -399,7 +409,8 @@ const EventExplorer = ({
                       </button>
                     </div>
                  </div>
-               ))
+                );
+               })
              ) : (
                <div className="h-full flex items-center justify-center opacity-10"><Database size={32} /></div>
              )}
