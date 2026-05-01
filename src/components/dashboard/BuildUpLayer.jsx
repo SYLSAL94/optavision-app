@@ -1,6 +1,11 @@
 import React from 'react';
 
-export const BuildUpLayer = ({ displayData, focusedEventId, getEndCoordinates, setHoveredEvent, setMousePos, selectedSequence, setFocusedEvent, setFocusedEventId }) => {
+const defaultProjectPoint = (x, y) => ({
+  x: (x / 100) * 105,
+  y: ((100 - y) / 100) * 68
+});
+
+export const BuildUpLayer = ({ displayData, focusedEventId, getEndCoordinates, setHoveredEvent, setMousePos, selectedSequence, setFocusedEvent, setFocusedEventId, projectPoint = defaultProjectPoint }) => {
   // Rendu Conditionnel Strict : Désactivation si aucune séquence n'est sélectionnée
   if (!selectedSequence || !displayData || displayData.length === 0) return null;
 
@@ -34,8 +39,10 @@ export const BuildUpLayer = ({ displayData, focusedEventId, getEndCoordinates, s
 
       {sequenceEvents.map((event, i) => {
         const eventId = event.opta_id ?? event.id;
-        const cx = (event.x / 100) * 105;
-        const cy = ((100 - event.y) / 100) * 68;
+        const startPoint = projectPoint(event.x, event.y);
+        if (!startPoint) return null;
+        const cx = startPoint.x;
+        const cy = startPoint.y;
         const ACTION_COLORS = {
           'Pass': '#00ff88',
           'Goal': '#f1c40f',
@@ -54,9 +61,8 @@ export const BuildUpLayer = ({ displayData, focusedEventId, getEndCoordinates, s
         const isFocused = eventId === focusedEventId;
         
         const endCoords = getEndCoordinates(event);
-        const endX = endCoords?.x;
-        const endY = endCoords?.y;
-        const hasValidEnd = endCoords !== null;
+        const endPoint = endCoords ? projectPoint(endCoords.x, endCoords.y) : null;
+        const hasValidEnd = endPoint !== null;
 
         // Animation séquentielle : Délai mathématique de 0.5s par étape
         const animationStyle = {
@@ -87,8 +93,8 @@ export const BuildUpLayer = ({ displayData, focusedEventId, getEndCoordinates, s
             {hasValidEnd && (
               <line 
                 x1={cx} y1={cy} 
-                x2={(endX / 100) * 105} 
-                y2={((100 - endY) / 100) * 68} 
+                x2={endPoint.x}
+                y2={endPoint.y}
                 stroke={isFocused ? "#fbbf24" : color} 
                 strokeWidth={isFocused ? "0.8" : (isCarry ? "0.5" : "0.4")} 
                 strokeOpacity={isFocused ? 1 : 0.75}

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Trophy, 
@@ -15,7 +15,11 @@ import {
   ShieldAlert,
   Play,
   Loader2,
-  X
+  X,
+  Eye,
+  EyeOff,
+  Download,
+  Palette
 } from 'lucide-react';
 
 import { API_BASE_URL } from '../../config';
@@ -47,6 +51,88 @@ const parseAdvancedMetrics = (event) => {
     try { parsed = JSON.parse(parsed); } catch (e) { parsed = {}; }
   }
   return parsed && typeof parsed === 'object' ? parsed : {};
+};
+
+const formatSignedMetric = (value, digits = 3) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return `${numeric >= 0 ? '+' : ''}${numeric.toFixed(digits)}`;
+};
+
+const DUEL_EVENT_KEYS = new Set([
+  'takeon',
+  'tackle',
+  'aerial',
+  'challenge',
+  'interception',
+  'ballrecovery',
+  'foul',
+  'blockedpass',
+  'dispossessed'
+]);
+
+const DUEL_EVENT_IDS = new Set(['4', '50', '74']);
+
+const FORCED_DUEL_LOSS_KEYS = new Set(['blockedpass', 'dispossessed']);
+const FORCED_DUEL_LOSS_IDS = new Set(['50', '74']);
+
+const PITCH_DIMENSIONS = {
+  width: 105,
+  height: 68
+};
+
+const PITCH_STYLE_CONFIGS = {
+  standard: { grass: 'transparent', line: 'rgba(255,255,255,0.08)', background: 'transparent' },
+  dark: { grass: '#111827', line: 'rgba(255,255,255,0.16)', background: '#050505' },
+  light: { grass: '#f8fafc', line: 'rgba(15,23,42,0.38)', background: '#e2e8f0' },
+  blue: { grass: '#0f2a44', line: 'rgba(125,211,252,0.42)', background: '#071523' },
+  tactical: { grass: '#1f2937', line: 'rgba(209,213,219,0.34)', background: '#111827' }
+};
+
+const getPitchViewBox = (orientation, view) => {
+  const overlap = 7;
+  if (orientation === 'vertical') {
+    if (view === 'offensive') return { x: 0, y: 0, width: PITCH_DIMENSIONS.height, height: PITCH_DIMENSIONS.width / 2 + overlap };
+    if (view === 'defensive') return { x: 0, y: PITCH_DIMENSIONS.width / 2 - overlap, width: PITCH_DIMENSIONS.height, height: PITCH_DIMENSIONS.width / 2 + overlap };
+    return { x: 0, y: 0, width: PITCH_DIMENSIONS.height, height: PITCH_DIMENSIONS.width };
+  }
+  if (view === 'offensive') return { x: PITCH_DIMENSIONS.width / 2 - overlap, y: 0, width: PITCH_DIMENSIONS.width / 2 + overlap, height: PITCH_DIMENSIONS.height };
+  if (view === 'defensive') return { x: 0, y: 0, width: PITCH_DIMENSIONS.width / 2 + overlap, height: PITCH_DIMENSIONS.height };
+  return { x: 0, y: 0, width: PITCH_DIMENSIONS.width, height: PITCH_DIMENSIONS.height };
+};
+
+const toViewBoxString = ({ x, y, width, height }) => `${x} ${y} ${width} ${height}`;
+
+const SIMPLEHEAT_SCRIPT_ID = 'simpleheat-script';
+const SIMPLEHEAT_SRC = 'https://cdn.jsdelivr.net/npm/simpleheat@0.4.0/simpleheat.min.js';
+let simpleheatLoadPromise = null;
+
+const ensureSimpleheat = () => {
+  if (typeof window === 'undefined') return Promise.resolve(null);
+  if (window.simpleheat) return Promise.resolve(window.simpleheat);
+  if (simpleheatLoadPromise) return simpleheatLoadPromise;
+
+  simpleheatLoadPromise = new Promise((resolve, reject) => {
+    const existingScript = document.getElementById(SIMPLEHEAT_SCRIPT_ID);
+    const handleLoad = () => resolve(window.simpleheat || null);
+    const handleError = () => reject(new Error('Impossible de charger simpleheat'));
+
+    if (existingScript) {
+      existingScript.addEventListener('load', handleLoad, { once: true });
+      existingScript.addEventListener('error', handleError, { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = SIMPLEHEAT_SCRIPT_ID;
+    script.src = SIMPLEHEAT_SRC;
+    script.async = true;
+    script.onload = handleLoad;
+    script.onerror = handleError;
+    document.body.appendChild(script);
+  });
+
+  return simpleheatLoadPromise;
 };
 
 const RankBadge = ({ rank }) => {
@@ -86,6 +172,13 @@ const EventExplorer = ({
   const itemsPerPage = 10;
   const [generatingEventId, setGeneratingEventId] = useState(null);
   const [activeVideoUrl, setActiveVideoUrl] = useState(null);
+  const [pitchView, setPitchView] = useState('full');
+  const [orientation, setOrientation] = useState('horizontal');
+  const [heatmapMode, setHeatmapMode] = useState('off');
+  const [pitchStyle, setPitchStyle] = useState('standard');
+  const [showEvents, setShowEvents] = useState(true);
+  const heatmapCanvasRef = useRef(null);
+  const heatmapInstanceRef = useRef(null);
 
   const handleGenerateClip = async (e, event) => {
     e.stopPropagation();
@@ -136,7 +229,7 @@ const EventExplorer = ({
   const activeFocusedEventId = focusedEvent ? (focusedEvent.opta_id ?? focusedEvent.id) : focusedEventId;
 
   // HELPER : Extraction des coordonnées de fin
-  const getEndCoordinates = (event) => {
+  const getEndCoordinates = useCallback((event) => {
     let metrics = event.advanced_metrics || {};
     if (typeof metrics === 'string') {
       try { metrics = JSON.parse(metrics); } catch (e) { metrics = {}; }
@@ -154,7 +247,7 @@ const EventExplorer = ({
       if (qX && qY) return { x: parseFloat(qX.value), y: parseFloat(qY.value) };
     }
     return null;
-  };
+  }, []);
 
   const combinedActions = useMemo(() => {
     const advanced = advancedMetricsList.map(tag => ({
@@ -256,8 +349,139 @@ const EventExplorer = ({
 
   const totalPages = actualSequenceMode ? 0 : Math.ceil(playerRanking.length / itemsPerPage);
   const paginatedRanking = actualSequenceMode ? [] : playerRanking.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+  const mapEventCount = actualSequenceMode
+    ? displayData.reduce((sum, seq) => sum + ((seq.events || []).length), 0)
+    : displayData.length;
+  const isEventLimitExceeded = mapEventCount > 1000;
+  const pitchDisplayData = showEvents
+    ? displayData
+    : (actualSequenceMode ? displayData.map(seq => ({ ...seq, events: [] })) : []);
+  const selectedPitchStyle = PITCH_STYLE_CONFIGS[pitchStyle] || PITCH_STYLE_CONFIGS.standard;
+  const pitchViewBox = useMemo(() => getPitchViewBox(orientation, pitchView), [orientation, pitchView]);
+  const pitchViewBoxString = useMemo(() => toViewBoxString(pitchViewBox), [pitchViewBox]);
+  const pitchViewBoxCenter = useMemo(() => ({
+    x: pitchViewBox.x + pitchViewBox.width / 2,
+    y: pitchViewBox.y + pitchViewBox.height / 2
+  }), [pitchViewBox]);
+  const projectPoint = useCallback((x, y) => {
+    const numericX = Number(x);
+    const numericY = Number(y);
+    if (!Number.isFinite(numericX) || !Number.isFinite(numericY)) return null;
+
+    if (orientation === 'vertical') {
+      return {
+        x: PITCH_DIMENSIONS.height - (numericY / 100) * PITCH_DIMENSIONS.height,
+        y: PITCH_DIMENSIONS.width - (numericX / 100) * PITCH_DIMENSIONS.width
+      };
+    }
+
+    return {
+      x: (numericX / 100) * PITCH_DIMENSIONS.width,
+      y: ((100 - numericY) / 100) * PITCH_DIMENSIONS.height
+    };
+  }, [orientation]);
+  const heatmapEvents = useMemo(() => {
+    const events = actualSequenceMode
+      ? displayData.flatMap(seq => seq.events || [])
+      : displayData;
+    return events.filter(hasRenderablePlayerId);
+  }, [actualSequenceMode, displayData]);
 
   React.useEffect(() => { setPage(1); }, [selectedAction, sortOrder, displayData]);
+  React.useEffect(() => {
+    if (isEventLimitExceeded) {
+      setShowEvents(false);
+    }
+  }, [isEventLimitExceeded]);
+  React.useEffect(() => {
+    const canvas = heatmapCanvasRef.current;
+    if (!canvas) return;
+
+    const clearHeatmap = () => {
+      const ctx = canvas.getContext('2d');
+      if (ctx) ctx.clearRect(0, 0, canvas.width || 0, canvas.height || 0);
+      heatmapInstanceRef.current?.clear?.();
+    };
+
+    if (heatmapMode === 'off' || !heatmapEvents.length) {
+      clearHeatmap();
+      return;
+    }
+
+    let cancelled = false;
+
+    ensureSimpleheat()
+      .then((simpleheat) => {
+        if (cancelled || !simpleheat || !heatmapCanvasRef.current) return;
+
+        const activeCanvas = heatmapCanvasRef.current;
+        const rect = activeCanvas.getBoundingClientRect();
+        const cssWidth = Math.max(1, Math.round(rect.width));
+        const cssHeight = Math.max(1, Math.round(rect.height));
+        const pixelRatio = window.devicePixelRatio || 1;
+
+        activeCanvas.width = Math.round(cssWidth * pixelRatio);
+        activeCanvas.height = Math.round(cssHeight * pixelRatio);
+        activeCanvas.style.width = `${cssWidth}px`;
+        activeCanvas.style.height = `${cssHeight}px`;
+
+        const scale = Math.min(cssWidth / pitchViewBox.width, cssHeight / pitchViewBox.height);
+        const offsetX = (cssWidth - pitchViewBox.width * scale) / 2;
+        const offsetY = (cssHeight - pitchViewBox.height * scale) / 2;
+        const points = [];
+
+        const pushCanvasPoint = (pitchPoint) => {
+          if (!pitchPoint) return;
+          const canvasX = (pitchPoint.x - pitchViewBox.x) * scale + offsetX;
+          const canvasY = (pitchPoint.y - pitchViewBox.y) * scale + offsetY;
+          if (
+            Number.isFinite(canvasX)
+            && Number.isFinite(canvasY)
+            && canvasX >= 0
+            && canvasX <= cssWidth
+            && canvasY >= 0
+            && canvasY <= cssHeight
+          ) {
+            points.push([canvasX * pixelRatio, canvasY * pixelRatio, 1]);
+          }
+        };
+
+        heatmapEvents.forEach(event => {
+          if (heatmapMode === 'start' || heatmapMode === 'both') {
+            pushCanvasPoint(projectPoint(event.x, event.y));
+          }
+          if (heatmapMode === 'end' || heatmapMode === 'both') {
+            const endCoords = getEndCoordinates(event);
+            if (endCoords) pushCanvasPoint(projectPoint(endCoords.x, endCoords.y));
+          }
+        });
+
+        const ctx = activeCanvas.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
+        if (!points.length) return;
+
+        heatmapInstanceRef.current = simpleheat(activeCanvas);
+        const heat = heatmapInstanceRef.current;
+        heat.clear();
+        heat.data(points);
+        const radius = Math.max(14 * pixelRatio, Math.min(activeCanvas.width, activeCanvas.height) / 18);
+        heat.radius(radius, radius / 2.5);
+        heat.max(5);
+        heat.draw();
+      })
+      .catch((error) => {
+        console.error('Erreur heatmap simpleheat:', error);
+        clearHeatmap();
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [heatmapMode, heatmapEvents, pitchViewBox, projectPoint, getEndCoordinates]);
+  React.useEffect(() => () => {
+    heatmapInstanceRef.current?.clear?.();
+    heatmapInstanceRef.current = null;
+  }, []);
 
   return (
     <div className="flex h-full w-full gap-8 animate-in fade-in zoom-in-95 duration-500 overflow-hidden">
@@ -288,9 +512,99 @@ const EventExplorer = ({
             </div>
           </div>
 
+          <div className="relative z-10 flex flex-wrap items-center justify-between gap-3 rounded-[6px] border border-white/10 bg-white/[0.06] px-4 py-3 shadow-[0_18px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center rounded-[4px] border border-white/10 bg-black/25 p-1">
+                {[
+                  ['full', 'Full'],
+                  ['offensive', 'Off'],
+                  ['defensive', 'Def']
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setPitchView(value)}
+                    className={`verge-label-mono rounded-[3px] px-3 py-1.5 text-[9px] font-black uppercase transition-all ${pitchView === value ? 'bg-[#3cffd0] text-black' : 'text-[#949494] hover:bg-white/10 hover:text-white'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setOrientation(prev => prev === 'horizontal' ? 'vertical' : 'horizontal')}
+                className="verge-label-mono flex items-center gap-2 rounded-[4px] border border-white/10 bg-black/25 px-3 py-2 text-[9px] font-black uppercase text-[#d8d8d8] transition-all hover:border-[#3cffd0]/50 hover:text-[#3cffd0]"
+              >
+                <ArrowUpDown size={13} />
+                {orientation}
+              </button>
+
+              <label className="verge-label-mono flex items-center gap-2 rounded-[4px] border border-white/10 bg-black/25 px-3 py-2 text-[9px] font-black uppercase text-[#949494]">
+                <Layers size={13} className="text-[#3cffd0]" />
+                <select
+                  value={heatmapMode}
+                  onChange={(event) => setHeatmapMode(event.target.value)}
+                  className="bg-transparent text-white outline-none"
+                  title="Mode Heatmap"
+                >
+                  <option value="off" className="bg-[#131313] text-white">Heatmap off</option>
+                  <option value="start" className="bg-[#131313] text-white">Start x/y</option>
+                  <option value="end" className="bg-[#131313] text-white">End x/y</option>
+                  <option value="both" className="bg-[#131313] text-white">Both</option>
+                </select>
+              </label>
+
+              <label className="verge-label-mono flex items-center gap-2 rounded-[4px] border border-white/10 bg-black/25 px-3 py-2 text-[9px] font-black uppercase text-[#949494]">
+                <Palette size={13} className="text-[#3cffd0]" />
+                <select
+                  value={pitchStyle}
+                  onChange={(event) => setPitchStyle(event.target.value)}
+                  className="bg-transparent text-white outline-none"
+                  title="Style terrain"
+                >
+                  <option value="standard" className="bg-[#131313] text-white">Standard</option>
+                  <option value="dark" className="bg-[#131313] text-white">Dark</option>
+                  <option value="light" className="bg-[#131313] text-white">Light</option>
+                  <option value="blue" className="bg-[#131313] text-white">Blue</option>
+                  <option value="tactical" className="bg-[#131313] text-white">Tactical</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`verge-label-mono rounded-[3px] border px-3 py-2 text-[9px] font-black uppercase ${isEventLimitExceeded ? 'border-[#ff4d4d]/40 bg-[#ff4d4d]/10 text-[#ff8a8a]' : 'border-white/10 bg-black/25 text-[#949494]'}`}>
+                {mapEventCount.toLocaleString()} events
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowEvents(prev => !prev)}
+                disabled={isEventLimitExceeded}
+                className={`verge-label-mono flex items-center gap-2 rounded-[4px] border px-3 py-2 text-[9px] font-black uppercase transition-all ${showEvents && !isEventLimitExceeded ? 'border-[#3cffd0]/60 bg-[#3cffd0]/15 text-[#3cffd0]' : 'border-white/10 bg-black/25 text-[#949494]'} disabled:cursor-not-allowed disabled:border-[#ff4d4d]/30 disabled:bg-[#ff4d4d]/10 disabled:text-[#ff8a8a]`}
+              >
+                {showEvents ? <Eye size={13} /> : <EyeOff size={13} />}
+                {isEventLimitExceeded ? 'Shield on' : 'Events'}
+              </button>
+              <button
+                type="button"
+                disabled
+                className="verge-label-mono flex cursor-not-allowed items-center gap-2 rounded-[4px] border border-white/10 bg-black/20 px-3 py-2 text-[9px] font-black uppercase text-[#555]"
+                title="Export PNG a activer dans une prochaine etape"
+              >
+                <Download size={13} />
+                PNG
+              </button>
+            </div>
+          </div>
+
           <PitchSVG
             loading={loading}
             hasData={displayData.length > 0 || isSequenceMode}
+            orientation={orientation}
+            pitchStyleConfig={selectedPitchStyle}
+            viewBox={pitchViewBoxString}
+            canvasRef={heatmapCanvasRef}
+            heatmapVisible={heatmapMode !== 'off' && heatmapEvents.length > 0}
             onClearFocus={() => {
               setFocusedEvent(null);
               setFocusedEventId(null);
@@ -300,7 +614,7 @@ const EventExplorer = ({
             {isSequenceMode ? (
               <>
                 <BuildUpLayer 
-                  displayData={displayData} 
+                  displayData={pitchDisplayData}
                   focusedEventId={activeFocusedEventId} 
                   getEndCoordinates={getEndCoordinates}
                   setHoveredEvent={setHoveredEvent}
@@ -308,13 +622,14 @@ const EventExplorer = ({
                   selectedSequence={selectedSequence}
                   setFocusedEvent={setFocusedEvent}
                   setFocusedEventId={setFocusedEventId}
+                  projectPoint={projectPoint}
                 />
                 {!selectedSequence && (
                   <g>
-                    <text x="52.5" y="30" textAnchor="middle" fill="#3cffd0" fontSize="2" fontWeight="900" className="animate-pulse uppercase tracking-widest">
+                    <text x={pitchViewBoxCenter.x} y={pitchViewBoxCenter.y - 4} textAnchor="middle" fill="#3cffd0" fontSize="2" fontWeight="900" className="animate-pulse uppercase tracking-widest">
                       AUCUNE SÉQUENCE SÉLECTIONNÉE
                     </text>
-                    <text x="52.5" y="34" textAnchor="middle" fill="#949494" fontSize="1.2" className="uppercase tracking-wider">
+                    <text x={pitchViewBoxCenter.x} y={pitchViewBoxCenter.y} textAnchor="middle" fill="#949494" fontSize="1.2" className="uppercase tracking-wider">
                       Veuillez appliquer un filtre dans le panneau latéral gauche
                     </text>
                   </g>
@@ -322,13 +637,14 @@ const EventExplorer = ({
               </>
             ) : (
               <ExplorationLayer 
-                displayData={displayData} 
+                displayData={pitchDisplayData}
                 focusedEventId={activeFocusedEventId} 
                 getEndCoordinates={getEndCoordinates}
                 setHoveredEvent={setHoveredEvent}
                 setMousePos={setMousePos}
                 setFocusedEvent={setFocusedEvent}
                 setFocusedEventId={setFocusedEventId}
+                projectPoint={projectPoint}
               />
             )}
           </PitchSVG>
@@ -369,8 +685,32 @@ const EventExplorer = ({
           </div>
           <div className="flex-1 overflow-y-auto styled-scrollbar-verge bg-black/20">
              {!loading && (actualSequenceMode ? (displayData[0]?.events || []) : displayData).length > 0 ? (
-               ((actualSequenceMode ? displayData[0]?.events : displayData) || []).slice(0, 100).map((e, i) => {
+              ((actualSequenceMode ? displayData[0]?.events : displayData) || []).slice(0, 100).map((e, i) => {
                 const parsedMetrics = parseAdvancedMetrics(e);
+                const typeLabel = parsedMetrics?.type_name || e.type_name || e.type_id;
+                const typeKey = String(typeLabel || '').replace(/\s+/g, '').toLowerCase();
+                const typeId = String(parsedMetrics?.type_id ?? e.type_id ?? '');
+                const getPlayerName = (id) => {
+                  if (!id) return null;
+                  return globalPlayerMap[String(id)] || String(id);
+                };
+                const receiverName = getPlayerName(parsedMetrics?.receiver || e.receiver_id || e.receiver);
+                const opponentName = getPlayerName(parsedMetrics?.opponent_id);
+                const xTLabel = formatSignedMetric(parsedMetrics?.xT);
+                const isProgressive = parsedMetrics?.is_progressive === true || parsedMetrics?.is_progressive === 'true';
+                const rawDuelWon = parsedMetrics?.duel_won === true || parsedMetrics?.duel_won === 'true';
+                const duelLost = parsedMetrics?.duel_lost === true || parsedMetrics?.duel_lost === 'true';
+                const isForcedDuelLoss = FORCED_DUEL_LOSS_KEYS.has(typeKey) || FORCED_DUEL_LOSS_IDS.has(typeId);
+                const duelWon = isForcedDuelLoss ? false : rawDuelWon;
+                const hasDuelResult = isForcedDuelLoss || rawDuelWon || duelLost;
+                const shotQuality = parsedMetrics?.shot_status
+                  || parsedMetrics?.quality
+                  || parsedMetrics?.chance_quality
+                  || (parsedMetrics?.is_shot_big_chance ? 'Big Chance' : null)
+                  || (Number.isFinite(Number(parsedMetrics?.xG)) ? `xG ${Number(parsedMetrics.xG).toFixed(2)}` : null);
+                const isPassLike = ['pass', 'carry', 'ballreceipt'].includes(typeKey);
+                const isDuelLike = DUEL_EVENT_KEYS.has(typeKey) || DUEL_EVENT_IDS.has(typeId);
+                const isShotLike = ['shot', 'goal', 'savedshot', 'missedshots'].includes(typeKey);
                 return (
                   <div 
                     key={i} 
@@ -388,11 +728,35 @@ const EventExplorer = ({
                        {(e.cumulative_mins ?? 0).toFixed(1)}'
                      </span>
                      <span className="verge-label-mono text-[10px] text-white uppercase font-black tracking-tight w-28 shrink-0 truncate">
-                       {parsedMetrics?.type_name || e.type_name || e.type_id}
+                       {typeLabel}
                      </span>
-                     <span className="verge-label-mono text-[10px] text-[#949494] group-hover:text-white transition-colors w-32 shrink-0 truncate">
-                       {e.playerName || globalPlayerMap[e.player_id] || e.player_id}
-                     </span>
+                     <div className="min-w-0 flex-1">
+                       <div className="verge-label-mono text-[10px] text-[#949494] group-hover:text-white transition-colors truncate">
+                         {e.playerName || globalPlayerMap[e.player_id] || e.player_id}
+                       </div>
+                       <div className="mt-1 flex items-center gap-2 overflow-hidden">
+                         {isPassLike && receiverName && (
+                           <span className="verge-label-mono text-[8px] text-[#949494] truncate">Vers: <span className="text-white/80">{receiverName}</span></span>
+                         )}
+                         {isPassLike && xTLabel && (
+                           <span className="verge-label-mono text-[8px] text-[#3cffd0] font-black">xT {xTLabel}</span>
+                         )}
+                         {isProgressive && (
+                           <span className="verge-label-mono text-[7px] px-1.5 py-0.5 rounded-[2px] bg-[#3cffd0] text-black font-black uppercase">Prog</span>
+                         )}
+                         {isDuelLike && opponentName && (
+                           <span className="verge-label-mono text-[8px] text-[#949494] truncate">Contre: <span className="text-white/80">{opponentName}</span></span>
+                         )}
+                         {isDuelLike && hasDuelResult && (
+                           <span className={`verge-label-mono text-[7px] px-1.5 py-0.5 rounded-[2px] text-black font-black uppercase ${duelWon ? 'bg-[#3cffd0]' : 'bg-[#ff4d4d]'}`}>
+                             {duelWon ? 'Gagne' : 'Perdu'}
+                           </span>
+                         )}
+                         {isShotLike && shotQuality && (
+                           <span className="verge-label-mono text-[8px] text-[#ff4d4d] font-black truncate">{shotQuality}</span>
+                         )}
+                       </div>
+                     </div>
                    </div>
                    <div className="flex items-center gap-4 shrink-0">
                       <div className="verge-label-mono text-[8px] text-[#2d2d2d] group-hover:text-[#3cffd0] transition-colors font-black">ID:{e.opta_id || e.id}</div>

@@ -1,10 +1,17 @@
 import React from 'react';
 
-export const ExplorationLayer = ({ displayData, focusedEventId, getEndCoordinates, setHoveredEvent, setMousePos, setFocusedEvent, setFocusedEventId }) => {
+const defaultProjectPoint = (x, y) => ({
+  x: (x / 100) * 105,
+  y: ((100 - y) / 100) * 68
+});
+
+export const ExplorationLayer = ({ displayData, focusedEventId, getEndCoordinates, setHoveredEvent, setMousePos, setFocusedEvent, setFocusedEventId, projectPoint = defaultProjectPoint }) => {
   return displayData.slice(0, 1000).map((event, i) => {
     const eventId = event.opta_id ?? event.id;
-    const cx = (event.x / 100) * 105;
-    const cy = ((100 - event.y) / 100) * 68;
+    const startPoint = projectPoint(event.x, event.y);
+    if (!startPoint) return null;
+    const cx = startPoint.x;
+    const cy = startPoint.y;
     const ACTION_COLORS = {
       'Pass': '#00ff88',
       'BallReceipt': '#ffd03c',
@@ -25,9 +32,8 @@ export const ExplorationLayer = ({ displayData, focusedEventId, getEndCoordinate
     const opacity = isSuccess ? 0.75 : 0.5;
     
     const endCoords = getEndCoordinates(event);
-    const endX = endCoords?.x;
-    const endY = endCoords?.y;
-    const hasValidEnd = endCoords !== null;
+    const endPoint = endCoords ? projectPoint(endCoords.x, endCoords.y) : null;
+    const hasValidEnd = endPoint !== null;
 
     // Movement logic from audit: Pass = dot, Carry = solid (or as per audit plot_interactive_pitch)
     const isCarry = actionType.toLowerCase().includes('carry');
@@ -57,8 +63,8 @@ export const ExplorationLayer = ({ displayData, focusedEventId, getEndCoordinate
         {hasValidEnd && (
           <line 
             x1={cx} y1={cy} 
-            x2={(endX / 100) * 105} 
-            y2={((100 - endY) / 100) * 68} 
+            x2={endPoint.x}
+            y2={endPoint.y}
             stroke={eventId === focusedEventId ? "#fbbf24" : color} 
             strokeWidth={eventId === focusedEventId ? "0.8" : strokeWidth} 
             strokeOpacity={eventId === focusedEventId ? 1 : opacity}

@@ -1,5 +1,20 @@
 import React from 'react';
 
+const DUEL_EVENT_KEYS = new Set([
+  'takeon',
+  'tackle',
+  'aerial',
+  'challenge',
+  'foul',
+  'blockedpass',
+  'dispossessed'
+]);
+
+const DUEL_EVENT_IDS = new Set(['4', '50', '74']);
+
+const FORCED_DUEL_LOSS_KEYS = new Set(['blockedpass', 'dispossessed']);
+const FORCED_DUEL_LOSS_IDS = new Set(['50', '74']);
+
 export const EventTooltip = ({ hoveredEvent, focusedEvent, mousePos, globalPlayerMap, onPlayVideo, isVideoLoading = false }) => {
   const activeEvent = focusedEvent || hoveredEvent;
   const isFocused = Boolean(focusedEvent);
@@ -9,8 +24,10 @@ export const EventTooltip = ({ hoveredEvent, focusedEvent, mousePos, globalPlaye
   if (typeof parsed === 'string') {
     try { parsed = JSON.parse(parsed); } catch(e) { parsed = {}; }
   }
-  const typeName = parsed?.type_name || activeEvent.type || activeEvent.type_id;
+  const typeName = parsed?.type_name || activeEvent.type_name || activeEvent.type || activeEvent.type_id;
   const typeStr = String(typeName);
+  const typeKey = typeStr.replace(/\s+/g, '').toLowerCase();
+  const typeId = String(parsed?.type_id ?? activeEvent.type_id ?? '');
   
   const getPlayerName = (id) => {
     if (!id) return null;
@@ -23,11 +40,13 @@ export const EventTooltip = ({ hoveredEvent, focusedEvent, mousePos, globalPlaye
   const receiverNameTooltip = getPlayerName(receiverId);
   
   const isProgressive = parsed?.is_progressive;
-  const duelWon = parsed?.duel_won;
-  const hasDuelResult = typeof duelWon !== 'undefined';
+  const rawDuelWon = parsed?.duel_won === true || parsed?.duel_won === 'true';
+  const isForcedDuelLoss = FORCED_DUEL_LOSS_KEYS.has(typeKey) || FORCED_DUEL_LOSS_IDS.has(typeId);
+  const duelWon = isForcedDuelLoss ? false : rawDuelWon;
+  const hasDuelResult = isForcedDuelLoss || typeof parsed?.duel_won !== 'undefined';
   
   const isPass = typeStr === 'Pass';
-  const isDuel = ['TakeOn', 'Tackle', 'Aerial', 'Challenge'].includes(typeStr);
+  const isDuel = DUEL_EVENT_KEYS.has(typeKey) || DUEL_EVENT_IDS.has(typeId);
   const isShot = ['Shot', 'Goal', 'SavedShot', 'MissedShots'].includes(typeStr);
 
   return (
@@ -100,7 +119,7 @@ export const EventTooltip = ({ hoveredEvent, focusedEvent, mousePos, globalPlaye
         )}
         {isDuel && hasDuelResult && (
           <span className={`px-1.5 py-0.5 rounded-[2px] font-black text-[9px] uppercase tracking-wider text-black ${duelWon ? 'bg-[#3cffd0]' : 'bg-[#ff4d4d]'}`}>
-            Duel {duelWon ? 'Gagné' : 'Perdu'}
+            Duel {duelWon ? 'Gagne' : 'Perdu'}
           </span>
         )}
       </div>

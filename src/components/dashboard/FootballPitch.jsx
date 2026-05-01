@@ -82,15 +82,16 @@ export const FootballPitch = ({
   style = { grass: '#1a1a1a', line: '#333333', background: '#131313' }, 
   orientation = 'horizontal', 
   children,
-  className = "" 
+  className = "",
+  viewBox
 }) => {
-  const viewBox = orientation === 'horizontal' 
+  const computedViewBox = viewBox || (orientation === 'horizontal'
     ? `0 0 ${PITCH_DIMENSIONS.WIDTH} ${PITCH_DIMENSIONS.HEIGHT}` 
-    : `0 0 ${PITCH_DIMENSIONS.HEIGHT} ${PITCH_DIMENSIONS.WIDTH}`;
+    : `0 0 ${PITCH_DIMENSIONS.HEIGHT} ${PITCH_DIMENSIONS.WIDTH}`);
 
   return (
     <svg
-      viewBox={viewBox}
+      viewBox={computedViewBox}
       preserveAspectRatio="xMidYMid meet"
       className={`w-full h-full ${className}`}
       style={{ backgroundColor: style.background }}
