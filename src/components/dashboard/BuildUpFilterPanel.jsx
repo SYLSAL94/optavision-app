@@ -83,7 +83,22 @@ const BuildUpFilterPanel = ({
             <p className="verge-label-mono text-[9px] text-[#949494] mt-2 uppercase tracking-widest">Analyse du Build-up collectif</p>
           </div>
           <button 
-            onClick={() => setPendingFilters({ min_passes: 0, min_score: 0.0, has_shot: false, is_fast_break: false, silo: null })}
+            onClick={() => setPendingFilters(prev => ({ 
+              ...prev, 
+              min_passes: 0, 
+              min_score: 0.0, 
+              min_actions: 0, 
+              min_prog: 0, 
+              has_shot: false, 
+              is_fast_break: false, 
+              starts_own: false, 
+              reaches_opp: false, 
+              silo: null,
+              involved_player_id: [],
+              excluded_player_id: [],
+              localTeam: 'ALL',
+              localOpponent: 'ALL'
+            }))}
             className="verge-label-mono text-[10px] text-[#949494] hover:text-white uppercase font-black transition-colors flex items-center gap-2"
           >
             <RotateCcw size={12} />
