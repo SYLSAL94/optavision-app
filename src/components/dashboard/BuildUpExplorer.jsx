@@ -22,17 +22,24 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], teamsLi
   // Lecture pure des séquences du Back-End (Zéro-Calcul)
   const sequences = useMemo(() => {
     if (!data.sequences) return [];
-    return data.sequences.map(seq => ({
+    const toBool = value => value === true || value === 'true';
+    return data.sequences.map(seq => {
+      const eventCount = Number(seq.seq_actions_count ?? seq.event_count ?? (seq.events || []).length ?? 0);
+      return ({
       ...seq,
       // Mapping pour la compatibilité avec la vue existante
       id: seq.seq_uuid || seq.sub_sequence_id,
       matchName: seq.match_name || seq.match_id,
       matchDate: seq.match_date,
       teamName: teamMap[seq.team_id] || seq.team_id,
-      passCount: seq.seq_pass_count,
-      threatScore: seq.seq_score || 0,
-      duration: seq.start_time ? `${seq.start_time} - ${seq.end_time}` : "N/A"
-    })).sort((a, b) => b.threatScore - a.threatScore);
+      passCount: Number(seq.seq_pass_count || 0),
+      threatScore: Number(seq.seq_score || 0),
+      eventCount,
+      hasGoal: toBool(seq.has_goal ?? seq.seq_has_goal),
+      hasShot: toBool(seq.has_shot ?? seq.seq_has_shot),
+      duration: seq.start_time && seq.end_time ? `${seq.start_time} - ${seq.end_time}` : "N/A"
+    });
+    }).sort((a, b) => b.threatScore - a.threatScore);
   }, [data, teamMap]);
 
   const totalPages = Math.ceil(sequences.length / itemsPerPage);
@@ -196,7 +203,7 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], teamsLi
                          <Clock size={12} />
                          <span className="verge-label-mono text-[8px] uppercase">Durée</span>
                       </div>
-                      <span className="verge-label-mono text-sm text-white font-black">{seq.duration}s</span>
+                      <span className="verge-label-mono text-sm text-white font-black">{seq.duration}</span>
                    </div>
                    <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-2 text-[#949494]">
@@ -210,7 +217,7 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], teamsLi
                          <Zap size={12} />
                          <span className="verge-label-mono text-[8px] uppercase">Events</span>
                       </div>
-                       <span className="verge-label-mono text-sm text-white font-black">{(seq.events || []).length}</span>
+                       <span className="verge-label-mono text-sm text-white font-black">{seq.eventCount}</span>
                    </div>
                 </div>
              </motion.div>
@@ -277,13 +284,13 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], teamsLi
              <div className="flex-1 py-10 flex flex-col items-center justify-center gap-6">
                 <span className="verge-label-mono text-[9px] text-[#3cffd0] font-black uppercase tracking-[0.3em]">Avec Tir</span>
                 <span className="verge-label-mono text-4xl text-white font-black tabular-nums">
-                  {sequences.filter(s => s.has_shot).length}
+                  {sequences.filter(s => s.hasShot).length}
                 </span>
              </div>
              <div className="flex-1 py-10 flex flex-col items-center justify-center gap-6">
                 <span className="verge-label-mono text-[9px] text-[#3cffd0] font-black uppercase tracking-[0.3em]">Avec But</span>
                  <span className="verge-label-mono text-4xl text-white font-black tabular-nums">
-                   {sequences.filter(s => (s.events || []).some(e => e.type === 'Goal' || (e.type === 'Shot' && e.outcome === 1))).length}
+                   {sequences.filter(s => s.hasGoal).length}
                  </span>
              </div>
              <div className="flex-1 py-10 flex flex-col items-center justify-center gap-6">

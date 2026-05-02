@@ -177,11 +177,17 @@ const OptaVisionDashboard = ({ user }) => {
     };
     const firstSequenceEvent = isSequence ? event.events[0] : null;
     const lastSequenceEvent = isSequence ? event.events[event.events.length - 1] : null;
+    const numericSequenceStart = Number(event.start_seconds ?? event.sequence_start_seconds);
+    const numericSequenceEnd = Number(event.end_seconds ?? event.sequence_end_seconds);
     const sequenceStartSeconds = isSequence
-      ? (parseClock(event.start_time) ?? (Number(firstSequenceEvent?.min ?? firstSequenceEvent?.minute ?? 0) * 60 + Number(firstSequenceEvent?.sec ?? firstSequenceEvent?.second ?? 0)))
+      ? (Number.isFinite(numericSequenceStart)
+        ? numericSequenceStart
+        : (parseClock(event.start_time) ?? (Number(firstSequenceEvent?.min ?? firstSequenceEvent?.minute ?? 0) * 60 + Number(firstSequenceEvent?.sec ?? firstSequenceEvent?.second ?? 0))))
       : null;
     const sequenceEndSeconds = isSequence
-      ? (parseClock(event.end_time) ?? (Number(lastSequenceEvent?.min ?? lastSequenceEvent?.minute ?? 0) * 60 + Number(lastSequenceEvent?.sec ?? lastSequenceEvent?.second ?? 0)))
+      ? (Number.isFinite(numericSequenceEnd)
+        ? numericSequenceEnd
+        : (parseClock(event.end_time) ?? (Number(lastSequenceEvent?.min ?? lastSequenceEvent?.minute ?? 0) * 60 + Number(lastSequenceEvent?.sec ?? lastSequenceEvent?.second ?? 0))))
       : null;
 
     if (!matchId || !eventId) {
@@ -340,6 +346,10 @@ const OptaVisionDashboard = ({ user }) => {
   useEffect(() => {
     // On charge les événements de base même en mode séquences pour le cache spatial (Zero-Download)
     if (activeTool === 'ranking') return;
+    if (activeTool === 'sequences') {
+      Promise.resolve().then(() => fetchBuildup(explorationFilters));
+      return;
+    }
     fetchEvents();
   }, [page, limit, explorationFilters, activeTool]);
 
@@ -695,7 +705,6 @@ const OptaVisionDashboard = ({ user }) => {
                         filters={explorationFilters}
                         onApply={(filters) => { 
                           setExplorationFilters(filters); 
-                          fetchBuildup(filters); 
                         }} 
                         onClose={() => setIsFilterOpen(false)} 
                       />
