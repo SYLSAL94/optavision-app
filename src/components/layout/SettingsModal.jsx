@@ -79,13 +79,27 @@ const SettingsModal = ({ isOpen, onClose, user, initialTab = 'profile' }) => {
         fetch(`${API_BASE_URL}/api/optavision/videos/available`).then(r => r.json())
       ]);
       setUnassignedMatches(Array.isArray(matchesRes.items) ? matchesRes.items : []);
-      setAvailableVideos(Array.isArray(videosRes.items) ? videosRes.items : []);
+      const hydratedVideos = Array.isArray(videosRes.items) ? videosRes.items.map(video => ({
+        ...video,
+        is_associated: video.is_associated ?? video.isAssociated ?? video.IsAssociated ?? false
+      })) : [];
+      setAvailableVideos(hydratedVideos);
     } catch (err) {
       setR2Status({ type: 'error', msg: 'Erreur de synchronisation R2' });
     } finally {
       setLoadingR2(false);
     }
   };
+
+  const videosM1 = useMemo(() => availableVideos.filter(video => 
+    video.key !== formData.r2_video_key_m2 && 
+    String(video.is_associated).toLowerCase() !== 'true'
+  ), [availableVideos, formData.r2_video_key_m2]);
+
+  const videosM2 = useMemo(() => availableVideos.filter(video => 
+    video.key !== formData.r2_video_key_m1 && 
+    String(video.is_associated).toLowerCase() !== 'true'
+  ), [availableVideos, formData.r2_video_key_m1]);
 
   const matchCompetitions = useMemo(() => {
     return Array.from(new Set(unassignedMatches.map(m => m.competition).filter(Boolean))).sort();
@@ -288,7 +302,7 @@ const SettingsModal = ({ isOpen, onClose, user, initialTab = 'profile' }) => {
                                   disabled={loadingR2}
                                 >
                                     <option value="">{loadingR2 ? 'Scan R2...' : '--- Source M1 ---'}</option>
-                                    {availableVideos.map(v => (
+                                    {videosM1.map(v => (
                                         <option key={v.key} value={v.key}>{v.key}</option>
                                     ))}
                                 </select>
@@ -303,7 +317,7 @@ const SettingsModal = ({ isOpen, onClose, user, initialTab = 'profile' }) => {
                                   disabled={loadingR2}
                                 >
                                     <option value="">{loadingR2 ? 'Scan R2...' : '--- Source M2 (Optionnel) ---'}</option>
-                                    {availableVideos.map(v => (
+                                    {videosM2.map(v => (
                                         <option key={v.key} value={v.key}>{v.key}</option>
                                     ))}
                                 </select>
