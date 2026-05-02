@@ -44,28 +44,12 @@ const formatSignedMetric = (value, digits = 3) => {
   return `${numeric >= 0 ? '+' : ''}${numeric.toFixed(digits)}`;
 };
 
-const DUEL_EVENT_KEYS = new Set([
-  'takeon',
-  'tackle',
-  'aerial',
-  'challenge',
-  'interception',
-  'ballrecovery',
-  'foul',
-  'blockedpass',
-  'dispossessed'
-]);
-
+const DUEL_EVENT_KEYS = new Set(['takeon', 'tackle', 'aerial', 'challenge', 'interception', 'ballrecovery', 'foul', 'blockedpass', 'dispossessed']);
 const DUEL_EVENT_IDS = new Set(['4', '50', '74']);
-
 const FORCED_DUEL_LOSS_KEYS = new Set(['blockedpass', 'dispossessed']);
 const FORCED_DUEL_LOSS_IDS = new Set(['50', '74']);
 
-const PITCH_DIMENSIONS = {
-  width: 105,
-  height: 68
-};
-
+const PITCH_DIMENSIONS = { width: 105, height: 68 };
 const PITCH_STYLE_CONFIGS = {
   standard: { grass: 'transparent', line: 'rgba(255,255,255,0.08)', background: 'transparent' },
   dark: { grass: '#111827', line: 'rgba(255,255,255,0.16)', background: '#050505' },
@@ -91,40 +75,29 @@ const toViewBoxString = ({ x, y, width, height }) => `${x} ${y} ${width} ${heigh
 const SIMPLEHEAT_SCRIPT_ID = 'simpleheat-script';
 const SIMPLEHEAT_SRC = 'https://cdn.jsdelivr.net/npm/simpleheat@0.4.0/simpleheat.min.js';
 const LIVE_FLUX_PAGE_SIZE = 20;
-const EMPTY_SELECTION_BOX = {
-  startX: null,
-  startY: null,
-  endX: null,
-  endY: null,
-  isDrawing: false
-};
+const EMPTY_SELECTION_BOX = { startX: null, startY: null, endX: null, endY: null, isDrawing: false };
 const MIN_SELECTION_SIZE = 0.6;
 let simpleheatLoadPromise = null;
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 const countDisplayEvents = (items, sequenceMode) => (
-  sequenceMode
-    ? items.reduce((sum, seq) => sum + ((seq.events || []).length), 0)
-    : items.length
+  sequenceMode ? items.reduce((sum, seq) => sum + ((seq.events || []).length), 0) : items.length
 );
 
 const ensureSimpleheat = () => {
   if (typeof window === 'undefined') return Promise.resolve(null);
   if (window.simpleheat) return Promise.resolve(window.simpleheat);
   if (simpleheatLoadPromise) return simpleheatLoadPromise;
-
   simpleheatLoadPromise = new Promise((resolve, reject) => {
     const existingScript = document.getElementById(SIMPLEHEAT_SCRIPT_ID);
     const handleLoad = () => resolve(window.simpleheat || null);
     const handleError = () => reject(new Error('Impossible de charger simpleheat'));
-
     if (existingScript) {
       existingScript.addEventListener('load', handleLoad, { once: true });
       existingScript.addEventListener('error', handleError, { once: true });
       return;
     }
-
     const script = document.createElement('script');
     script.id = SIMPLEHEAT_SCRIPT_ID;
     script.src = SIMPLEHEAT_SRC;
@@ -133,7 +106,6 @@ const ensureSimpleheat = () => {
     script.onerror = handleError;
     document.body.appendChild(script);
   });
-
   return simpleheatLoadPromise;
 };
 
@@ -185,20 +157,23 @@ const EventExplorer = ({
         })
       });
 
-      if (!response.ok) throw new Error('Erreur lors du mixage vidéo');
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Erreur lors du mixage vidéo');
 
-      // Récupération du fichier binaire
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `OptaVision_Mix_${matchId}_${eventIds.length}_clips.mp4`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      if (data.job_id) {
+        const videoUrl = await pollVideoJob(data.job_id);
+        const a = document.createElement('a');
+        a.href = videoUrl;
+        a.download = `OptaVision_Mix_${matchId}_${eventIds.length}_clips.mp4`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      } else {
+        throw new Error("Aucun Job ID reçu de l'API");
+      }
     } catch (err) {
       console.error("❌ Erreur téléchargement mix:", err);
+      alert(err.message || "Erreur lors du mixage vidéo");
     } finally {
       setIsDownloading(false);
     }
@@ -213,7 +188,6 @@ const EventExplorer = ({
 
     setGeneratingEventId(eventId);
     try {
-      // Récupération de la config globale (buffers FFmpeg)
       const savedConfig = localStorage.getItem('optavision_video_config');
       const videoCfg = savedConfig ? JSON.parse(savedConfig) : { before_buffer: 3, after_buffer: 5, min_clip_gap: 0.5 };
 
@@ -597,6 +571,7 @@ const EventExplorer = ({
       cancelled = true;
     };
   }, [heatmapMode, heatmapEvents, pitchViewBox, projectPoint, getEndCoordinates]);
+
   React.useEffect(() => () => {
     heatmapInstanceRef.current?.clear?.();
     heatmapInstanceRef.current = null;
