@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Activity, ChevronLeft, ChevronRight, Database, Eye, Filter, Loader2, Map, Play, PlayCircle, RotateCcw, SlidersHorizontal, Trophy, X } from 'lucide-react';
 import ExplorationFilterPanel from './ExplorationFilterPanel';
-import { FootballPitch } from './FootballPitch';
+import { TacticalPitch } from './TacticalPitch';
+import { usePitchProjection } from '../../hooks/usePitchProjection';
 import { OPTAVISION_API_URL } from '../../config';
 import { createExplorationSearchParams } from './optaFilterParams';
 
@@ -61,6 +62,9 @@ const RankingExplorer = ({
   const [generatingEventId, setGeneratingEventId] = useState(null);
   const [error, setError] = useState(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+
+  // --- MOTEUR GÉOMÉTRIQUE UNIFIÉ ---
+  const { projectPoint } = usePitchProjection('horizontal');
 
   // --- DRILL-DOWN PLAYER EVENTS STATE ---
   const [selectedPlayerForEvents, setSelectedPlayerForEvents] = useState(null);
@@ -180,12 +184,17 @@ const RankingExplorer = ({
   };
 
   const handleTargetPlayer = (player) => {
-    if (selectedPlayerForEvents?.player_id === player.player_id) {
+    const playerId = player.player_id;
+    if (selectedPlayerForEvents?.player_id === playerId) {
       setSelectedPlayerForEvents(null);
       setPlayerEvents([]);
+      // On libère le filtre global si on déselectionne
+      onFiltersChange?.({ ...filters, player_id: [] });
     } else {
       setSelectedPlayerForEvents(player);
-      fetchPlayerEvents(player.player_id, 1);
+      fetchPlayerEvents(playerId, 1);
+      // Synchronisation Globale : La Map principale réagit maintenant au clic
+      onFiltersChange?.({ ...filters, player_id: [playerId] });
     }
   };
 
@@ -285,7 +294,7 @@ const RankingExplorer = ({
                     <div className="min-w-0 flex items-center justify-between pr-4">
                       <div className="min-w-0">
                         <div className="verge-label-mono text-[12px] text-white font-black group-hover:text-[#3cffd0] uppercase truncate">
-                          {player.playerName || player.player_id || 'Joueur inconnu'}
+                          {globalPlayerMap[player.player_id] || player.playerName || player.player_id || 'Joueur inconnu'}
                         </div>
                         <div className="verge-label-mono text-[7px] text-[#3cffd0] uppercase tracking-widest mt-0.5 font-bold">
                           {player.teamName || teamMap[player.team_id] || 'Équipe Inconnue'}
@@ -550,26 +559,27 @@ const RankingExplorer = ({
                   </div>
                 ) : null}
 
-                <FootballPitch 
+                <TacticalPitch 
                   orientation="horizontal"
+                  view="full"
                   style={{ grass: '#131313', line: '#333', background: '#000' }}
                 >
-                  {/* Rendu des événements globaux du joueur */}
+                  {/* Rendu des événements globaux du joueur via Moteur Unifié */}
                   {playerEventsForMap.map((e, idx) => {
-                    const x = (Number(e.x) / 100) * 105;
-                    const y = ((100 - Number(e.y)) / 100) * 68;
+                    const point = projectPoint(e.x, e.y);
+                    if (!point) return null;
                     return (
                       <g key={e.opta_id || idx} className="group/dot">
                         <circle 
-                          cx={x} 
-                          cy={y} 
+                          cx={point.x} 
+                          cy={point.y} 
                           r="0.7" 
                           fill={e.outcome === 1 ? '#3cffd0' : '#ff4d4d'} 
                           className="opacity-80"
                         />
                         <circle 
-                          cx={x} 
-                          cy={y} 
+                          cx={point.x} 
+                          cy={point.y} 
                           r="2.2" 
                           fill="transparent" 
                           stroke={e.outcome === 1 ? '#3cffd0' : '#ff4d4d'} 
@@ -579,7 +589,7 @@ const RankingExplorer = ({
                       </g>
                     );
                   })}
-                </FootballPitch>
+                </TacticalPitch>
 
                 <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-6 bg-[#1a1a1a]/80 backdrop-blur-xl px-8 py-3 rounded-full border border-white/10 shadow-2xl">
                   <div className="flex items-center gap-2">
