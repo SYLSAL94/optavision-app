@@ -259,7 +259,11 @@ const EventExplorer = ({
       }];
     }
     const baseData = Array.isArray(data) ? data : (data?.items || []);
-    let filtered = baseData.filter(e => hasRenderablePlayerId(e) && e.type !== 'Out' && e.type_id !== 5);
+    let filtered = baseData.filter(e => 
+      hasRenderablePlayerId(e) && 
+      !['Out', 'Card', 'SubOff', 'SubOn'].includes(e.type) && 
+      ![5, 17, 18, 19].includes(e.type_id)
+    );
 
     const { localTeam, localOpponent } = filters || {};
     if (localTeam && localTeam !== 'ALL') {
