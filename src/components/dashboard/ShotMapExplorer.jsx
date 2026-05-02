@@ -1,11 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Info, Target, PlayCircle, Loader2 } from 'lucide-react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+import { ChevronLeft, ChevronRight, Info, Target, PlayCircle, Loader2, Download, Database } from 'lucide-react';
 import GoalFrameSVG from './GoalFrameSVG';
 
 import { TacticalPitch } from './TacticalPitch';
 import { usePitchProjection, PITCH_DIMENSIONS as GLOBAL_DIMENSIONS } from '../../hooks/usePitchProjection';
-
-const SHOTS_PER_PAGE = 6;
 
 const normalizeShotToAttackingGoal = (event) => {
   const x = Number(event?.x);
@@ -32,46 +30,64 @@ const isGoalShot = (shot) => {
   return shot?.isGoal === true || typeId === 16 || typeName === 'goal' || typeName === 'own goal';
 };
 
-const ShotMapLayer = ({ shots, focusedShot, onShotFocus, projectPoint }) => (
-  <>
-    {shots.map((shot, index) => {
-      const normalized = normalizeShotToAttackingGoal(shot);
-      const position = normalized ? projectPoint(normalized.x, normalized.y) : null;
+const ShotMapLayer = ({ shots, focusedShot, onShotFocus, projectPoint }) => {
+  const focusedShotId = focusedShot ? (focusedShot.opta_id ?? focusedShot.id) : null;
+  
+  const renderShot = (shot, index, isFocused) => {
+    const normalized = normalizeShotToAttackingGoal(shot);
+    const position = normalized ? projectPoint(normalized.x, normalized.y) : null;
+    if (!position) return null;
 
-      if (!position) return null;
+    const isDimmed = focusedShotId !== null && !isFocused;
 
-      const shotId = shot.opta_id ?? shot.id;
-      const focusedShotId = focusedShot ? (focusedShot.opta_id ?? focusedShot.id) : null;
-      const isFocused = focusedShotId !== null && String(shotId) === String(focusedShotId);
-      const isDimmed = focusedShotId !== null && !isFocused;
+    return (
+      <circle
+        key={shot.id || shot.opta_id || index}
+        cx={position.x}
+        cy={position.y}
+        r={isFocused ? 1.6 : 1}
+        fill={shot.isGoal ? "#3cffd0" : "#ff4d4d"}
+        fillOpacity={isDimmed ? 0.2 : 0.8}
+        stroke={isFocused ? "white" : "white"}
+        strokeWidth={isFocused ? 0.6 : 0.1}
+        className="cursor-pointer pointer-events-auto transition-all duration-300"
+        onClick={(e) => {
+          e.stopPropagation();
+          onShotFocus?.(shot);
+        }}
+        style={{ filter: isFocused ? 'drop-shadow(0 0 4px rgba(255,255,255,0.6))' : 'none' }}
+      >
+        <title>{shot.playerName} - {shot.type_name}</title>
+      </circle>
+    );
+  };
 
-      return (
-        <circle
-          key={shot.id || shot.opta_id || index}
-          cx={position.x}
-          cy={position.y}
-          r={isFocused ? 1.5 : 1}
-          fill={shot.isGoal ? "#3cffd0" : "#ff4d4d"}
-          fillOpacity={isDimmed ? 0.2 : 0.8}
-          stroke="white"
-          strokeWidth={isFocused ? 0.4 : 0.1}
-          className="cursor-pointer pointer-events-auto transition-all duration-300"
-          onClick={(e) => {
-            e.stopPropagation();
-            onShotFocus?.(shot);
-          }}
-        >
-          <title>{shot.playerName} - {shot.type_name}</title>
-        </circle>
-      );
-    })}
-  </>
-);
+  // Séparation pour garantir le rendu au-dessus (Z-index SVG)
+  const regularShots = shots.filter(s => String(s.opta_id ?? s.id) !== String(focusedShotId));
+  const activeShot = shots.find(s => String(s.opta_id ?? s.id) === String(focusedShotId));
+
+  return (
+    <>
+      {regularShots.map((s, idx) => renderShot(s, idx, false))}
+      {activeShot && renderShot(activeShot, 'active', true)}
+    </>
+  );
+};
 
 const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, isVideoLoading = false }) => {
-  const [detailsPage, setDetailsPage] = useState(1);
   const [focusedShot, setFocusedShot] = useState(null);
+  const [generatingEventId, setGeneratingEventId] = useState(null);
   const { projectPoint } = usePitchProjection('vertical');
+
+  const handleToggleShot = (shot) => {
+    const shotId = shot.opta_id ?? shot.id;
+    const currentId = focusedShot ? (focusedShot.opta_id ?? focusedShot.id) : null;
+    if (String(shotId) === String(currentId)) {
+      setFocusedShot(null);
+    } else {
+      setFocusedShot(shot);
+    }
+  };
 
   const shotData = useMemo(() => {
     const events = Array.isArray(data) ? data : (data?.items || []);
@@ -89,209 +105,261 @@ const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, isVideoLoadi
       }));
   }, [data]);
 
-  const totalDetailPages = Math.max(1, Math.ceil(shotData.length / SHOTS_PER_PAGE));
-  const paginatedShots = useMemo(() => {
-    const start = (detailsPage - 1) * SHOTS_PER_PAGE;
-    return shotData.slice(start, start + SHOTS_PER_PAGE);
-  }, [detailsPage, shotData]);
+  // --- MOTEUR DE VIRTUALISATION (Optimisation Shot Map) ---
+  const scrollContainerRef = useRef(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const ROW_HEIGHT = 85; 
+  const BUFFER_ROWS = 5;
+
+  const handleScroll = (e) => {
+    setScrollTop(e.currentTarget.scrollTop);
+  };
+
+  const virtualShots = useMemo(() => {
+    const start = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - BUFFER_ROWS);
+    const end = Math.min(shotData.length, Math.ceil((scrollTop + 800) / ROW_HEIGHT) + BUFFER_ROWS);
+    
+    return shotData.slice(start, end).map((shot, index) => ({
+      shot,
+      index: start + index,
+      top: (start + index) * ROW_HEIGHT
+    }));
+  }, [scrollTop, shotData]);
 
   useEffect(() => {
-    setDetailsPage(1);
     setFocusedShot(null);
-  }, [shotData.length]);
-
-  useEffect(() => {
-    setDetailsPage(page => Math.min(page, totalDetailPages));
-  }, [totalDetailPages]);
-
-  const stats = useMemo(() => {
-    const goals = shotData.filter(s => s.isGoal).length;
-    return {
-      total: shotData.length,
-      goals,
-      conversion: shotData.length > 0 ? ((goals / shotData.length) * 100).toFixed(1) : 0
-    };
-  }, [shotData]);
+    if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0;
+  }, [data]);
 
   const handleFocusedShotVideo = async () => {
     if (!focusedShot || !onPlayVideo) return;
-    await onPlayVideo(focusedShot);
+    const shotId = focusedShot.opta_id || focusedShot.id;
+    setGeneratingEventId(shotId);
+    try {
+      await onPlayVideo(focusedShot);
+    } finally {
+      setGeneratingEventId(null);
+    }
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full gap-8 animate-in fade-in zoom-in-95 duration-500 overflow-hidden p-8">
-      <div className="flex-1 min-w-0 min-h-0 flex flex-col gap-6 bg-[#1a1a1a] border border-white/10 rounded-[4px] p-8 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-red-500/2 to-transparent pointer-events-none" />
-
-        <div className="flex justify-between items-center relative z-10 border-b border-white/5 pb-6 shrink-0">
-          <div className="flex items-center gap-6 min-w-0">
-            <div className="w-1 h-8 bg-red-500 shrink-0" />
-            <div className="min-w-0">
-              <h3 className="verge-h3 text-white uppercase tracking-tighter font-black">Shot Map Analytique</h3>
-              <p className="verge-label-mono text-[9px] text-red-400 uppercase tracking-[0.3em] font-bold mt-1">Localisation précise des frappes</p>
+    <div className="w-full h-screen bg-[#050505] overflow-hidden">
+      <div className="max-w-[1800px] mx-auto w-full h-full flex flex-col lg:flex-row gap-6 p-8 overflow-hidden">
+      {/* COLONNE GAUCHE : CONSOLE TACTIQUE UNIFIÉE (MAP + CAGE) */}
+      <div className="flex-1 flex flex-col min-h-0 bg-[#1a1a1a] border border-white/10 rounded-[4px] overflow-hidden shadow-2xl relative">
+        <div className="absolute inset-0 bg-gradient-to-b from-[#3cffd0]/2 to-transparent pointer-events-none" />
+        
+        {/* HEADER UNIFIÉ */}
+        <div className="px-6 py-4 border-b border-white/5 bg-black/20 flex justify-between items-center z-10">
+          <div className="flex items-center gap-6">
+            <div className="w-1 h-8 bg-[#3cffd0]" />
+            <div>
+              <h3 className="verge-h3 text-white uppercase tracking-tighter font-black">Console de Finition</h3>
+              <p className="verge-label-mono text-[9px] text-[#3cffd0] uppercase tracking-[0.3em] font-bold mt-1">
+                IMMERSION SPATIALE & TARGET 2D
+              </p>
             </div>
           </div>
-          <div className="flex gap-4 shrink-0">
-             <div className="bg-black/40 border border-white/5 px-4 py-2 rounded-[2px] text-center">
-                <div className="verge-label-mono text-[8px] text-[#949494] uppercase">Tirs</div>
-                <div className="verge-label-mono text-xs text-white font-black">{stats.total}</div>
-             </div>
-             <div className="bg-black/40 border border-white/5 px-4 py-2 rounded-[2px] text-center">
-                <div className="verge-label-mono text-[8px] text-[#949494] uppercase">Buts</div>
-                <div className="verge-label-mono text-xs text-[#3cffd0] font-black">{stats.goals}</div>
-             </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-[2px] border border-white/5">
+              <div className="w-1.5 h-1.5 rounded-full bg-[#3cffd0]" />
+              <span className="verge-label-mono text-[8px] text-[#949494] uppercase font-black">Buts</span>
+            </div>
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-[2px] border border-white/5">
+              <div className="w-1.5 h-1.5 rounded-full bg-[#ff4d4d]" />
+              <span className="verge-label-mono text-[8px] text-[#949494] uppercase font-black">Échecs</span>
+            </div>
+            <div className="verge-label-mono text-[9px] text-white font-black bg-[#3cffd0]/10 px-3 py-1.5 rounded-[2px] border border-[#3cffd0]/20">
+              {shotData.length} FRAPPES
+            </div>
           </div>
         </div>
 
-          <div className="flex-1 min-h-0 bg-[#101010] border border-white/5 relative rounded-[2px] flex items-center justify-center overflow-hidden">
-             <div className="w-full h-full max-w-[820px] max-h-[680px] relative">
-                {!loading && (
-                  <TacticalPitch 
-                    orientation="vertical" 
-                    view="offensive"
-                    onClick={() => setFocusedShot(null)}
-                  >
-                    <ShotMapLayer 
-                      shots={shotData}
-                      focusedShot={focusedShot}
-                      onShotFocus={setFocusedShot}
-                      projectPoint={projectPoint}
-                    />
-                  </TacticalPitch>
-                )}
+        <div className="flex-1 flex flex-col min-h-0 relative z-10 gap-0">
+          {/* ZONE 2D TARGET (Intégration Premium) */}
+          <div className="h-[260px] w-full flex items-end justify-center shrink-0 relative z-20">
+             {/* Effet de lueur diffuse derrière la cage */}
+             <div className="absolute inset-0 bg-[#3cffd0]/5 blur-[100px] rounded-full scale-150 pointer-events-none" />
+             <div className="absolute top-4 left-1/2 -translate-x-1/2 verge-label-mono text-[7px] text-[#3cffd0]/40 uppercase tracking-[0.5em] font-black">Performance Target (Target 2D)</div>
+             
+             {/* Conteneur Invisible de Précision */}
+             <div className="w-full max-w-[800px] h-full flex items-center justify-center relative">
+               <GoalFrameSVG 
+                 shots={shotData} 
+                 focusedShot={focusedShot}
+                 onShotFocus={setFocusedShot}
+               />
              </div>
+          </div>
 
-           {focusedShot && (
-             <div className="absolute right-6 top-6 z-20 w-72 rounded-lg border border-white/10 bg-[#131313]/90 p-4 text-white shadow-2xl backdrop-blur-xl">
-               <div className="mb-3 border-b border-white/10 pb-2">
-                 <div className="verge-label-mono text-[8px] uppercase tracking-widest text-red-400">Tir selectionne</div>
-                 <div className="mt-1 truncate text-sm font-black">{focusedShot.playerName || 'Joueur inconnu'}</div>
-               </div>
-               <div className="space-y-2 verge-label-mono text-[9px] uppercase text-[#d7d7d7]">
-                 <div className="flex justify-between gap-4">
-                   <span className="text-[#949494]">Resultat</span>
-                   <span className={focusedShot.isGoal ? 'text-[#3cffd0]' : 'text-white'}>{focusedShot.isGoal ? 'Goal' : focusedShot.type_name || focusedShot.type || 'Tir'}</span>
-                 </div>
-                 <div className="flex justify-between gap-4">
-                   <span className="text-[#949494]">Minute</span>
-                   <span>{focusedShot.minute ?? focusedShot.min ?? '-'}'</span>
-                 </div>
-                 <div className="flex justify-between gap-4">
-                   <span className="text-[#949494]">Distance</span>
-                   <span>{focusedShot.shotDistance !== null ? `${focusedShot.shotDistance.toFixed(1)}m` : '-'}</span>
-                 </div>
-               </div>
+          {/* MAP TACTIQUE (Shot Map) */}
+          <div className="flex-1 px-8 pb-8 pt-0 relative min-h-0 z-10 overflow-hidden bg-gradient-to-t from-black/20 to-transparent">
+            <div className="w-full h-full max-w-[800px] mx-auto">
+              <TacticalPitch 
+                mode="vertical-half" 
+                orientation="vertical"
+                view="offensive"
+                style={{ grass: 'transparent', line: '#333', background: 'transparent' }}
+                onClick={() => setFocusedShot(null)}
+              >
+                <ShotMapLayer 
+                  shots={shotData} 
+                  focusedShot={focusedShot} 
+                  onShotFocus={handleToggleShot}
+                  projectPoint={projectPoint}
+                />
+              </TacticalPitch>
+            </div>
+
+            {focusedShot && (
+              <div className="absolute right-8 top-8 z-[100] w-72 rounded-lg border border-[#3cffd0]/30 bg-[#131313]/95 p-5 text-white shadow-[0_30px_100px_rgba(0,0,0,0.8)] backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-300 ring-1 ring-white/5">
+                <div className="mb-4 border-b border-white/10 pb-3 flex justify-between items-start">
+                  <div>
+                    <div className="verge-label-mono text-[7px] uppercase tracking-widest text-[#3cffd0]">Analytique Individuel</div>
+                    <div className="mt-1 truncate text-xs font-black uppercase">{focusedShot.playerName || 'Joueur'}</div>
+                  </div>
+                  <div className={`px-2 py-0.5 rounded-[2px] verge-label-mono text-[7px] font-black uppercase ${focusedShot.isGoal ? 'bg-[#3cffd0] text-black' : 'bg-white/10 text-white'}`}>
+                    {focusedShot.isGoal ? 'Goal' : 'Miss'}
+                  </div>
+                </div>
+                <div className="space-y-2 verge-label-mono text-[8px] uppercase text-[#949494]">
+                  <div className="flex justify-between font-bold">
+                    <span>Minute</span>
+                    <span className="text-white">{focusedShot.min ?? focusedShot.minute ?? '-'}'</span>
+                  </div>
+                  <div className="flex justify-between font-bold">
+                    <span>Distance</span>
+                    <span className="text-white">{focusedShot.shotDistance?.toFixed(1)}m</span>
+                  </div>
+                  <div className="flex justify-between font-bold">
+                    <span>Surface</span>
+                    <span className="text-white">{focusedShot.body_part_name || focusedShot.bodyPart || 'Pied'}</span>
+                  </div>
+                </div>
                 <button
-                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleFocusedShotVideo();
                   }}
-                  disabled={isVideoLoading}
-                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-full border border-[#3cffd0]/40 bg-black px-4 py-2 text-[9px] font-black uppercase tracking-[0.2em] text-[#3cffd0] shadow-[0_0_15px_rgba(60,255,208,0.2)] backdrop-blur-md transition-all duration-300 hover:bg-[#3cffd0] hover:text-black hover:border-[#3cffd0] hover:shadow-[0_0_25px_rgba(60,255,208,0.5)] disabled:cursor-wait disabled:opacity-50 verge-label-mono"
+                  disabled={generatingEventId !== null || isVideoLoading}
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-[2px] border border-[#3cffd0]/40 bg-black/50 py-2 text-[8px] font-black uppercase tracking-[0.2em] text-[#3cffd0] hover:bg-[#3cffd0] hover:text-black transition-all disabled:opacity-50 disabled:cursor-wait"
                 >
-                  {isVideoLoading ? (
+                  {generatingEventId !== null || isVideoLoading ? (
                     <Loader2 size={12} className="animate-spin text-[#3cffd0]" />
                   ) : (
                     <PlayCircle size={12} />
                   )}
-                  <span>{isVideoLoading ? 'Extraction...' : 'Visualiser'}</span>
+                  <span>{generatingEventId !== null || isVideoLoading ? 'Extraction...' : 'Visualiser'}</span>
                 </button>
-             </div>
-           )}
-
-           {(loading || shotData.length === 0) && (
-             <div className="absolute inset-0 flex items-center justify-center backdrop-blur-[2px]">
-                <div className="text-center opacity-30">
-                  <Target size={48} className="mx-auto mb-4" />
-                  <div className="verge-label-mono text-[10px] uppercase font-black tracking-widest">
-                    {loading ? 'Extraction des frappes...' : 'Aucun tir détecté dans ce flux'}
-                  </div>
-                </div>
-             </div>
-           )}
-        </div>
-      </div>
-
-      <div className="w-[320px] min-h-0 flex flex-col gap-4">
-         <div className="bg-[#1a1a1a] border border-white/10 p-5 rounded-[4px] shrink-0">
-            <h4 className="verge-label-mono text-[10px] text-white font-black uppercase mb-4 flex items-center gap-3">
-              <Target size={14} className="text-red-400" />
-              Vue Cage
-            </h4>
-            <div className="h-[170px] bg-black/40 border border-white/5 rounded-[2px] p-3">
-              <GoalFrameSVG shots={shotData} focusedShot={focusedShot} onShotFocus={setFocusedShot} />
-            </div>
-         </div>
-
-         <div className="bg-[#1a1a1a] border border-white/10 p-5 rounded-[4px] shrink-0">
-            <h4 className="verge-label-mono text-[10px] text-white font-black uppercase mb-5 flex items-center gap-3">
-              <Info size={14} className="text-[#3cffd0]" />
-              Légende Tactique
-            </h4>
-            <div className="space-y-3">
-               <div className="flex items-center gap-4">
-                  <div className="w-3 h-3 bg-[#3cffd0] rounded-full shadow-[0_0_8px_#3cffd0]" />
-                  <span className="verge-label-mono text-[9px] text-[#949494] uppercase font-black">But (Goal)</span>
-               </div>
-               <div className="flex items-center gap-4">
-                  <div className="w-3 h-3 bg-[#ff4d4d] rounded-full" />
-                  <span className="verge-label-mono text-[9px] text-[#949494] uppercase font-black">Tir manqué / arrêté</span>
-               </div>
-            </div>
-         </div>
-
-         <div className="flex-1 min-h-0 bg-[#1a1a1a] border border-white/10 p-5 rounded-[4px] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between gap-3 mb-4 shrink-0">
-              <h4 className="verge-label-mono text-[10px] text-[#949494] uppercase">Détails des frappes</h4>
-              <span className="verge-label-mono text-[8px] text-[#3cffd0] uppercase font-black">
-                {shotData.length} tirs
-              </span>
-            </div>
-
-            <div className="flex-1 min-h-0 overflow-hidden space-y-2">
-               {paginatedShots.map((shot, i) => (
-                 <div key={shot.id || shot.opta_id || `${detailsPage}-${i}`} className="bg-black/20 p-3 border-l-2 border-white/5 hover:border-[#3cffd0] transition-all">
-                    <div className="flex justify-between items-center gap-3 mb-1">
-                       <span className="verge-label-mono text-[10px] text-white font-black truncate">{shot.playerName || 'Joueur inconnu'}</span>
-                       <span className={`verge-label-mono text-[8px] font-black shrink-0 ${shot.isGoal ? 'text-[#3cffd0]' : 'text-[#949494]'}`}>
-                         {shot.isGoal ? 'GOAL' : 'MISS'}
-                       </span>
-                    </div>
-                    <div className="verge-label-mono text-[8px] text-[#949494] uppercase truncate">
-                      {shot.minute}' • {shot.bodyPart || 'Pied'}
-                      {shot.shotDistance !== null ? ` • ${shot.shotDistance.toFixed(1)}m` : ''}
-                    </div>
-                 </div>
-               ))}
-            </div>
-
-            <div className="flex items-center justify-between gap-3 pt-4 mt-4 border-t border-white/5 shrink-0">
-              <button
-                type="button"
-                disabled={detailsPage === 1}
-                onClick={() => setDetailsPage(page => Math.max(1, page - 1))}
-                className="h-8 w-8 inline-flex items-center justify-center bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-white/5 rounded-[2px] text-white transition-colors"
-                aria-label="Page précédente"
-              >
-                <ChevronLeft size={14} />
-              </button>
-              <div className="verge-label-mono text-[9px] text-[#949494] font-black tracking-widest uppercase">
-                Page <span className="text-[#3cffd0]">{detailsPage}</span> / {totalDetailPages}
               </div>
-              <button
-                type="button"
-                disabled={detailsPage === totalDetailPages}
-                onClick={() => setDetailsPage(page => Math.min(totalDetailPages, page + 1))}
-                className="h-8 w-8 inline-flex items-center justify-center bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-white/5 rounded-[2px] text-white transition-colors"
-                aria-label="Page suivante"
-              >
-                <ChevronRight size={14} />
-              </button>
-            </div>
-         </div>
+            )}
+          </div>
+        </div>
+        
+        {loading && (
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+            <Loader2 className="animate-spin text-[#3cffd0]" size={32} />
+          </div>
+        )}
       </div>
+
+      {/* COLONNE DROITE : SIDEBAR (FLUX SEUL) */}
+      <aside className="w-full lg:w-[400px] flex flex-col gap-6 min-h-0 bg-[#1a1a1a] border border-white/10 rounded-[4px] overflow-hidden shadow-2xl">
+        <div className="px-6 py-4 border-b border-white/10 bg-[#2d2d2d] flex justify-between items-center shrink-0 z-20">
+          <div className="flex items-center gap-4">
+            <div className={`w-2 h-2 rounded-full ${loading ? 'bg-orange-500 animate-bounce' : 'bg-[#3cffd0] animate-pulse'}`} />
+            <span className="verge-label-mono text-[10px] text-white font-black uppercase tracking-[0.2em]">Flux Analytique (Tirs)</span>
+          </div>
+          <div className="verge-label-mono text-[9px] text-[#949494] bg-white/5 px-3 py-1.5 rounded-[2px] border border-white/5">
+            {shotData.length} TOTAL
+          </div>
+        </div>
+
+        <div 
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto styled-scrollbar-verge bg-black/20 relative"
+        >
+          {/* Container fantôme pour simuler la hauteur totale du scroll */}
+          <div style={{ height: `${shotData.length * ROW_HEIGHT}px`, width: '100%', position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }} />
+          
+          {shotData.length > 0 ? (
+            virtualShots.map(({ shot: s, index, top }) => {
+              const shotId = s.opta_id ?? s.id;
+              const isFocused = focusedShot && String(shotId) === String(focusedShot.opta_id ?? focusedShot.id);
+              
+              return (
+                <div
+                  key={shotId || index}
+                  style={{ position: 'absolute', top: `${top}px`, left: 0, right: 0, height: `${ROW_HEIGHT}px` }}
+                  onClick={() => handleToggleShot(s)}
+                  className={`flex items-center justify-between py-3 border-b border-white/[0.03] hover:bg-[#3cffd0]/5 transition-colors px-6 group cursor-pointer ${isFocused ? 'bg-[#3cffd0]/10 border-l-2 border-l-[#3cffd0]' : ''}`}
+                >
+                  <div className="flex items-center gap-4 min-w-0 flex-1">
+                    <span className="verge-label-mono text-[10px] text-[#3cffd0] font-black w-12 shrink-0">
+                      {s.min ?? s.minute ?? 0}'
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="verge-label-mono text-[11px] text-white uppercase font-black truncate">
+                          {s.type_name || s.type || 'TIR'}
+                        </span>
+                        {s.isGoal && (
+                          <span className="verge-label-mono text-[7px] px-1.5 py-0.5 rounded-[2px] bg-[#3cffd0] text-black font-black uppercase shadow-[0_0_10px_rgba(60,255,208,0.4)]">
+                            But
+                          </span>
+                        )}
+                      </div>
+                      <div className="verge-label-mono text-[10px] text-[#949494] group-hover:text-white transition-colors truncate mt-1">
+                        {s.playerName || 'Joueur inconnu'}
+                      </div>
+                      <div className="mt-1 flex items-center gap-3 overflow-hidden">
+                        <span className="verge-label-mono text-[8px] text-[#666]">
+                          <span className="text-white/60">{s.shotDistance?.toFixed(1)}m</span> • {s.body_part_name || s.bodyPart || 'Pied'}
+                        </span>
+                        {s.xG && (
+                          <span className="verge-label-mono text-[8px] text-[#3cffd0] font-black">
+                            xG {Number(s.xG).toFixed(2)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      const evId = s.opta_id || s.id;
+                      setGeneratingEventId(evId);
+                      try {
+                        await onPlayVideo?.(s);
+                      } finally {
+                        setGeneratingEventId(null);
+                      }
+                    }}
+                    disabled={generatingEventId === (s.opta_id || s.id)}
+                    className={`p-2 transition-all transform hover:scale-110 ${
+                      generatingEventId === (s.opta_id || s.id) ? 'text-[#3cffd0]' : 'text-slate-400 hover:text-[#3cffd0]'
+                    }`}
+                  >
+                    {generatingEventId === (s.opta_id || s.id) ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <PlayCircle size={20} />
+                    )}
+                  </button>
+                </div>
+              );
+            })
+          ) : (
+            <div className="h-full flex items-center justify-center opacity-10">
+              <Database size={32} />
+            </div>
+          )}
+        </div>
+      </aside>
     </div>
+  </div>
   );
 };
 

@@ -114,7 +114,8 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], teamsLi
 
 
   return (
-    <div className="flex h-full w-full gap-8 animate-in fade-in zoom-in-95 duration-500 overflow-hidden p-8">
+    <div className="w-full h-full bg-[#131313] overflow-hidden">
+      <div className="max-w-[1800px] mx-auto flex h-full w-full gap-8 animate-in fade-in zoom-in-95 duration-500 overflow-hidden p-8">
       
       {/* LISTE DES SÉQUENCES */}
       <div className="flex-1 flex flex-col gap-6 bg-[#1a1a1a] border border-white/10 rounded-[4px] p-10 overflow-hidden">
@@ -300,6 +301,7 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], teamsLi
           </div>
       </div>
     </div>
+  </div>
   );
 };
 

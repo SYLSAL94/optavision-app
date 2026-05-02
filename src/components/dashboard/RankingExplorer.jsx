@@ -231,8 +231,8 @@ const RankingExplorer = ({
   };
 
   return (
-    <div className="w-full h-full p-8 bg-[#131313] overflow-hidden">
-      <div className="h-full grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-8">
+    <div className="w-full h-full bg-[#131313] overflow-hidden">
+      <div className="max-w-[1800px] mx-auto h-full p-8 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-8">
         <section className="relative min-h-0 flex flex-col bg-[#1a1a1a] border border-white/10 rounded-[4px] overflow-hidden shadow-[0_40px_100px_rgba(0,0,0,0.35)]">
           <div className="p-6 border-b border-white/10 bg-[#2d2d2d] flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-4">

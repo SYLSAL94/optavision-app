@@ -469,7 +469,7 @@ const OptaVisionDashboard = ({ user }) => {
         {view === 'DASHBOARD' && (
           <div className="flex-1 flex overflow-hidden relative">
 
-            <div className={`flex-1 flex flex-col animate-in fade-in duration-500 overflow-hidden ${activeTool ? '' : 'space-y-12 pr-4'}`}>
+            <div className={`flex-1 flex flex-col animate-in fade-in duration-500 overflow-hidden ${activeTool ? '' : 'max-w-[1600px] mx-auto w-full space-y-12'}`}>
 
               {!activeTool && (
                 <div className="flex items-center justify-between">

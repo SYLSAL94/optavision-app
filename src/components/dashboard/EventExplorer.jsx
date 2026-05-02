@@ -546,7 +546,8 @@ const EventExplorer = ({
   );
 
   return (
-    <div className="flex flex-col h-screen w-full gap-4 lg:gap-6 animate-in fade-in zoom-in-95 duration-500 overflow-hidden p-0 bg-[#050505]">
+    <div className="w-full h-screen bg-[#050505] overflow-hidden">
+      <div className="max-w-[1800px] mx-auto flex flex-col h-full w-full gap-4 lg:gap-6 animate-in fade-in zoom-in-95 duration-500 overflow-hidden p-6 lg:p-8">
       
       {/* ÉTAGE SUPÉRIEUR : MAP + FLUX (75% ou Full) */}
       <div className={`${isSequenceMode ? 'h-full' : 'h-[75%]'} flex flex-col lg:flex-row gap-4 lg:gap-6 min-h-0`}>
@@ -791,6 +792,7 @@ const EventExplorer = ({
         </div>
       )}
     </div>
+  </div>
   );
 };
 

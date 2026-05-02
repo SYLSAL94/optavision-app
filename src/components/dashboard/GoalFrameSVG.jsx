@@ -79,8 +79,7 @@ const GoalFrameSVG = ({ shots = [], focusedShot, onShotFocus }) => {
       className="h-full w-full"
       preserveAspectRatio="xMidYMid meet"
     >
-      <rect x="0" y="0" width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="#050505" />
-      <rect x={FRAME_X} y={FRAME_Y} width={FRAME_WIDTH} height={FRAME_HEIGHT} fill="#08130f" stroke="none" />
+      <rect x={FRAME_X} y={FRAME_Y} width={FRAME_WIDTH} height={FRAME_HEIGHT} fill="rgba(60,255,208,0.02)" stroke="none" />
 
       {[1 / 3, 2 / 3].map((ratio) => {
         const x = FRAME_X + FRAME_WIDTH * ratio;
@@ -108,45 +107,56 @@ const GoalFrameSVG = ({ shots = [], focusedShot, onShotFocus }) => {
       <line x1={FRAME_X} y1={FRAME_Y + FRAME_HEIGHT} x2={FRAME_X} y2={FRAME_Y + FRAME_HEIGHT + POST_DEPTH} stroke="#f5f5f5" strokeWidth="2" />
       <line x1={FRAME_X + FRAME_WIDTH} y1={FRAME_Y + FRAME_HEIGHT} x2={FRAME_X + FRAME_WIDTH} y2={FRAME_Y + FRAME_HEIGHT + POST_DEPTH} stroke="#f5f5f5" strokeWidth="2" />
 
-      {projectedShots.map(({ shot, cx, cy, goal }, index) => {
-        const shotId = shot.opta_id ?? shot.id;
+      {(() => {
         const focusedShotId = focusedShot ? (focusedShot.opta_id ?? focusedShot.id) : null;
-        const isFocused = focusedShotId !== null && String(shotId) === String(focusedShotId);
-        const isDimmed = focusedShotId !== null && !isFocused;
+        const regularShots = projectedShots.filter(s => String(s.shot.opta_id ?? s.shot.id) !== String(focusedShotId));
+        const activeShot = projectedShots.find(s => String(s.shot.opta_id ?? s.shot.id) === String(focusedShotId));
 
-        return (
-          <g
-            key={shot.id || shot.opta_id || `${cx}-${cy}-${index}`}
-            opacity={isDimmed ? 0.2 : 1}
-            className="cursor-pointer pointer-events-auto"
-            onClick={(e) => {
-              e.stopPropagation();
-              onShotFocus?.(shot);
-            }}
-          >
-            {goal && (
+        const renderItem = ({ shot, cx, cy, goal }, index, isFocused) => {
+          const shotId = shot.opta_id ?? shot.id;
+          const isDimmed = focusedShotId !== null && !isFocused;
+
+          return (
+            <g
+              key={shot.id || shot.opta_id || `${cx}-${cy}-${index}`}
+              opacity={isDimmed ? 0.2 : 1}
+              className="cursor-pointer pointer-events-auto"
+              onClick={(e) => {
+                e.stopPropagation();
+                onShotFocus?.(shot);
+              }}
+            >
+              {goal && (
+                <circle
+                  cx={cx}
+                  cy={cy}
+                  r="5.2"
+                  fill="none"
+                  stroke="#3cffd0"
+                  strokeWidth="1"
+                  opacity="0.65"
+                />
+              )}
               <circle
                 cx={cx}
                 cy={cy}
-                r="5.2"
-                fill="none"
-                stroke="#3cffd0"
-                strokeWidth="1"
-                opacity="0.65"
+                r={isFocused ? 4.4 : goal ? 3.4 : 2.8}
+                fill={goal ? '#3cffd0' : '#ff4d4d'}
+                stroke={isFocused ? "#ffffff" : "#050505"}
+                strokeWidth={isFocused ? 1.2 : 0.8}
+                style={{ filter: isFocused ? 'drop-shadow(0 0 5px #ffffff)' : (goal ? 'drop-shadow(0 0 3px #3cffd0)' : 'none') }}
               />
-            )}
-            <circle
-              cx={cx}
-              cy={cy}
-              r={isFocused ? 4.4 : goal ? 3.4 : 2.8}
-              fill={goal ? '#3cffd0' : '#ff4d4d'}
-              stroke="#050505"
-              strokeWidth="0.8"
-              style={{ filter: goal ? 'drop-shadow(0 0 3px #3cffd0)' : 'none' }}
-            />
-          </g>
+            </g>
+          );
+        };
+
+        return (
+          <>
+            {regularShots.map((s, idx) => renderItem(s, idx, false))}
+            {activeShot && renderItem(activeShot, 'active', true)}
+          </>
         );
-      })}
+      })()}
     </svg>
   );
 };
