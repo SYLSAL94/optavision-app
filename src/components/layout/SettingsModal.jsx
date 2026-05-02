@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   User, 
   Shield, 
@@ -6,9 +6,6 @@ import {
   CheckCircle2, 
   AlertCircle, 
   Loader2, 
-  Heart, 
-  Filter, 
-  Trash2, 
   ChevronRight, 
   Settings,
   Play,
@@ -32,6 +29,10 @@ const SettingsModal = ({ isOpen, onClose, user, initialTab = 'profile' }) => {
   const [loadingR2, setLoadingR2] = useState(true);
   const [submittingR2, setSubmittingR2] = useState(false);
   const [r2Status, setR2Status] = useState(null);
+  const [assignedConfigs, setAssignedConfigs] = useState([]);
+  const [loadingAssignedConfigs, setLoadingAssignedConfigs] = useState(false);
+  const [assignedConfigsStatus, setAssignedConfigsStatus] = useState(null);
+  const [selectedAssignedMatch, setSelectedAssignedMatch] = useState(null);
   const [matchSearch, setMatchSearch] = useState('');
   const [competitionFilter, setCompetitionFilter] = useState('');
   const [seasonFilter, setSeasonFilter] = useState('');
@@ -60,18 +61,7 @@ const SettingsModal = ({ isOpen, onClose, user, initialTab = 'profile' }) => {
     localStorage.setItem('optavision_video_config', JSON.stringify(next));
   };
 
-  useEffect(() => {
-    if (isOpen) {
-      setActiveTab(initialTab);
-      if (activeTab === 'video-r2') fetchR2Data();
-    }
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (isOpen && activeTab === 'video-r2') fetchR2Data();
-  }, [activeTab, isOpen]);
-
-  const fetchR2Data = async () => {
+  const fetchR2Data = useCallback(async () => {
     setLoadingR2(true);
     try {
       const [matchesRes, videosRes] = await Promise.all([
@@ -84,22 +74,45 @@ const SettingsModal = ({ isOpen, onClose, user, initialTab = 'profile' }) => {
         is_associated: video.is_associated ?? video.isAssociated ?? video.IsAssociated ?? false
       })) : [];
       setAvailableVideos(hydratedVideos);
-    } catch (err) {
+    } catch {
       setR2Status({ type: 'error', msg: 'Erreur de synchronisation R2' });
     } finally {
       setLoadingR2(false);
     }
-  };
+  }, []);
+
+  const fetchAssignedConfigs = useCallback(async () => {
+    setLoadingAssignedConfigs(true);
+    setAssignedConfigsStatus(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/optavision/configs/assigned`);
+      if (!response.ok) throw new Error('Erreur listing configs R2');
+      const data = await response.json();
+      setAssignedConfigs(Array.isArray(data.items) ? data.items : []);
+    } catch {
+      setAssignedConfigsStatus({ type: 'error', msg: 'Impossible de charger les configurations R2.' });
+    } finally {
+      setLoadingAssignedConfigs(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isOpen && activeTab === 'video-r2') void Promise.resolve().then(fetchR2Data);
+  }, [activeTab, fetchR2Data, isOpen]);
+
+  useEffect(() => {
+    if (isOpen && activeTab === 'edit-video-r2') void Promise.resolve().then(fetchAssignedConfigs);
+  }, [activeTab, fetchAssignedConfigs, isOpen]);
 
   const videosM1 = useMemo(() => availableVideos.filter(video => 
     video.key !== formData.r2_video_key_m2 && 
-    String(video.is_associated).toLowerCase() !== 'true'
-  ), [availableVideos, formData.r2_video_key_m2]);
+    (video.key === formData.r2_video_key_m1 || String(video.is_associated).toLowerCase() !== 'true')
+  ), [availableVideos, formData.r2_video_key_m1, formData.r2_video_key_m2]);
 
   const videosM2 = useMemo(() => availableVideos.filter(video => 
     video.key !== formData.r2_video_key_m1 && 
-    String(video.is_associated).toLowerCase() !== 'true'
-  ), [availableVideos, formData.r2_video_key_m1]);
+    (video.key === formData.r2_video_key_m2 || String(video.is_associated).toLowerCase() !== 'true')
+  ), [availableVideos, formData.r2_video_key_m1, formData.r2_video_key_m2]);
 
   const matchCompetitions = useMemo(() => {
     return Array.from(new Set(unassignedMatches.map(m => m.competition).filter(Boolean))).sort();
@@ -108,6 +121,14 @@ const SettingsModal = ({ isOpen, onClose, user, initialTab = 'profile' }) => {
   const matchSeasons = useMemo(() => {
     return Array.from(new Set(unassignedMatches.map(m => m.season).filter(Boolean))).sort();
   }, [unassignedMatches]);
+
+  const assignedCompetitions = useMemo(() => {
+    return Array.from(new Set(assignedConfigs.map(config => config.competition).filter(Boolean))).sort();
+  }, [assignedConfigs]);
+
+  const assignedSeasons = useMemo(() => {
+    return Array.from(new Set(assignedConfigs.map(config => config.season).filter(Boolean))).sort();
+  }, [assignedConfigs]);
 
   const filteredMatches = useMemo(() => {
     const s = matchSearch.toLowerCase();
@@ -118,6 +139,31 @@ const SettingsModal = ({ isOpen, onClose, user, initialTab = 'profile' }) => {
       return matchesSearch && matchesComp && matchesSeason;
     });
   }, [unassignedMatches, matchSearch, competitionFilter, seasonFilter]);
+
+  const filteredAssignedConfigs = useMemo(() => {
+    const s = matchSearch.trim().toLowerCase();
+    return assignedConfigs.filter(config => {
+      const haystack = [
+        config.match_id,
+        config.match_name,
+        config.r2_video_key_m1,
+        config.r2_video_key_m2,
+        config.competition,
+        config.season
+      ].filter(Boolean).join(' ').toLowerCase();
+
+      const matchesSearch = !s || haystack.includes(s);
+      const matchesComp = !competitionFilter || config.competition === competitionFilter;
+      const matchesSeason = !seasonFilter || config.season === seasonFilter;
+      return matchesSearch && matchesComp && matchesSeason;
+    });
+  }, [assignedConfigs, matchSearch, competitionFilter, seasonFilter]);
+
+  const matchOptions = useMemo(() => {
+    if (!selectedAssignedMatch || !formData.match_id) return filteredMatches;
+    if (filteredMatches.some(match => match.id === selectedAssignedMatch.id)) return filteredMatches;
+    return [selectedAssignedMatch, ...filteredMatches];
+  }, [filteredMatches, selectedAssignedMatch, formData.match_id]);
 
   const handleR2Submit = async (e) => {
     e.preventDefault();
@@ -137,11 +183,48 @@ const SettingsModal = ({ isOpen, onClose, user, initialTab = 'profile' }) => {
       if (!response.ok) throw new Error();
       setR2Status({ type: 'success', msg: 'Configuration R2 validée' });
       fetchR2Data();
-    } catch (err) {
+    } catch {
       setR2Status({ type: 'error', msg: 'Échec de sauvegarde' });
     } finally {
       setSubmittingR2(false);
     }
+  };
+
+  const handleEditAssignedConfig = (config) => {
+    setMatchSearch('');
+    setCompetitionFilter('');
+    setSeasonFilter('');
+    setR2Status(null);
+    setSelectedAssignedMatch({
+      id: config.match_id,
+      label: config.match_name || config.match_id,
+      description: config.match_name || config.match_id,
+      date: config.date || 'configuration existante',
+      competition: config.competition,
+      season: config.season
+    });
+    setUnassignedMatches((currentMatches) => {
+      if (currentMatches.some(match => match.id === config.match_id)) return currentMatches;
+      return [
+        {
+          id: config.match_id,
+          label: config.match_name || config.match_id,
+          description: config.match_name || config.match_id,
+          date: config.date || 'configuration existante',
+          competition: config.competition,
+          season: config.season
+        },
+        ...currentMatches
+      ];
+    });
+    setFormData({
+      match_id: config.match_id || '',
+      r2_video_key_m1: config.r2_video_key_m1 || '',
+      r2_video_key_m2: config.r2_video_key_m2 || '',
+      half1: config.half1 || '00:00',
+      half2: config.half2 || '00:00'
+    });
+    setActiveTab('video-r2');
   };
   // --- FIN LOGIQUE R2 ---
 
@@ -202,6 +285,13 @@ const SettingsModal = ({ isOpen, onClose, user, initialTab = 'profile' }) => {
                 <Play size={16} strokeWidth={2.5} /> CONFIG VIDEO R2
               </div>
               {activeTab === 'video-r2' && <ChevronRight size={14} />}
+            </button>
+
+            <button onClick={() => setActiveTab('edit-video-r2')} className={`w-full flex items-center justify-between px-5 py-4 rounded-[1px] verge-label-mono text-[10px] font-black uppercase tracking-[0.2em] transition-all border ${activeTab === 'edit-video-r2' ? 'bg-jelly-mint text-absolute-black border-jelly-mint' : 'text-secondary-text border-transparent hover:bg-white/5 hover:text-white'}`}>
+              <div className="flex items-center gap-4">
+                <Database size={16} strokeWidth={2.5} /> MODIF CONFIG R2
+              </div>
+              {activeTab === 'edit-video-r2' && <ChevronRight size={14} />}
             </button>
             
             <button onClick={() => setActiveTab('security')} className={`w-full flex items-center justify-between px-5 py-4 rounded-[1px] verge-label-mono text-[10px] font-black uppercase tracking-[0.2em] transition-all border ${activeTab === 'security' ? 'bg-jelly-mint text-absolute-black border-jelly-mint' : 'text-secondary-text border-transparent hover:bg-white/5 hover:text-white'}`}>
@@ -281,11 +371,14 @@ const SettingsModal = ({ isOpen, onClose, user, initialTab = 'profile' }) => {
                             <select 
                               className={inputClassName}
                               value={formData.match_id}
-                              onChange={(e) => setFormData({...formData, match_id: e.target.value})}
+                              onChange={(e) => {
+                                setSelectedAssignedMatch(null);
+                                setFormData({...formData, match_id: e.target.value});
+                              }}
                               disabled={loadingR2}
                             >
                                 <option value="">{loadingR2 ? 'Chargement...' : '--- Choisir un match ---'}</option>
-                                {filteredMatches.map(m => (
+                                {matchOptions.map(m => (
                                     <option key={m.id} value={m.id}>{m.label || m.description || m.id} ({m.date})</option>
                                 ))}
                             </select>
@@ -391,6 +484,111 @@ const SettingsModal = ({ isOpen, onClose, user, initialTab = 'profile' }) => {
                         </div>
                     </form>
                 </div>
+            )}
+
+            {activeTab === 'edit-video-r2' && (
+              <div className="space-y-10 animate-in fade-in slide-in-from-right-4 duration-500">
+                <div className="flex items-center gap-6">
+                  <div className="h-10 w-1 bg-jelly-mint" />
+                  <div>
+                    <h4 className="verge-label-mono text-3xl font-black text-hazard-white uppercase tracking-tighter mb-1">Modif config R2</h4>
+                    <p className="verge-label-mono text-[9px] text-secondary-text font-black uppercase tracking-[0.2em] opacity-40">Configurations video deja associees</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <label className={labelClassName}><Database size={12} className="text-jelly-mint" /> CONFIGURATIONS ({filteredAssignedConfigs.length} / {assignedConfigs.length})</label>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="relative">
+                      <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-jelly-mint/50" />
+                      <input
+                        type="text"
+                        placeholder="Rechercher..."
+                        className={`${inputClassName} pl-12 py-3 text-[10px]`}
+                        value={matchSearch}
+                        onChange={(e) => setMatchSearch(e.target.value)}
+                      />
+                    </div>
+
+                    <select
+                      className={`${inputClassName} py-3 text-[10px]`}
+                      value={competitionFilter}
+                      onChange={(e) => setCompetitionFilter(e.target.value)}
+                    >
+                      <option value="">Toutes competitions</option>
+                      {assignedCompetitions.map(competition => (
+                        <option key={competition} value={competition}>{competition}</option>
+                      ))}
+                    </select>
+
+                    <select
+                      className={`${inputClassName} py-3 text-[10px]`}
+                      value={seasonFilter}
+                      onChange={(e) => setSeasonFilter(e.target.value)}
+                    >
+                      <option value="">Toutes saisons</option>
+                      {assignedSeasons.map(season => (
+                        <option key={season} value={season}>{season}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="hidden lg:grid grid-cols-[1.4fr_1fr_1fr_120px] gap-4 px-5 py-3 border-b border-white/10 verge-label-mono text-[8px] text-secondary-text font-black uppercase tracking-[0.2em]">
+                    <span>Match</span>
+                    <span>Source M1</span>
+                    <span>Source M2</span>
+                    <span className="text-right">Action</span>
+                  </div>
+
+                  {loadingAssignedConfigs && (
+                    <div className="p-8 flex items-center justify-center gap-4 border border-white/5 bg-white/[0.02] rounded-[2px] verge-label-mono text-[10px] text-secondary-text uppercase tracking-widest">
+                      <Loader2 size={16} className="animate-spin text-jelly-mint" />
+                      Chargement configs R2
+                    </div>
+                  )}
+
+                  {assignedConfigsStatus && (
+                    <div className="p-4 rounded-[1px] verge-label-mono text-[9px] font-black uppercase tracking-widest flex items-center gap-4 border bg-red-500/10 border-red-500/30 text-red-500">
+                      <AlertCircle size={16} />
+                      {assignedConfigsStatus.msg}
+                    </div>
+                  )}
+
+                  {!loadingAssignedConfigs && !assignedConfigsStatus && assignedConfigs.length === 0 && (
+                    <div className="p-8 border border-white/5 bg-white/[0.02] rounded-[2px] verge-label-mono text-[10px] text-secondary-text uppercase tracking-widest">
+                      Aucune configuration R2 existante
+                    </div>
+                  )}
+
+                  {!loadingAssignedConfigs && !assignedConfigsStatus && assignedConfigs.length > 0 && filteredAssignedConfigs.length === 0 && (
+                    <div className="p-8 border border-white/5 bg-white/[0.02] rounded-[2px] verge-label-mono text-[10px] text-secondary-text uppercase tracking-widest">
+                      Aucune configuration ne correspond aux filtres
+                    </div>
+                  )}
+
+                  {!loadingAssignedConfigs && filteredAssignedConfigs.map(config => (
+                    <div key={config.match_id} className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr_1fr_120px] gap-4 items-center p-5 bg-surface-slate/60 border border-white/5 rounded-[2px] hover:border-jelly-mint/30 transition-all">
+                      <div className="min-w-0">
+                        <p className="verge-label-mono text-[11px] font-black text-hazard-white uppercase tracking-tight truncate">{config.match_name || config.match_id}</p>
+                        <p className="verge-label-mono text-[8px] text-secondary-text uppercase tracking-widest mt-1 truncate">{config.match_id}</p>
+                      </div>
+                      <p className="verge-label-mono text-[9px] text-secondary-text break-all">{config.r2_video_key_m1 || 'Non defini'}</p>
+                      <p className="verge-label-mono text-[9px] text-secondary-text break-all">{config.r2_video_key_m2 || 'Non defini'}</p>
+                      <button
+                        type="button"
+                        onClick={() => handleEditAssignedConfig(config)}
+                        className="lg:justify-self-end w-[104px] h-10 bg-jelly-mint text-absolute-black rounded-[2px] verge-label-mono text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:shadow-[0_0_18px_rgba(60,255,208,0.28)] transition-all"
+                      >
+                        Editer
+                        <ArrowRight size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
 
             {activeTab === 'profile' && (
