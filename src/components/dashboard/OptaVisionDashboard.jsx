@@ -28,6 +28,7 @@ import EventExplorer from './EventExplorer';
 import BuildUpExplorer from './BuildUpExplorer';
 import ShotMapExplorer from './ShotMapExplorer';
 import RankingExplorer from './RankingExplorer';
+import GlobalVideoPlayer from './GlobalVideoPlayer';
 import SettingsModal from '../layout/SettingsModal';
 import { API_BASE_URL, OPTAVISION_API_URL } from '../../config';
 import { appendExplorationFilterParams } from './optaFilterParams';
@@ -53,6 +54,7 @@ const OptaVisionDashboard = ({ user }) => {
   const [playersList, setPlayersList] = useState([]);
   const [activeTab, setActiveTab] = useState('exploration');
   const [activeTool, setActiveTool] = useState(null); // 'events', 'sequences', 'shots'
+  const [globalVideoUrl, setGlobalVideoUrl] = useState(null);
   const [view, setView] = useState('DASHBOARD');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -216,11 +218,14 @@ const OptaVisionDashboard = ({ user }) => {
         throw new Error(payload.detail || "Aucune URL vidéo retournée par l'API");
       }
       if (payload.job_id) {
-        return await pollVideoJob(payload.job_id);
+        const videoUrl = await pollVideoJob(payload.job_id);
+        if (videoUrl) setGlobalVideoUrl(videoUrl);
+        return videoUrl;
       }
       if (!payload.video_url) {
         throw new Error(payload.detail || "Aucune URL video retournee par l'API");
       }
+      setGlobalVideoUrl(payload.video_url);
       return payload.video_url;
     } catch (err) {
       console.error("Erreur generation video:", err);
@@ -748,6 +753,11 @@ const OptaVisionDashboard = ({ user }) => {
         </AnimatePresence>
 
       </div>
+
+      <GlobalVideoPlayer 
+        url={globalVideoUrl} 
+        onClose={() => setGlobalVideoUrl(null)} 
+      />
     </div>
   );
 };

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
-import { Activity, ChevronLeft, ChevronRight, Database, Eye, Filter, Loader2, Map, Play, PlayCircle, RotateCcw, SlidersHorizontal, Trophy, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Activity, ChevronLeft, ChevronRight, Database, Eye, Filter, Loader2, Map, Play, PlayCircle, RotateCcw, SlidersHorizontal, Trophy } from 'lucide-react';
 import ExplorationFilterPanel from './ExplorationFilterPanel';
 import { FootballPitch } from './FootballPitch';
 import { OPTAVISION_API_URL } from '../../config';
@@ -58,7 +58,6 @@ const RankingExplorer = ({
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [activeVideoUrl, setActiveVideoUrl] = useState(null);
   const [generatingEventId, setGeneratingEventId] = useState(null);
   const [error, setError] = useState(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -448,14 +447,13 @@ const RankingExplorer = ({
                             const eventId = e.opta_id || e.id;
                             setGeneratingEventId(eventId);
                             try {
-                              const videoUrl = await onPlayVideo?.(e);
-                              if (videoUrl) setActiveVideoUrl(videoUrl);
+                              await onPlayVideo?.(e);
                             } finally {
                               setGeneratingEventId(null);
                             }
                           }}
                           disabled={generatingEventId === (e.opta_id || e.id)}
-                          className="text-slate-400 hover:text-[#3cffd0] transition-all duration-300 transform hover:scale-110 shrink-0 disabled:opacity-30"
+                          className="text-slate-400 hover:text-[#3cffd0] transition-all duration-300 transform hover:scale-110 shrink-0 disabled:opacity-50"
                           title="Lancer la vidéo"
                         >
                           {generatingEventId === (e.opta_id || e.id) ? (
@@ -644,45 +642,6 @@ const RankingExplorer = ({
               />
             </motion.div>
           </>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {activeVideoUrl && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 md:p-12"
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="relative w-full max-w-6xl bg-[#1a1a1a] border border-white/10 rounded-xl overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.8)]"
-            >
-              <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center z-10 bg-gradient-to-b from-black/80 to-transparent">
-                <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                  <span className="verge-label-mono text-[10px] text-white font-black uppercase tracking-[0.2em]">Ranking Video Feed</span>
-                </div>
-                <button
-                  onClick={() => setActiveVideoUrl(null)}
-                  className="w-10 h-10 flex items-center justify-center bg-white/10 hover:bg-red-500 rounded-full text-white transition-all group"
-                >
-                  <X size={20} className="group-hover:rotate-90 transition-transform" />
-                </button>
-              </div>
-              <div className="aspect-video bg-black flex items-center justify-center">
-                <video
-                  src={activeVideoUrl}
-                  controls
-                  autoPlay
-                  className="w-full h-full object-contain"
-                />
-              </div>
-            </motion.div>
-          </motion.div>
         )}
       </AnimatePresence>
     </div>

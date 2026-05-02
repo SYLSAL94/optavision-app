@@ -123,7 +123,6 @@ const EventExplorer = ({
   isVideoLoading = false
 }) => {
   const [generatingEventId, setGeneratingEventId] = useState(null);
-  const [activeVideoUrl, setActiveVideoUrl] = useState(null);
   const [pitchView, setPitchView] = useState('full');
   const [orientation, setOrientation] = useState('horizontal');
   const [heatmapMode, setHeatmapMode] = useState('off');
@@ -189,55 +188,11 @@ const EventExplorer = ({
     }
   };
 
-  const handleGenerateClip = async (e, event) => {
-    e.stopPropagation();
-    const eventId = event.opta_id || event.id;
-    const matchId = event.match_id || event.matchId || matchIds?.[0];
-    
-    if (!matchId || !eventId) return;
-
-    setGeneratingEventId(eventId);
-    try {
-      const savedConfig = localStorage.getItem('optavision_video_config');
-      const videoCfg = savedConfig ? JSON.parse(savedConfig) : { before_buffer: 3, after_buffer: 5, min_clip_gap: 0.5 };
-
-      const response = await fetch(`${API_BASE_URL}/api/optavision/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          match_id: matchId, 
-          event_id: eventId,
-          before_buffer: videoCfg.before_buffer,
-          after_buffer: videoCfg.after_buffer,
-          min_clip_gap: videoCfg.min_clip_gap
-        })
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.detail || "Erreur lancement generation video");
-      }
-      if (data.job_id) {
-        const videoUrl = await pollVideoJob(data.job_id);
-        setActiveVideoUrl(videoUrl);
-      } else if (data.video_url) {
-        setActiveVideoUrl(data.video_url);
-      } else {
-        throw new Error(data.detail || "Aucune URL video retournee par l'API");
-      }
-    } catch (err) {
-      console.error("❌ Erreur génération clip:", err);
-      alert(err.message || "Erreur generation video");
-    } finally {
-      setGeneratingEventId(null);
-    }
-  };
-
   const handlePlayFocusedVideo = async (event) => {
     if (!event) return;
     try {
       if (onPlayVideo) {
-        const videoUrl = await onPlayVideo(event);
-        if (videoUrl) setActiveVideoUrl(videoUrl);
+        await onPlayVideo(event);
         return;
       }
       console.log("Lecture vidéo pour l'événement :", event.id);
@@ -735,8 +690,7 @@ const EventExplorer = ({
                     const eventId = e.opta_id || e.id;
                     setGeneratingEventId(eventId);
                     try {
-                      const videoUrl = await onPlayVideo?.(e);
-                      if (videoUrl) setActiveVideoUrl(videoUrl);
+                      await onPlayVideo?.(e);
                     } finally {
                       setGeneratingEventId(null);
                     }
@@ -1033,109 +987,6 @@ const EventExplorer = ({
           ))}
         </div>
       )}
-      {/* MODALE LECTEUR VIDÉO (GLASSMORPHISM) */}
-      <AnimatePresence>
-        {activeVideoUrl && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 md:p-12"
-          >
-            <motion.div 
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="relative w-full max-w-6xl bg-[#1a1a1a] border border-white/10 rounded-xl overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.8)]"
-            >
-              {/* HEADER MODALE */}
-              <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center z-10 bg-gradient-to-b from-black/80 to-transparent">
-                <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                  <span className="verge-label-mono text-[10px] text-white font-black uppercase tracking-[0.2em]">Live Video Feed</span>
-                </div>
-                <button 
-                  onClick={() => {
-                    setActiveVideoUrl(null);
-                    setPlaylist([]);
-                    setPlaylistIndex(-1);
-                  }}
-                  className="w-10 h-10 flex items-center justify-center bg-white/10 hover:bg-red-500 rounded-full text-white transition-all group"
-                >
-                  <X size={20} className="group-hover:rotate-90 transition-transform" />
-                </button>
-              </div>
-
-              {/* LECTEUR VIDÉO */}
-              <div className="aspect-video bg-black flex items-center justify-center relative">
-                <video 
-                  src={activeVideoUrl} 
-                  controls 
-                  autoPlay 
-                  onEnded={() => {
-                    if (playlistIndex >= 0 && playlistIndex < playlist.length - 1) {
-                      setPlaylistIndex(prev => prev + 1);
-                    }
-                  }}
-                  className="w-full h-full object-contain"
-                />
-                
-                {playlist.length > 0 && (
-                  <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-between px-4 pointer-events-none z-30">
-                    <button
-                      onClick={() => setPlaylistIndex(prev => Math.max(0, prev - 1))}
-                      disabled={playlistIndex === 0}
-                      className="w-12 h-12 flex items-center justify-center bg-black/50 hover:bg-[#3cffd0] hover:text-black text-white rounded-full border border-white/10 pointer-events-auto transition-all disabled:opacity-0 disabled:pointer-events-none group"
-                    >
-                      <ChevronLeft size={24} className="group-hover:scale-110 transition-transform" />
-                    </button>
-                    <button
-                      onClick={() => setPlaylistIndex(prev => Math.min(playlist.length - 1, prev + 1))}
-                      disabled={playlistIndex === playlist.length - 1}
-                      className="w-12 h-12 flex items-center justify-center bg-black/50 hover:bg-[#3cffd0] hover:text-black text-white rounded-full border border-white/10 pointer-events-auto transition-all disabled:opacity-0 disabled:pointer-events-none group"
-                    >
-                      <ChevronRight size={24} className="group-hover:scale-110 transition-transform" />
-                    </button>
-                  </div>
-                )}
-
-                {playlist.length > 0 && (
-                  <div className="absolute bottom-10 left-1/2 -translate-x-1/2 px-6 py-2.5 bg-black/80 backdrop-blur-xl rounded-full border border-white/10 flex items-center gap-4 z-20 shadow-2xl">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-[#3cffd0] rounded-full animate-pulse" />
-                      <span className="verge-label-mono text-[10px] text-white font-black uppercase tracking-widest">
-                        RAFALE ACTIVE
-                      </span>
-                    </div>
-                    <div className="w-[1px] h-4 bg-white/10" />
-                    <span className="verge-label-mono text-[10px] text-[#3cffd0] font-black uppercase">
-                      CLIP {playlistIndex + 1} / {playlist.length}
-                    </span>
-                    <div className="w-[1px] h-4 bg-white/10" />
-                    <div className="flex gap-1">
-                      {playlist.slice(0, 20).map((_, idx) => (
-                        <div 
-                          key={idx} 
-                          className={`w-1.5 h-1.5 rounded-full transition-all ${idx === playlistIndex ? 'bg-[#3cffd0] scale-125' : 'bg-white/20'}`} 
-                        />
-                      ))}
-                      {playlist.length > 20 && <span className="text-white/40 text-[8px] ml-1">...</span>}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* FOOTER MODALE */}
-              <div className="p-4 bg-black/40 border-t border-white/5 flex justify-center">
-                <span className="verge-label-mono text-[8px] text-[#949494] uppercase tracking-widest">
-                  Powered by OptaVision R2 Zero-Disk Engine
-                </span>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
     </div>
   );
 };

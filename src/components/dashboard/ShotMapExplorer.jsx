@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Info, Target } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Info, Target, PlayCircle, Loader2 } from 'lucide-react';
 import GoalFrameSVG from './GoalFrameSVG';
 
 const SHOTS_PER_PAGE = 6;
@@ -111,7 +111,6 @@ const VerticalHalfPitch = ({ shots, focusedShot, onShotFocus, onClearFocus }) =>
 const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, isVideoLoading = false }) => {
   const [detailsPage, setDetailsPage] = useState(1);
   const [focusedShot, setFocusedShot] = useState(null);
-  const [activeVideoUrl, setActiveVideoUrl] = useState(null);
 
   const shotData = useMemo(() => {
     const events = Array.isArray(data) ? data : (data?.items || []);
@@ -155,8 +154,7 @@ const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, isVideoLoadi
 
   const handleFocusedShotVideo = async () => {
     if (!focusedShot || !onPlayVideo) return;
-    const videoUrl = await onPlayVideo(focusedShot);
-    if (videoUrl) setActiveVideoUrl(videoUrl);
+    await onPlayVideo(focusedShot);
   };
 
   return (
@@ -326,17 +324,6 @@ const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, isVideoLoadi
             </div>
          </div>
       </div>
-      {activeVideoUrl && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 p-8 backdrop-blur-sm" onClick={() => setActiveVideoUrl(null)}>
-          <div className="w-full max-w-5xl rounded-[4px] border border-white/10 bg-[#131313] p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 flex items-center justify-between">
-              <div className="verge-label-mono text-[10px] uppercase tracking-widest text-[#949494]">Clip Shot Map</div>
-              <button type="button" onClick={() => setActiveVideoUrl(null)} className="text-sm font-black uppercase text-white/60 hover:text-white">Fermer</button>
-            </div>
-            <video src={activeVideoUrl} controls autoPlay className="max-h-[78vh] w-full bg-black" />
-          </div>
-        </div>
-      )}
     </div>
   );
 };
