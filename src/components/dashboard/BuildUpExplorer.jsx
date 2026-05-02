@@ -4,7 +4,7 @@ import { Activity, Clock, Hash, Zap, TrendingUp, Loader2, X } from 'lucide-react
 import EventExplorer from './EventExplorer';
 import { OPTAVISION_API_URL } from '../../config';
 
-const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], advancedMetricsList = [], matchIds, onPlayVideo, isVideoLoading = false }) => {
+const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], teamsList = [], advancedMetricsList = [], matchIds, onPlayVideo, isVideoLoading = false }) => {
   const [selectedSequence, setSelectedSequence] = useState(null);
   const [sequenceEvents, setSequenceEvents] = useState([]);
   const [sequenceLoading, setSequenceLoading] = useState(false);
@@ -13,6 +13,13 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], advance
   const [activeVideoUrl, setActiveVideoUrl] = useState(null);
   const itemsPerPage = 5; // Nombre de séquences par page pour garder un layout aéré
   
+  // Mapping des noms d'équipes pour éradiquer les IDs parasites
+  const teamMap = useMemo(() => {
+    const map = {};
+    if (teamsList) teamsList.forEach(t => { map[t.id] = t.name; });
+    return map;
+  }, [teamsList]);
+
   // Lecture pure des séquences du Back-End (Zéro-Calcul)
   const sequences = useMemo(() => {
     if (!data.sequences) return [];
@@ -20,12 +27,14 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], advance
       ...seq,
       // Mapping pour la compatibilité avec la vue existante
       id: seq.seq_uuid || seq.sub_sequence_id,
-      teamName: seq.team_id,
+      matchName: seq.match_name || seq.match_id,
+      matchDate: seq.match_date,
+      teamName: teamMap[seq.team_id] || seq.team_id,
       passCount: seq.seq_pass_count,
       threatScore: seq.seq_score || 0,
       duration: seq.start_time ? `${seq.start_time} - ${seq.end_time}` : "N/A"
     })).sort((a, b) => b.threatScore - a.threatScore);
-  }, [data]);
+  }, [data, teamMap]);
 
   const totalPages = Math.ceil(sequences.length / itemsPerPage);
   const paginatedSequences = useMemo(() => {
@@ -142,9 +151,24 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], advance
                 />
 
                 <div className="flex justify-between items-start gap-4 mb-6">
-                   <div className="flex items-center gap-4 min-w-0 flex-1">
-                      <span className="verge-label-mono text-[10px] text-[#949494] uppercase shrink-0">SEQ #{seq.id.toString().slice(-4)}</span>
-                      <span className="verge-label-mono text-[11px] text-white font-black uppercase tracking-tight truncate min-w-0">{seq.teamName}</span>
+                   <div className="flex flex-col min-w-0 flex-1">
+                      <span className="verge-label-mono text-[10px] text-[#3cffd0] font-black uppercase tracking-widest truncate">
+                        {seq.matchName}
+                      </span>
+                      {seq.matchDate && (
+                        <span className="text-[#949494] text-[9px] font-medium italic mt-0.5">
+                          {new Date(seq.matchDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                        </span>
+                      )}
+                      <div className="flex items-center gap-2 mt-2">
+                         <span className="verge-label-mono text-[11px] text-white font-black uppercase tracking-tight truncate">
+                           {seq.teamName}
+                         </span>
+                         <div className="w-1 h-1 rounded-full bg-[#3cffd0]/50" />
+                         <span className="verge-label-mono text-[8px] text-[#949494] uppercase tracking-tighter">
+                           Séquence #{seq.id.toString().slice(-4)}
+                         </span>
+                      </div>
                    </div>
                    <div className="flex items-center gap-3 shrink-0">
                       <button
