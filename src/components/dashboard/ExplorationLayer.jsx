@@ -1,11 +1,6 @@
 import React from 'react';
 
-const defaultProjectPoint = (x, y) => ({
-  x: (x / 100) * 105,
-  y: ((100 - y) / 100) * 68
-});
-
-export const ExplorationLayer = ({ displayData, focusedEventId, getEndCoordinates, setHoveredEvent, setMousePos, setFocusedEvent, setFocusedEventId, projectPoint = defaultProjectPoint }) => {
+export const ExplorationLayer = ({ displayData, focusedEventId, getEndCoordinates, setHoveredEvent, setMousePos, setFocusedEvent, setFocusedEventId, projectPoint }) => {
   const isMassFetching = displayData.length > 150;
 
   return displayData.slice(0, 1000).map((event, i) => {

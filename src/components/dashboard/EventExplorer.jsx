@@ -19,7 +19,8 @@ import {
 
 import { API_BASE_URL } from '../../config';
 import { pollVideoJob } from '../../utils/videoJobs';
-import { PitchSVG } from './PitchSVG';
+import { TacticalPitch } from './TacticalPitch';
+import { usePitchProjection } from '../../hooks/usePitchProjection';
 import { BuildUpLayer } from './BuildUpLayer';
 import { ExplorationLayer } from './ExplorationLayer';
 import { EventTooltip } from './EventTooltip';
@@ -50,7 +51,7 @@ const DUEL_EVENT_IDS = new Set(['4', '50', '74']);
 const FORCED_DUEL_LOSS_KEYS = new Set(['blockedpass', 'dispossessed']);
 const FORCED_DUEL_LOSS_IDS = new Set(['50', '74']);
 
-const PITCH_DIMENSIONS = { width: 105, height: 68 };
+const SHOTS_PER_PAGE = 6;
 const PITCH_STYLE_CONFIGS = {
   standard: { grass: 'transparent', line: 'rgba(255,255,255,0.08)', background: 'transparent' },
   dark: { grass: '#111827', line: 'rgba(255,255,255,0.16)', background: '#050505' },
@@ -58,20 +59,6 @@ const PITCH_STYLE_CONFIGS = {
   blue: { grass: '#0f2a44', line: 'rgba(125,211,252,0.42)', background: '#071523' },
   tactical: { grass: '#1f2937', line: 'rgba(209,213,219,0.34)', background: '#111827' }
 };
-
-const getPitchViewBox = (orientation, view) => {
-  const overlap = 7;
-  if (orientation === 'vertical') {
-    if (view === 'offensive') return { x: 0, y: 0, width: PITCH_DIMENSIONS.height, height: PITCH_DIMENSIONS.width / 2 + overlap };
-    if (view === 'defensive') return { x: 0, y: PITCH_DIMENSIONS.width / 2 - overlap, width: PITCH_DIMENSIONS.height, height: PITCH_DIMENSIONS.width / 2 + overlap };
-    return { x: 0, y: 0, width: PITCH_DIMENSIONS.height, height: PITCH_DIMENSIONS.width };
-  }
-  if (view === 'offensive') return { x: PITCH_DIMENSIONS.width / 2 - overlap, y: 0, width: PITCH_DIMENSIONS.width / 2 + overlap, height: PITCH_DIMENSIONS.height };
-  if (view === 'defensive') return { x: 0, y: 0, width: PITCH_DIMENSIONS.width / 2 + overlap, height: PITCH_DIMENSIONS.height };
-  return { x: 0, y: 0, width: PITCH_DIMENSIONS.width, height: PITCH_DIMENSIONS.height };
-};
-
-const toViewBoxString = ({ x, y, width, height }) => `${x} ${y} ${width} ${height}`;
 
 const SIMPLEHEAT_SCRIPT_ID = 'simpleheat-script';
 const SIMPLEHEAT_SRC = 'https://cdn.jsdelivr.net/npm/simpleheat@0.4.0/simpleheat.min.js';
@@ -86,29 +73,6 @@ const countDisplayEvents = (items, sequenceMode) => (
   sequenceMode ? items.reduce((sum, seq) => sum + ((seq.events || []).length), 0) : items.length
 );
 
-const ensureSimpleheat = () => {
-  if (typeof window === 'undefined') return Promise.resolve(null);
-  if (window.simpleheat) return Promise.resolve(window.simpleheat);
-  if (simpleheatLoadPromise) return simpleheatLoadPromise;
-  simpleheatLoadPromise = new Promise((resolve, reject) => {
-    const existingScript = document.getElementById(SIMPLEHEAT_SCRIPT_ID);
-    const handleLoad = () => resolve(window.simpleheat || null);
-    const handleError = () => reject(new Error('Impossible de charger simpleheat'));
-    if (existingScript) {
-      existingScript.addEventListener('load', handleLoad, { once: true });
-      existingScript.addEventListener('error', handleError, { once: true });
-      return;
-    }
-    const script = document.createElement('script');
-    script.id = SIMPLEHEAT_SCRIPT_ID;
-    script.src = SIMPLEHEAT_SRC;
-    script.async = true;
-    script.onload = handleLoad;
-    script.onerror = handleError;
-    document.body.appendChild(script);
-  });
-  return simpleheatLoadPromise;
-};
 
 const EventExplorer = ({ 
   data = [], 
@@ -130,51 +94,21 @@ const EventExplorer = ({
   const [showEvents, setShowEvents] = useState(true);
   const [liveFluxPage, setLiveFluxPage] = useState(1);
   const [selectionBox, setSelectionBox] = useState(EMPTY_SELECTION_BOX);
-  const heatmapCanvasRef = useRef(null);
-  const heatmapInstanceRef = useRef(null);
   const [playlist, setPlaylist] = useState([]);
   const [playlistIndex, setPlaylistIndex] = useState(-1);
   const [isDownloading, setIsDownloading] = useState(false);
 
-  // --- 0. HELPERS DE PROJECTION (Requis par spatialDisplayData) ---
-  const selectedPitchStyle = PITCH_STYLE_CONFIGS[pitchStyle] || PITCH_STYLE_CONFIGS.standard;
-  const pitchViewBox = useMemo(() => getPitchViewBox(orientation, pitchView), [orientation, pitchView]);
-  const pitchViewBoxString = useMemo(() => toViewBoxString(pitchViewBox), [pitchViewBox]);
+  // --- MOTEUR GÉOMÉTRIQUE UNIFIÉ ---
+  const { projectPoint, getPitchViewBox, getPitchSvgPoint } = usePitchProjection(orientation);
+  const pitchViewBox = useMemo(() => getPitchViewBox(pitchView), [getPitchViewBox, pitchView]);
   const pitchViewBoxCenter = useMemo(() => ({
     x: pitchViewBox.x + pitchViewBox.width / 2,
     y: pitchViewBox.y + pitchViewBox.height / 2
   }), [pitchViewBox]);
 
-  const projectPoint = useCallback((x, y) => {
-    const numericX = Number(x);
-    const numericY = Number(y);
-    if (!Number.isFinite(numericX) || !Number.isFinite(numericY)) return null;
-    if (orientation === 'vertical') {
-      return {
-        x: PITCH_DIMENSIONS.height - (numericY / 100) * PITCH_DIMENSIONS.height,
-        y: PITCH_DIMENSIONS.width - (numericX / 100) * PITCH_DIMENSIONS.width
-      };
-    }
-    return {
-      x: (numericX / 100) * PITCH_DIMENSIONS.width,
-      y: ((100 - numericY) / 100) * PITCH_DIMENSIONS.height
-    };
-  }, [orientation]);
-
-  const getPitchSvgPoint = useCallback((event) => {
-    const svg = event.currentTarget;
-    if (!svg?.createSVGPoint) return null;
-    const matrix = svg.getScreenCTM();
-    if (!matrix) return null;
-    const point = svg.createSVGPoint();
-    point.x = event.clientX;
-    point.y = event.clientY;
-    const svgPoint = point.matrixTransform(matrix.inverse());
-    return {
-      x: clamp(svgPoint.x, pitchViewBox.x, pitchViewBox.x + pitchViewBox.width),
-      y: clamp(svgPoint.y, pitchViewBox.y, pitchViewBox.y + pitchViewBox.height)
-    };
-  }, [pitchViewBox]);
+  const selectedPitchStyle = useMemo(() => 
+    PITCH_STYLE_CONFIGS[pitchStyle] || PITCH_STYLE_CONFIGS.standard
+  , [pitchStyle]);
 
   // --- 1. MAPPAGES DE BASE ---
   const globalPlayerMap = useMemo(() => {
@@ -249,6 +183,72 @@ const EventExplorer = ({
   const liveEventRows = useMemo(() => (
     ((isSequenceMode && data && Array.isArray(data.sequences)) ? spatialDisplayData[0]?.events : spatialDisplayData) || []
   ), [isSequenceMode, data, spatialDisplayData]);
+
+  const handlePitchMouseMove = useCallback((event) => {
+    const point = getPitchSvgPoint(event, pitchViewBox);
+    if (!point) return;
+
+    const target = event.target.closest('[data-event-id]');
+    if (target) {
+      const eventId = target.getAttribute('data-event-id');
+      const foundEvent = liveEventRows.find(e => String(e.opta_id ?? e.id) === String(eventId));
+      if (foundEvent) {
+        setHoveredEvent(foundEvent);
+        setMousePos({ x: event.clientX, y: event.clientY });
+      }
+    } else {
+      setHoveredEvent(null);
+    }
+
+    setSelectionBox(prev => {
+      if (!prev.isDrawing) return prev;
+      return { ...prev, endX: point.x, endY: point.y };
+    });
+  }, [getPitchSvgPoint, pitchViewBox, liveEventRows]);
+
+  const handlePitchMouseUp = useCallback((event) => {
+    const point = getPitchSvgPoint(event, pitchViewBox);
+
+    const target = event.target.closest('[data-event-id]');
+    if (target) {
+      const eventId = target.getAttribute('data-event-id');
+      const foundEvent = liveEventRows.find(e => String(e.opta_id ?? e.id) === String(eventId));
+      if (foundEvent) {
+        setFocusedEvent(foundEvent);
+        setFocusedEventId(eventId);
+        setHoveredEvent(foundEvent);
+      }
+    }
+
+    setSelectionBox(prev => {
+      if (!prev.isDrawing) return prev;
+      const next = point ? { ...prev, endX: point.x, endY: point.y } : prev;
+      const width = Math.abs(next.endX - next.startX);
+      const height = Math.abs(next.endY - next.startY);
+      if (width < MIN_SELECTION_SIZE || height < MIN_SELECTION_SIZE) {
+        return { ...EMPTY_SELECTION_BOX };
+      }
+      return { ...next, isDrawing: false };
+    });
+  }, [getPitchSvgPoint, pitchViewBox, liveEventRows]);
+
+  const handlePitchMouseDown = useCallback((event) => {
+    if (event.button !== 0 || loading) return;
+    const point = getPitchSvgPoint(event, pitchViewBox);
+    if (!point) return;
+
+    event.preventDefault();
+    setFocusedEvent(null);
+    setFocusedEventId(null);
+    setHoveredEvent(null);
+    setSelectionBox({
+      startX: point.x,
+      startY: point.y,
+      endX: point.x,
+      endY: point.y,
+      isDrawing: true
+    });
+  }, [getPitchSvgPoint, pitchViewBox, loading]);
 
   // --- 4. MÉTRIQUES ET RENDU SPATIAL ---
   const mapEventCount = countDisplayEvents(spatialDisplayData, isSequenceMode && data && Array.isArray(data.sequences));
@@ -362,74 +362,8 @@ const EventExplorer = ({
 
 
 
-  const handlePitchMouseDown = useCallback((event) => {
-    if (event.button !== 0 || loading) return;
-    const point = getPitchSvgPoint(event);
-    if (!point) return;
 
-    event.preventDefault();
-    setFocusedEvent(null);
-    setFocusedEventId(null);
-    setHoveredEvent(null);
-    setSelectionBox({
-      startX: point.x,
-      startY: point.y,
-      endX: point.x,
-      endY: point.y,
-      isDrawing: true
-    });
-  }, [getPitchSvgPoint, loading]);
 
-  const handlePitchMouseMove = useCallback((event) => {
-    const point = getPitchSvgPoint(event);
-    if (!point) return;
-
-    // --- DÉLÉGATION D'ÉVÉNEMENTS (Optimisation DevOps) ---
-    // On cherche si la souris survole un point tactique via l'attribut data-event-id
-    const target = event.target.closest('[data-event-id]');
-    if (target) {
-      const eventId = target.getAttribute('data-event-id');
-      const foundEvent = liveEventRows.find(e => String(e.opta_id ?? e.id) === String(eventId));
-      if (foundEvent) {
-        setHoveredEvent(foundEvent);
-        setMousePos({ x: event.clientX, y: event.clientY });
-      }
-    } else {
-      setHoveredEvent(null);
-    }
-
-    setSelectionBox(prev => {
-      if (!prev.isDrawing) return prev;
-      return { ...prev, endX: point.x, endY: point.y };
-    });
-  }, [getPitchSvgPoint, liveEventRows]);
-
-  const handlePitchMouseUp = useCallback((event) => {
-    const point = getPitchSvgPoint(event);
-
-    // --- DÉLÉGATION CLIC (Optimisation DevOps) ---
-    const target = event.target.closest('[data-event-id]');
-    if (target) {
-      const eventId = target.getAttribute('data-event-id');
-      const foundEvent = liveEventRows.find(e => String(e.opta_id ?? e.id) === String(eventId));
-      if (foundEvent) {
-        setFocusedEvent(foundEvent);
-        setFocusedEventId(eventId);
-        setHoveredEvent(foundEvent);
-      }
-    }
-
-    setSelectionBox(prev => {
-      if (!prev.isDrawing) return prev;
-      const next = point ? { ...prev, endX: point.x, endY: point.y } : prev;
-      const width = Math.abs(next.endX - next.startX);
-      const height = Math.abs(next.endY - next.startY);
-      if (width < MIN_SELECTION_SIZE || height < MIN_SELECTION_SIZE) {
-        return { ...EMPTY_SELECTION_BOX };
-      }
-      return { ...next, isDrawing: false };
-    });
-  }, [getPitchSvgPoint, liveEventRows]);
 
   const successfulEventCount = useMemo(() => (
     liveEventRows.filter(event => event.outcome === 1 || event.outcome === 'Successful').length
@@ -461,95 +395,7 @@ const EventExplorer = ({
     }
   }, [playlistIndex, playlist]);
 
-  React.useEffect(() => {
-    const canvas = heatmapCanvasRef.current;
-    if (!canvas) return;
-
-    const clearHeatmap = () => {
-      const ctx = canvas.getContext('2d');
-      if (ctx) ctx.clearRect(0, 0, canvas.width || 0, canvas.height || 0);
-      heatmapInstanceRef.current?.clear?.();
-    };
-
-    if (heatmapMode === 'off' || !heatmapEvents.length) {
-      clearHeatmap();
-      return;
-    }
-
-    let cancelled = false;
-
-    ensureSimpleheat()
-      .then((simpleheat) => {
-        if (cancelled || !simpleheat || !heatmapCanvasRef.current) return;
-
-        const activeCanvas = heatmapCanvasRef.current;
-        const rect = activeCanvas.getBoundingClientRect();
-        const cssWidth = Math.max(1, Math.round(rect.width));
-        const cssHeight = Math.max(1, Math.round(rect.height));
-        const pixelRatio = window.devicePixelRatio || 1;
-
-        activeCanvas.width = Math.round(cssWidth * pixelRatio);
-        activeCanvas.height = Math.round(cssHeight * pixelRatio);
-        activeCanvas.style.width = `${cssWidth}px`;
-        activeCanvas.style.height = `${cssHeight}px`;
-
-        const scale = Math.min(cssWidth / pitchViewBox.width, cssHeight / pitchViewBox.height);
-        const offsetX = (cssWidth - pitchViewBox.width * scale) / 2;
-        const offsetY = (cssHeight - pitchViewBox.height * scale) / 2;
-        const points = [];
-
-        const pushCanvasPoint = (pitchPoint) => {
-          if (!pitchPoint) return;
-          const canvasX = (pitchPoint.x - pitchViewBox.x) * scale + offsetX;
-          const canvasY = (pitchPoint.y - pitchViewBox.y) * scale + offsetY;
-          if (
-            Number.isFinite(canvasX)
-            && Number.isFinite(canvasY)
-            && canvasX >= 0
-            && canvasX <= cssWidth
-            && canvasY >= 0
-            && canvasY <= cssHeight
-          ) {
-            points.push([canvasX * pixelRatio, canvasY * pixelRatio, 1]);
-          }
-        };
-
-        heatmapEvents.forEach(event => {
-          if (heatmapMode === 'start' || heatmapMode === 'both') {
-            pushCanvasPoint(projectPoint(event.x, event.y));
-          }
-          if (heatmapMode === 'end' || heatmapMode === 'both') {
-            const endCoords = getEndCoordinates(event);
-            if (endCoords) pushCanvasPoint(projectPoint(endCoords.x, endCoords.y));
-          }
-        });
-
-        const ctx = activeCanvas.getContext('2d');
-        if (ctx) ctx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
-        if (!points.length) return;
-
-        heatmapInstanceRef.current = simpleheat(activeCanvas);
-        const heat = heatmapInstanceRef.current;
-        heat.clear();
-        heat.data(points);
-        const radius = Math.max(14 * pixelRatio, Math.min(activeCanvas.width, activeCanvas.height) / 18);
-        heat.radius(radius, radius / 2.5);
-        heat.max(5);
-        heat.draw();
-      })
-      .catch((error) => {
-        console.error('Erreur heatmap simpleheat:', error);
-        clearHeatmap();
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [heatmapMode, heatmapEvents, pitchViewBox, projectPoint, getEndCoordinates]);
-
   React.useEffect(() => () => {
-    heatmapInstanceRef.current?.clear?.();
-    heatmapInstanceRef.current = null;
   }, []);
 
   // --- MOTEUR DE VIRTUALISATION (Optimisation DevOps / Lead Data) ---
@@ -840,19 +686,16 @@ const EventExplorer = ({
             </div>
           </div>
 
-          <PitchSVG
-            loading={loading}
-            hasData={spatialDisplayData.length > 0 || isSequenceMode}
+          <TacticalPitch 
+            style={selectedPitchStyle}
             orientation={orientation}
-            pitchStyleConfig={selectedPitchStyle}
-            viewBox={pitchViewBoxString}
-            canvasRef={heatmapCanvasRef}
-            heatmapVisible={heatmapMode !== 'off' && heatmapEvents.length > 0}
+            view={pitchView}
+            heatmapMode={heatmapMode}
+            heatmapData={heatmapEvents}
             onMouseDown={handlePitchMouseDown}
             onMouseMove={handlePitchMouseMove}
             onMouseUp={handlePitchMouseUp}
-            className="cursor-crosshair"
-            onClearFocus={() => {
+            onClick={() => {
               setFocusedEvent(null);
               setFocusedEventId(null);
               setHoveredEvent(null);
@@ -908,7 +751,7 @@ const EventExplorer = ({
                 className="transition-all duration-75"
               />
             )}
-          </PitchSVG>
+          </TacticalPitch>
 
           <EventTooltip 
             hoveredEvent={hoveredEvent} 

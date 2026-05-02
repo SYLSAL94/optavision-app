@@ -1,11 +1,6 @@
 import React from 'react';
 
-const defaultProjectPoint = (x, y) => ({
-  x: (x / 100) * 105,
-  y: ((100 - y) / 100) * 68
-});
-
-export const BuildUpLayer = ({ displayData, focusedEventId, getEndCoordinates, setHoveredEvent, setMousePos, selectedSequence, setFocusedEvent, setFocusedEventId, projectPoint = defaultProjectPoint }) => {
+export const BuildUpLayer = ({ displayData, focusedEventId, getEndCoordinates, setHoveredEvent, setMousePos, selectedSequence, setFocusedEvent, setFocusedEventId, projectPoint }) => {
   // Rendu Conditionnel Strict : Désactivation si aucune séquence n'est sélectionnée
   if (!selectedSequence || !displayData || displayData.length === 0) return null;
 

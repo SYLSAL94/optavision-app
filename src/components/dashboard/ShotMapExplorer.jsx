@@ -2,34 +2,25 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Info, Target, PlayCircle, Loader2 } from 'lucide-react';
 import GoalFrameSVG from './GoalFrameSVG';
 
+import { TacticalPitch } from './TacticalPitch';
+import { usePitchProjection } from '../../hooks/usePitchProjection';
+
 const SHOTS_PER_PAGE = 6;
-const HALF_PITCH_WIDTH = 68;
-const HALF_PITCH_LENGTH = 52.5;
-const PITCH_LINE = 'rgba(255,255,255,0.36)';
 
 const normalizeShotToAttackingGoal = (event) => {
   const x = Number(event?.x);
   const y = Number(event?.y);
-
-  if (!Number.isFinite(x) || !Number.isFinite(y)) {
-    return null;
-  }
-
-  if (x < 50) {
-    return { x: 100 - x, y: 100 - y };
-  }
-
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  // Normalisation : on ramène tous les tirs vers la même cage (x > 50)
+  if (x < 50) return { x: 100 - x, y: 100 - y };
   return { x, y };
 };
 
 export const calculateShotDistance = (event) => {
   const normalized = normalizeShotToAttackingGoal(event);
-
-  if (!normalized) {
-    return null;
-  }
-
+  if (!normalized) return null;
   const { x, y } = normalized;
+  // Distance basée sur les dimensions FIFA réelles (105x68)
   const dist_x = (x - 100) * 1.05;
   const dist_y = (y - 50) * 0.68;
   return Math.sqrt(dist_x ** 2 + dist_y ** 2);
@@ -38,49 +29,16 @@ export const calculateShotDistance = (event) => {
 const isGoalShot = (shot) => {
   const typeId = Number(shot?.type_id);
   const typeName = String(shot?.type_name || shot?.type || '').trim().toLowerCase();
-
   return shot?.isGoal === true || typeId === 16 || typeName === 'goal' || typeName === 'own goal';
 };
 
-const projectShotToVerticalHalfPitch = (shot) => {
-  const normalized = normalizeShotToAttackingGoal(shot);
-
-  if (!normalized) {
-    return null;
-  }
-
-  const { x, y } = normalized;
-  return {
-    cx: HALF_PITCH_WIDTH - (y * 0.68),
-    cy: (100 - x) * 1.05,
-  };
-};
-
-const VerticalHalfPitch = ({ shots, focusedShot, onShotFocus, onClearFocus }) => (
-  <svg
-    viewBox="-5 -5 78 62"
-    className="h-full w-full"
-    preserveAspectRatio="xMidYMid meet"
-    aria-label="Demi-terrain vertical des tirs"
-    role="img"
-    onClick={onClearFocus}
-  >
-    <rect x="-5" y="-5" width="78" height="62" fill="#101010" />
-    <rect x="0" y="0" width={HALF_PITCH_WIDTH} height={HALF_PITCH_LENGTH} fill="none" stroke={PITCH_LINE} strokeWidth="0.28" />
-    <line x1="0" y1={HALF_PITCH_LENGTH} x2={HALF_PITCH_WIDTH} y2={HALF_PITCH_LENGTH} stroke={PITCH_LINE} strokeWidth="0.22" />
-
-    <rect x={HALF_PITCH_WIDTH / 2 - 20.16} y="0" width="40.32" height="16.5" fill="none" stroke={PITCH_LINE} strokeWidth="0.22" />
-    <rect x={HALF_PITCH_WIDTH / 2 - 9.16} y="0" width="18.32" height="5.5" fill="none" stroke={PITCH_LINE} strokeWidth="0.22" />
-    <circle cx={HALF_PITCH_WIDTH / 2} cy="11" r="0.35" fill={PITCH_LINE} />
-    <path d="M 26.7 16.5 A 9.15 9.15 0 0 0 41.3 16.5" fill="none" stroke={PITCH_LINE} strokeWidth="0.22" />
-    <rect x={HALF_PITCH_WIDTH / 2 - 3.66} y="-3" width="7.32" height="3" fill="rgba(255,255,255,0.04)" stroke={PITCH_LINE} strokeWidth="0.32" />
-
+const ShotMapLayer = ({ shots, focusedShot, onShotFocus, projectPoint }) => (
+  <>
     {shots.map((shot, index) => {
-      const position = projectShotToVerticalHalfPitch(shot);
+      const normalized = normalizeShotToAttackingGoal(shot);
+      const position = normalized ? projectPoint(normalized.x, normalized.y) : null;
 
-      if (!position || position.cy > 58 || position.cy < -4) {
-        return null;
-      }
+      if (!position) return null;
 
       const shotId = shot.opta_id ?? shot.id;
       const focusedShotId = focusedShot ? (focusedShot.opta_id ?? focusedShot.id) : null;
@@ -90,27 +48,30 @@ const VerticalHalfPitch = ({ shots, focusedShot, onShotFocus, onClearFocus }) =>
       return (
         <circle
           key={shot.id || shot.opta_id || index}
-          cx={position.cx}
-          cy={position.cy}
-          r={isFocused ? 1.15 : 0.85}
-          fill="#6fa2db"
-          fillOpacity={isDimmed ? 0.2 : 0.76}
-          stroke="#9fc4f4"
-          strokeWidth={isFocused ? 0.35 : 0.22}
-          className="cursor-pointer pointer-events-auto"
+          cx={position.x}
+          cy={position.y}
+          r={isFocused ? 1.5 : 1}
+          fill={shot.isGoal ? "#3cffd0" : "#ff4d4d"}
+          fillOpacity={isDimmed ? 0.2 : 0.8}
+          stroke="white"
+          strokeWidth={isFocused ? 0.4 : 0.1}
+          className="cursor-pointer pointer-events-auto transition-all duration-300"
           onClick={(e) => {
             e.stopPropagation();
             onShotFocus?.(shot);
           }}
-        />
+        >
+          <title>{shot.playerName} - {shot.type_name}</title>
+        </circle>
       );
     })}
-  </svg>
+  </>
 );
 
 const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, isVideoLoading = false }) => {
   const [detailsPage, setDetailsPage] = useState(1);
   const [focusedShot, setFocusedShot] = useState(null);
+  const { projectPoint } = usePitchProjection('vertical');
 
   const shotData = useMemo(() => {
     const events = Array.isArray(data) ? data : (data?.items || []);
@@ -182,17 +143,23 @@ const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, isVideoLoadi
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 bg-[#101010] border border-white/5 relative rounded-[2px] flex items-center justify-center overflow-hidden">
-           <div className="w-full h-full max-w-[820px] max-h-[680px] relative">
-              {!loading && (
-                <VerticalHalfPitch
-                  shots={shotData}
-                  focusedShot={focusedShot}
-                  onShotFocus={setFocusedShot}
-                  onClearFocus={() => setFocusedShot(null)}
-                />
-              )}
-           </div>
+          <div className="flex-1 min-h-0 bg-[#101010] border border-white/5 relative rounded-[2px] flex items-center justify-center overflow-hidden">
+             <div className="w-full h-full max-w-[820px] max-h-[680px] relative">
+                {!loading && (
+                  <TacticalPitch 
+                    orientation="vertical" 
+                    view="offensive"
+                    onClick={() => setFocusedShot(null)}
+                  >
+                    <ShotMapLayer 
+                      shots={shotData}
+                      focusedShot={focusedShot}
+                      onShotFocus={setFocusedShot}
+                      projectPoint={projectPoint}
+                    />
+                  </TacticalPitch>
+                )}
+             </div>
 
            {focusedShot && (
              <div className="absolute right-6 top-6 z-20 w-72 rounded-lg border border-white/10 bg-[#131313]/90 p-4 text-white shadow-2xl backdrop-blur-xl">
