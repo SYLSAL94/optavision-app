@@ -136,6 +136,135 @@ const EventExplorer = ({
   const [playlistIndex, setPlaylistIndex] = useState(-1);
   const [isDownloading, setIsDownloading] = useState(false);
 
+  // --- 0. HELPERS DE PROJECTION (Requis par spatialDisplayData) ---
+  const selectedPitchStyle = PITCH_STYLE_CONFIGS[pitchStyle] || PITCH_STYLE_CONFIGS.standard;
+  const pitchViewBox = useMemo(() => getPitchViewBox(orientation, pitchView), [orientation, pitchView]);
+  const pitchViewBoxString = useMemo(() => toViewBoxString(pitchViewBox), [pitchViewBox]);
+  const pitchViewBoxCenter = useMemo(() => ({
+    x: pitchViewBox.x + pitchViewBox.width / 2,
+    y: pitchViewBox.y + pitchViewBox.height / 2
+  }), [pitchViewBox]);
+
+  const projectPoint = useCallback((x, y) => {
+    const numericX = Number(x);
+    const numericY = Number(y);
+    if (!Number.isFinite(numericX) || !Number.isFinite(numericY)) return null;
+    if (orientation === 'vertical') {
+      return {
+        x: PITCH_DIMENSIONS.height - (numericY / 100) * PITCH_DIMENSIONS.height,
+        y: PITCH_DIMENSIONS.width - (numericX / 100) * PITCH_DIMENSIONS.width
+      };
+    }
+    return {
+      x: (numericX / 100) * PITCH_DIMENSIONS.width,
+      y: ((100 - numericY) / 100) * PITCH_DIMENSIONS.height
+    };
+  }, [orientation]);
+
+  const getPitchSvgPoint = useCallback((event) => {
+    const svg = event.currentTarget;
+    if (!svg?.createSVGPoint) return null;
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return null;
+    const point = svg.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    const svgPoint = point.matrixTransform(matrix.inverse());
+    return {
+      x: clamp(svgPoint.x, pitchViewBox.x, pitchViewBox.x + pitchViewBox.width),
+      y: clamp(svgPoint.y, pitchViewBox.y, pitchViewBox.y + pitchViewBox.height)
+    };
+  }, [pitchViewBox]);
+
+  // --- 1. MAPPAGES DE BASE ---
+  const globalPlayerMap = useMemo(() => {
+    const map = {};
+    if (playersList && Array.isArray(playersList)) {
+      playersList.forEach(p => { map[String(p.id || p.player_id)] = p.name || p.shortName || p.id; });
+    }
+    return map;
+  }, [playersList]);
+
+  const matchMap = useMemo(() => {
+    const map = {};
+    const base = Array.isArray(data) ? data : (data?.items || []);
+    if (Array.isArray(base)) {
+      base.forEach(e => {
+        const mId = e.match_id || e.matchId;
+        if (mId && e.matchName) map[mId] = e.matchName;
+      });
+    }
+    return map;
+  }, [data]);
+
+  // --- 2. SOURCE DE VÉRITÉ (displayData) ---
+  const displayData = useMemo(() => {
+    if (isSequenceMode) {
+      if (!selectedSequence || !eventsData) return [];
+      const targetId = String(selectedSequence).includes('_') ? selectedSequence.split('_').pop() : selectedSequence;
+      const sequenceEvents = eventsData.filter(e => {
+        const metrics = typeof e.advanced_metrics === 'string' ? JSON.parse(e.advanced_metrics) : (e.advanced_metrics || {});
+        const seqId = String(metrics.sub_sequence_id || metrics.possession_id || '');
+        return seqId === String(targetId);
+      }).filter(hasRenderablePlayerId);
+      if (sequenceEvents.length === 0) return [];
+      return [{ id: selectedSequence, team_id: sequenceEvents[0]?.team_id, events: sequenceEvents }];
+    }
+    const baseData = Array.isArray(data) ? data : (data?.items || []);
+    let filtered = baseData.filter(e => 
+      hasRenderablePlayerId(e) && 
+      !['Out', 'Card', 'SubOff', 'SubOn'].includes(e.type) && 
+      ![5, 17, 18, 19].includes(e.type_id)
+    );
+    const { localTeam, localOpponent } = filters || {};
+    if (localTeam && localTeam !== 'ALL') filtered = filtered.filter(e => String(e.team_id) === String(localTeam));
+    if (localOpponent && localOpponent !== 'ALL') filtered = filtered.filter(e => String(e.team_id) !== String(localOpponent));
+    return filtered;
+  }, [data, filters, isSequenceMode, selectedSequence, eventsData]);
+
+  // --- 3. INTELLIGENCE SPATIALE & FILTRAGE ---
+  const selectionBounds = useMemo(() => {
+    const { startX, startY, endX, endY } = selectionBox;
+    if (![startX, startY, endX, endY].every(Number.isFinite)) return null;
+    const x = Math.min(startX, endX);
+    const y = Math.min(startY, endY);
+    const width = Math.abs(endX - startX);
+    const height = Math.abs(endY - startY);
+    if (width < MIN_SELECTION_SIZE || height < MIN_SELECTION_SIZE) return null;
+    return { x, y, width, height, xMax: x + width, yMax: y + height };
+  }, [selectionBox]);
+
+  const spatialDisplayData = useMemo(() => {
+    if (!selectionBounds) return displayData;
+    const isInsideSelection = (event) => {
+      const point = projectPoint(event.x, event.y);
+      return point && point.x >= selectionBounds.x && point.x <= selectionBounds.xMax && point.y >= selectionBounds.y && point.y <= selectionBounds.yMax;
+    };
+    if (isSequenceMode && data && Array.isArray(data.sequences)) {
+      return displayData.map(seq => ({ ...seq, events: (seq.events || []).filter(isInsideSelection) })).filter(seq => seq.events.length > 0);
+    }
+    return displayData.filter(isInsideSelection);
+  }, [isSequenceMode, data, displayData, projectPoint, selectionBounds]);
+
+  const liveEventRows = useMemo(() => (
+    ((isSequenceMode && data && Array.isArray(data.sequences)) ? spatialDisplayData[0]?.events : spatialDisplayData) || []
+  ), [isSequenceMode, data, spatialDisplayData]);
+
+  // --- 4. MÉTRIQUES ET RENDU SPATIAL ---
+  const mapEventCount = countDisplayEvents(spatialDisplayData, isSequenceMode && data && Array.isArray(data.sequences));
+  const selectedSpatialEventCount = selectionBounds ? mapEventCount : 0;
+  const isEventLimitExceeded = mapEventCount > 1000;
+  const shouldShowEvents = showEvents && !isEventLimitExceeded;
+  const pitchDisplayData = shouldShowEvents
+    ? spatialDisplayData
+    : ((isSequenceMode && data && Array.isArray(data.sequences)) ? spatialDisplayData.map(seq => ({ ...seq, events: [] })) : []);
+  const heatmapEvents = useMemo(() => {
+    const events = (isSequenceMode && data && Array.isArray(data.sequences))
+      ? spatialDisplayData.flatMap(seq => seq.events || [])
+      : spatialDisplayData;
+    return events.filter(hasRenderablePlayerId);
+  }, [isSequenceMode, data, spatialDisplayData]);
+
   const handleDownloadMix = async () => {
     if (liveEventRows.length === 0) return;
     setIsDownloading(true);
@@ -231,112 +360,7 @@ const EventExplorer = ({
     return null;
   }, []);
 
-  const displayData = useMemo(() => {
-    if (isSequenceMode) {
-      if (!selectedSequence || !eventsData) return [];
-      
-      // Extraction de l'ID numérique si selectedSequence est un composite (ex: "12345_67")
-      const targetId = String(selectedSequence).includes('_') 
-        ? selectedSequence.split('_').pop() 
-        : selectedSequence;
 
-      // Filtrage local "Zero-Download" : on cherche tous les événements liés à la séquence dans le cache global
-      const sequenceEvents = eventsData.filter(e => {
-        const metrics = typeof e.advanced_metrics === 'string' ? JSON.parse(e.advanced_metrics) : (e.advanced_metrics || {});
-        // On compare avec sub_sequence_id ou possession_id (fallback)
-        const seqId = String(metrics.sub_sequence_id || metrics.possession_id || '');
-        return seqId === String(targetId);
-      }).filter(hasRenderablePlayerId);
-
-      if (sequenceEvents.length === 0) return [];
-
-      // On retourne un objet compatible avec le reste du rendu SVG (format séquence)
-      // IMPORTANT : BuildUpLayer a besoin du team_id pour filtrer les actions de progression
-      return [{
-        id: selectedSequence,
-        team_id: sequenceEvents[0]?.team_id,
-        events: sequenceEvents
-      }];
-    }
-    const baseData = Array.isArray(data) ? data : (data?.items || []);
-    let filtered = baseData.filter(e => 
-      hasRenderablePlayerId(e) && 
-      !['Out', 'Card', 'SubOff', 'SubOn'].includes(e.type) && 
-      ![5, 17, 18, 19].includes(e.type_id)
-    );
-
-    const { localTeam, localOpponent } = filters || {};
-    if (localTeam && localTeam !== 'ALL') {
-      filtered = filtered.filter(e => String(e.team_id) === String(localTeam));
-    }
-    if (localOpponent && localOpponent !== 'ALL') {
-      filtered = filtered.filter(e => String(e.team_id) !== String(localOpponent));
-    }
-    return filtered;
-  }, [data, filters, isSequenceMode, selectedSequence, eventsData]);
-
-  const globalPlayerMap = useMemo(() => {
-    const map = {};
-    if (playersList && Array.isArray(playersList)) {
-      playersList.forEach(p => { map[String(p.id || p.player_id)] = p.name || p.shortName || p.id; });
-    }
-    return map;
-  }, [playersList]);
-
-  const matchMap = useMemo(() => {
-    const map = {};
-    const base = Array.isArray(data) ? data : (data?.items || []);
-    if (Array.isArray(base)) {
-      base.forEach(e => {
-        const mId = e.match_id || e.matchId;
-        if (mId && e.matchName) map[mId] = e.matchName;
-      });
-    }
-    return map;
-  }, [data]);
-
-  const selectedPitchStyle = PITCH_STYLE_CONFIGS[pitchStyle] || PITCH_STYLE_CONFIGS.standard;
-  const pitchViewBox = useMemo(() => getPitchViewBox(orientation, pitchView), [orientation, pitchView]);
-  const pitchViewBoxString = useMemo(() => toViewBoxString(pitchViewBox), [pitchViewBox]);
-  const pitchViewBoxCenter = useMemo(() => ({
-    x: pitchViewBox.x + pitchViewBox.width / 2,
-    y: pitchViewBox.y + pitchViewBox.height / 2
-  }), [pitchViewBox]);
-  const projectPoint = useCallback((x, y) => {
-    const numericX = Number(x);
-    const numericY = Number(y);
-    if (!Number.isFinite(numericX) || !Number.isFinite(numericY)) return null;
-
-    if (orientation === 'vertical') {
-      return {
-        x: PITCH_DIMENSIONS.height - (numericY / 100) * PITCH_DIMENSIONS.height,
-        y: PITCH_DIMENSIONS.width - (numericX / 100) * PITCH_DIMENSIONS.width
-      };
-    }
-
-    return {
-      x: (numericX / 100) * PITCH_DIMENSIONS.width,
-      y: ((100 - numericY) / 100) * PITCH_DIMENSIONS.height
-    };
-  }, [orientation]);
-
-  const getPitchSvgPoint = useCallback((event) => {
-    const svg = event.currentTarget;
-    if (!svg?.createSVGPoint) return null;
-
-    const matrix = svg.getScreenCTM();
-    if (!matrix) return null;
-
-    const point = svg.createSVGPoint();
-    point.x = event.clientX;
-    point.y = event.clientY;
-
-    const svgPoint = point.matrixTransform(matrix.inverse());
-    return {
-      x: clamp(svgPoint.x, pitchViewBox.x, pitchViewBox.x + pitchViewBox.width),
-      y: clamp(svgPoint.y, pitchViewBox.y, pitchViewBox.y + pitchViewBox.height)
-    };
-  }, [pitchViewBox]);
 
   const handlePitchMouseDown = useCallback((event) => {
     if (event.button !== 0 || loading) return;
@@ -360,14 +384,40 @@ const EventExplorer = ({
     const point = getPitchSvgPoint(event);
     if (!point) return;
 
+    // --- DÉLÉGATION D'ÉVÉNEMENTS (Optimisation DevOps) ---
+    // On cherche si la souris survole un point tactique via l'attribut data-event-id
+    const target = event.target.closest('[data-event-id]');
+    if (target) {
+      const eventId = target.getAttribute('data-event-id');
+      const foundEvent = liveEventRows.find(e => String(e.opta_id ?? e.id) === String(eventId));
+      if (foundEvent) {
+        setHoveredEvent(foundEvent);
+        setMousePos({ x: event.clientX, y: event.clientY });
+      }
+    } else {
+      setHoveredEvent(null);
+    }
+
     setSelectionBox(prev => {
       if (!prev.isDrawing) return prev;
       return { ...prev, endX: point.x, endY: point.y };
     });
-  }, [getPitchSvgPoint]);
+  }, [getPitchSvgPoint, liveEventRows]);
 
   const handlePitchMouseUp = useCallback((event) => {
     const point = getPitchSvgPoint(event);
+
+    // --- DÉLÉGATION CLIC (Optimisation DevOps) ---
+    const target = event.target.closest('[data-event-id]');
+    if (target) {
+      const eventId = target.getAttribute('data-event-id');
+      const foundEvent = liveEventRows.find(e => String(e.opta_id ?? e.id) === String(eventId));
+      if (foundEvent) {
+        setFocusedEvent(foundEvent);
+        setFocusedEventId(eventId);
+        setHoveredEvent(foundEvent);
+      }
+    }
 
     setSelectionBox(prev => {
       if (!prev.isDrawing) return prev;
@@ -379,68 +429,8 @@ const EventExplorer = ({
       }
       return { ...next, isDrawing: false };
     });
-  }, [getPitchSvgPoint]);
+  }, [getPitchSvgPoint, liveEventRows]);
 
-  const selectionBounds = useMemo(() => {
-    const { startX, startY, endX, endY } = selectionBox;
-    if (![startX, startY, endX, endY].every(Number.isFinite)) return null;
-
-    const x = Math.min(startX, endX);
-    const y = Math.min(startY, endY);
-    const width = Math.abs(endX - startX);
-    const height = Math.abs(endY - startY);
-
-    if (width < MIN_SELECTION_SIZE || height < MIN_SELECTION_SIZE) return null;
-    return {
-      x,
-      y,
-      width,
-      height,
-      xMax: x + width,
-      yMax: y + height
-    };
-  }, [selectionBox]);
-
-  const spatialDisplayData = useMemo(() => {
-    if (!selectionBounds) return displayData;
-
-    const isInsideSelection = (event) => {
-      const point = projectPoint(event.x, event.y);
-      return point
-        && point.x >= selectionBounds.x
-        && point.x <= selectionBounds.xMax
-        && point.y >= selectionBounds.y
-        && point.y <= selectionBounds.yMax;
-    };
-
-    if (actualSequenceMode) {
-      return displayData
-        .map(seq => ({
-          ...seq,
-          events: (seq.events || []).filter(isInsideSelection)
-        }))
-        .filter(seq => seq.events.length > 0);
-    }
-
-    return displayData.filter(isInsideSelection);
-  }, [actualSequenceMode, displayData, projectPoint, selectionBounds]);
-
-  const mapEventCount = countDisplayEvents(spatialDisplayData, actualSequenceMode);
-  const selectedSpatialEventCount = selectionBounds ? mapEventCount : 0;
-  const isEventLimitExceeded = mapEventCount > 1000;
-  const shouldShowEvents = showEvents && !isEventLimitExceeded;
-  const pitchDisplayData = shouldShowEvents
-    ? spatialDisplayData
-    : (actualSequenceMode ? spatialDisplayData.map(seq => ({ ...seq, events: [] })) : []);
-  const heatmapEvents = useMemo(() => {
-    const events = actualSequenceMode
-      ? spatialDisplayData.flatMap(seq => seq.events || [])
-      : spatialDisplayData;
-    return events.filter(hasRenderablePlayerId);
-  }, [actualSequenceMode, spatialDisplayData]);
-  const liveEventRows = useMemo(() => (
-    (actualSequenceMode ? spatialDisplayData[0]?.events : spatialDisplayData) || []
-  ), [actualSequenceMode, spatialDisplayData]);
   const successfulEventCount = useMemo(() => (
     liveEventRows.filter(event => event.outcome === 1 || event.outcome === 'Successful').length
   ), [liveEventRows]);
@@ -562,12 +552,34 @@ const EventExplorer = ({
     heatmapInstanceRef.current = null;
   }, []);
 
+  // --- MOTEUR DE VIRTUALISATION (Optimisation DevOps / Lead Data) ---
+  const scrollContainerRef = useRef(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const ROW_HEIGHT = 82; // Hauteur fixe pour une virtualisation performante
+  const VISIBLE_ROWS = 15; // Nombre de lignes visibles à l'écran
+  const BUFFER_ROWS = 5;  // Lignes de tampon (haut/bas) pour éviter les flashs au scroll
+
+  const handleScroll = (e) => {
+    setScrollTop(e.currentTarget.scrollTop);
+  };
+
+  const virtualItems = useMemo(() => {
+    const start = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - BUFFER_ROWS);
+    const end = Math.min(liveEventRows.length, Math.ceil((scrollTop + 800) / ROW_HEIGHT) + BUFFER_ROWS);
+    
+    return liveEventRows.slice(start, end).map((event, index) => ({
+      event,
+      index: start + index,
+      top: (start + index) * ROW_HEIGHT
+    }));
+  }, [scrollTop, liveEventRows]);
+
   const renderLiveFlux = (className = "h-full bg-[#1a1a1a] border border-white/10 rounded-[4px] flex flex-col overflow-hidden") => (
     <div className={className}>
-      <div className="px-6 py-4 border-b border-white/10 bg-[#2d2d2d] flex justify-between items-center shrink-0">
+      <div className="px-6 py-4 border-b border-white/10 bg-[#2d2d2d] flex justify-between items-center shrink-0 z-20">
         <div className="flex items-center gap-4">
           <div className={`w-2 h-2 rounded-full ${loading ? 'bg-orange-500 animate-bounce' : 'bg-[#3cffd0] animate-pulse'}`} />
-          <span className="verge-label-mono text-[10px] text-white font-black uppercase tracking-[0.2em]">Flux Live Analyst</span>
+          <span className="verge-label-mono text-[10px] text-white font-black uppercase tracking-[0.2em]">Flux Live Analyst (Virtualized)</span>
         </div>
         <div className="flex items-center gap-2">
           {selectedSpatialEventCount > 0 && (
@@ -581,13 +593,8 @@ const EventExplorer = ({
                 }
               }}
               className={`px-3 py-1.5 rounded-[2px] verge-label-mono text-[9px] font-black uppercase flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(60,255,208,0.3)] ${generatingEventId === 'batch' ? 'bg-[#3cffd0]/20 text-[#3cffd0] cursor-wait' : 'bg-[#3cffd0] hover:bg-[#2edeb4] text-black cursor-pointer'}`}
-              title="Lancer la lecture en rafale"
             >
-              {generatingEventId === 'batch' ? (
-                <Loader2 size={10} className="animate-spin" />
-              ) : (
-                <Play size={10} fill="currentColor" />
-              )}
+              {generatingEventId === 'batch' ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} fill="currentColor" />}
               Rafale ({selectedSpatialEventCount})
             </button>
           )}
@@ -599,51 +606,48 @@ const EventExplorer = ({
               className={`px-3 py-1.5 rounded-[2px] verge-label-mono text-[9px] font-black uppercase flex items-center gap-2 transition-all border border-white/10 ${isDownloading ? 'bg-white/10 text-[#949494] cursor-wait' : 'bg-black/40 hover:bg-white/10 text-white cursor-pointer'}`}
               title="Télécharger le mixage physique (MP4)"
             >
-              {isDownloading ? (
-                <Loader2 size={10} className="animate-spin" />
-              ) : (
-                <Download size={10} />
-              )}
+              {isDownloading ? <Loader2 size={10} className="animate-spin" /> : <Download size={10} />}
               Mixage
             </button>
           )}
           <span className="verge-label-mono text-[9px] text-[#949494] bg-white/5 px-3 py-1.5 rounded-[2px] border border-white/5">
-            {liveEventRows.length.toLocaleString()} SELECTED
+            {liveEventRows.length.toLocaleString()} TOTAL
           </span>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto styled-scrollbar-verge bg-black/20">
+
+      <div 
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto styled-scrollbar-verge bg-black/20 relative"
+      >
+        {/* Container fantôme pour simuler la hauteur totale du scroll */}
+        <div style={{ height: `${liveEventRows.length * ROW_HEIGHT}px`, width: '100%', position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }} />
+        
         {!loading && liveEventRows.length > 0 ? (
-          paginatedLiveEventRows.map((e, i) => {
+          virtualItems.map(({ event: e, index, top }) => {
             const parsedMetrics = parseAdvancedMetrics(e);
             const typeLabel = parsedMetrics?.type_name || e.type_name || e.type_id;
             const typeKey = String(typeLabel || '').replace(/\s+/g, '').toLowerCase();
             const typeId = String(parsedMetrics?.type_id ?? e.type_id ?? '');
-            const getPlayerName = (id) => {
-              if (!id) return null;
-              return globalPlayerMap[String(id)] || String(id);
-            };
+            
+            const getPlayerName = (id) => id ? (globalPlayerMap[String(id)] || String(id)) : null;
             const receiverName = getPlayerName(parsedMetrics?.receiver || e.receiver_id || e.receiver);
             const opponentName = getPlayerName(parsedMetrics?.opponent_id);
             const xTLabel = formatSignedMetric(parsedMetrics?.xT);
+            
             const isProgressive = parsedMetrics?.is_progressive === true || parsedMetrics?.is_progressive === 'true';
-            const rawDuelWon = parsedMetrics?.duel_won === true || parsedMetrics?.duel_won === 'true';
+            const duelWon = (parsedMetrics?.duel_won === true || parsedMetrics?.duel_won === 'true') && !FORCED_DUEL_LOSS_KEYS.has(typeKey);
             const duelLost = parsedMetrics?.duel_lost === true || parsedMetrics?.duel_lost === 'true';
-            const isForcedDuelLoss = FORCED_DUEL_LOSS_KEYS.has(typeKey) || FORCED_DUEL_LOSS_IDS.has(typeId);
-            const duelWon = isForcedDuelLoss ? false : rawDuelWon;
-            const hasDuelResult = isForcedDuelLoss || rawDuelWon || duelLost;
-            const shotQuality = parsedMetrics?.shot_status
-              || parsedMetrics?.quality
-              || parsedMetrics?.chance_quality
-              || (parsedMetrics?.is_shot_big_chance ? 'Big Chance' : null)
-              || (Number.isFinite(Number(parsedMetrics?.xG)) ? `xG ${Number(parsedMetrics.xG).toFixed(2)}` : null);
+            
             const isPassLike = ['pass', 'carry', 'ballreceipt'].includes(typeKey);
             const isDuelLike = DUEL_EVENT_KEYS.has(typeKey) || DUEL_EVENT_IDS.has(typeId);
             const isShotLike = ['shot', 'goal', 'savedshot', 'missedshots'].includes(typeKey);
 
             return (
               <div
-                key={e.opta_id || e.id || `${currentLiveFluxPage}-${i}`}
+                key={e.opta_id || e.id || `v-${index}`}
+                style={{ position: 'absolute', top: `${top}px`, left: 0, right: 0, height: `${ROW_HEIGHT}px` }}
                 onClick={() => {
                   const eventId = e.opta_id ?? e.id;
                   const nextFocused = eventId === activeFocusedEventId ? null : e;
@@ -658,32 +662,20 @@ const EventExplorer = ({
                     {(e.cumulative_mins ?? 0).toFixed(1)}'
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="verge-label-mono text-[10px] text-white uppercase font-black tracking-tight truncate">{typeLabel}</span>
-                      {isProgressive && (
-                        <span className="verge-label-mono text-[7px] px-1.5 py-0.5 rounded-[2px] bg-[#3cffd0] text-black font-black uppercase">Prog</span>
-                      )}
+                    <div className="flex items-center gap-2">
+                      <span className="verge-label-mono text-[10px] text-white uppercase font-black truncate">{typeLabel}</span>
+                      {isProgressive && <span className="verge-label-mono text-[7px] px-1.5 py-0.5 rounded-[2px] bg-[#3cffd0] text-black font-black uppercase">Prog</span>}
                     </div>
                     <div className="verge-label-mono text-[9px] text-[#949494] group-hover:text-white transition-colors truncate mt-1">
                       {e.playerName || globalPlayerMap[e.player_id] || e.player_id}
                     </div>
                     <div className="mt-1 flex items-center gap-2 overflow-hidden">
-                      {isPassLike && receiverName && (
-                        <span className="verge-label-mono text-[8px] text-[#949494] truncate">Vers: <span className="text-white/80">{receiverName}</span></span>
-                      )}
-                      {isPassLike && xTLabel && (
-                        <span className="verge-label-mono text-[8px] text-[#3cffd0] font-black">xT {xTLabel}</span>
-                      )}
-                      {isDuelLike && opponentName && (
-                        <span className="verge-label-mono text-[8px] text-[#949494] truncate">Contre: <span className="text-white/80">{opponentName}</span></span>
-                      )}
-                      {isDuelLike && hasDuelResult && (
+                      {isPassLike && receiverName && <span className="verge-label-mono text-[8px] text-[#949494] truncate">Vers: <span className="text-white/80">{receiverName}</span></span>}
+                      {isPassLike && xTLabel && <span className="verge-label-mono text-[8px] text-[#3cffd0] font-black">xT {xTLabel}</span>}
+                      {isDuelLike && (parsedMetrics?.duel_won || duelLost) && (
                         <span className={`verge-label-mono text-[7px] px-1.5 py-0.5 rounded-[2px] text-black font-black uppercase ${duelWon ? 'bg-[#3cffd0]' : 'bg-[#ff4d4d]'}`}>
-                          {duelWon ? 'Gagne' : 'Perdu'}
+                          {duelWon ? 'Gagné' : 'Perdu'}
                         </span>
-                      )}
-                      {isShotLike && shotQuality && (
-                        <span className="verge-label-mono text-[8px] text-[#ff4d4d] font-black truncate">{shotQuality}</span>
                       )}
                     </div>
                   </div>
@@ -693,21 +685,12 @@ const EventExplorer = ({
                     evt.stopPropagation();
                     const eventId = e.opta_id || e.id;
                     setGeneratingEventId(eventId);
-                    try {
-                      await onPlayVideo?.(e);
-                    } finally {
-                      setGeneratingEventId(null);
-                    }
+                    try { await onPlayVideo?.(e); } finally { setGeneratingEventId(null); }
                   }}
                   disabled={generatingEventId === (e.opta_id || e.id)}
-                  className="text-slate-400 hover:text-[#3cffd0] transition-all duration-300 transform hover:scale-110 shrink-0 disabled:opacity-30"
-                  title="Lancer la vidéo"
+                  className="text-slate-400 hover:text-[#3cffd0] transition-all transform hover:scale-110 disabled:opacity-30"
                 >
-                  {generatingEventId === (e.opta_id || e.id) ? (
-                    <Loader2 size={14} className="animate-spin text-[#3cffd0]" />
-                  ) : (
-                    <PlayCircle size={20} />
-                  )}
+                  {generatingEventId === (e.opta_id || e.id) ? <Loader2 size={14} className="animate-spin text-[#3cffd0]" /> : <PlayCircle size={20} />}
                 </button>
               </div>
             );
@@ -716,30 +699,6 @@ const EventExplorer = ({
           <div className="h-full flex items-center justify-center opacity-10"><Database size={32} /></div>
         )}
       </div>
-      {liveEventRows.length > LIVE_FLUX_PAGE_SIZE && (
-        <div className="px-5 py-3 border-t border-white/10 bg-[#131313] flex items-center justify-between shrink-0">
-          <button
-            type="button"
-            disabled={currentLiveFluxPage <= 1}
-            onClick={() => setLiveFluxPage(page => Math.max(1, page - 1))}
-            className="px-3 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed rounded-[2px] verge-label-mono text-[9px] text-white font-black uppercase tracking-widest transition-all"
-          >
-            Prec
-          </button>
-          <div className="verge-label-mono text-[8px] text-[#949494] font-black tracking-widest">
-            PAGE <span className="text-[#3cffd0]">{currentLiveFluxPage}</span> / {liveFluxTotalPages}
-            <span className="ml-2 text-white/40">{liveEventRows.length.toLocaleString()} EVENTS</span>
-          </div>
-          <button
-            type="button"
-            disabled={currentLiveFluxPage >= liveFluxTotalPages}
-            onClick={() => setLiveFluxPage(page => Math.min(liveFluxTotalPages, page + 1))}
-            className="px-3 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed rounded-[2px] verge-label-mono text-[9px] text-white font-black uppercase tracking-widest transition-all"
-          >
-            Suiv
-          </button>
-        </div>
-      )}
     </div>
   );
 
