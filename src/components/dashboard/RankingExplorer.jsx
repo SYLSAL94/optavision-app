@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Activity, ChevronLeft, ChevronRight, Database, Eye, Filter, Loader2, Map, Play, PlayCircle, RotateCcw, SlidersHorizontal, Trophy, X } from 'lucide-react';
 import ExplorationFilterPanel from './ExplorationFilterPanel';
 import { TacticalPitch } from './TacticalPitch';
-import TacticalPlot from './TacticalPlot';
 import { usePitchProjection } from '../../hooks/usePitchProjection';
 import { OPTAVISION_API_URL } from '../../config';
 import { createExplorationSearchParams } from './optaFilterParams';
@@ -566,14 +565,30 @@ const RankingExplorer = ({
                   style={{ grass: '#131313', line: '#333', background: '#000' }}
                 >
                   {/* Rendu des événements globaux du joueur via Moteur Unifié */}
-                  {playerEventsForMap.map((e, idx) => (
-                    <TacticalPlot 
-                      key={e.opta_id || idx}
-                      event={e}
-                      mode="outcome"
-                      projectPoint={projectPoint}
-                    />
-                  ))}
+                  {playerEventsForMap.map((e, idx) => {
+                    const point = projectPoint(e.x, e.y);
+                    if (!point) return null;
+                    return (
+                      <g key={e.opta_id || idx} className="group/dot">
+                        <circle 
+                          cx={point.x} 
+                          cy={point.y} 
+                          r="0.7" 
+                          fill={e.outcome === 1 ? '#3cffd0' : '#ff4d4d'} 
+                          className="opacity-80"
+                        />
+                        <circle 
+                          cx={point.x} 
+                          cy={point.y} 
+                          r="2.2" 
+                          fill="transparent" 
+                          stroke={e.outcome === 1 ? '#3cffd0' : '#ff4d4d'} 
+                          strokeWidth="0.1"
+                          className="opacity-10 group-hover/dot:opacity-100 transition-opacity"
+                        />
+                      </g>
+                    );
+                  })}
                 </TacticalPitch>
 
                 <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-6 bg-[#1a1a1a]/80 backdrop-blur-xl px-8 py-3 rounded-full border border-white/10 shadow-2xl">

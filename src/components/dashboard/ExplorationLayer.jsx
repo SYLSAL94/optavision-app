@@ -1,63 +1,84 @@
 import React from 'react';
-import TacticalPlot from './TacticalPlot';
-import { getActionColor } from '../../utils/spatialDesign';
 
-export const ExplorationLayer = ({ 
-  displayData, 
-  focusedEventId, 
-  getEndCoordinates, 
-  setHoveredEvent, 
-  setMousePos, 
-  setFocusedEvent, 
-  setFocusedEventId, 
-  projectPoint 
-}) => {
+export const ExplorationLayer = ({ displayData, focusedEventId, getEndCoordinates, setHoveredEvent, setMousePos, setFocusedEvent, setFocusedEventId, projectPoint }) => {
   const isMassFetching = displayData.length > 150;
 
   return displayData.slice(0, 1000).map((event, i) => {
     const eventId = event.opta_id ?? event.id;
-    const isFocused = String(eventId) === String(focusedEventId);
-    const isDimmed = focusedEventId && !isFocused;
-    
     const startPoint = projectPoint(event.x, event.y);
     if (!startPoint) return null;
+    const cx = startPoint.x;
+    const cy = startPoint.y;
+    
+    const ACTION_COLORS = {
+      'Pass': '#00ff88',
+      'BallReceipt': '#ffd03c',
+      'Shot': '#ff3366',
+      'Goal': '#f1c40f',
+      'SavedShot': '#ffcc00',
+      'Tackle': '#3498db',
+      'Interception': '#2ecc71',
+      'Carry': '#00d9ff'
+    };
 
+    const isSuccess = event.outcome === 1 || event.outcome === 'Successful';
+    const actionType = event.type_name || event.type || '';
+    const color = ACTION_COLORS[actionType.replace(/\s+/g, '')] || '#95a5a6';
+    const opacity = isSuccess ? 0.75 : 0.5;
+    
     const endCoords = getEndCoordinates(event);
     const endPoint = endCoords ? projectPoint(endCoords.x, endCoords.y) : null;
-    const actionColor = getActionColor(event, 'technical');
+    const hasValidEnd = endPoint !== null;
+
+    const isCarry = actionType.toLowerCase().includes('carry');
+    const isPass = actionType.toLowerCase().includes('pass');
+    const dashArray = isPass ? "1,1" : "none";
+    const strokeWidth = isCarry ? "0.5" : "0.4";
 
     return (
-      <g key={eventId || i}>
-        {/* Trajectoire (Ligne) */}
-        {endPoint && (
+      <g 
+        key={eventId || i} 
+        data-event-id={eventId}
+        className="cursor-help pointer-events-auto"
+        opacity={focusedEventId && eventId !== focusedEventId ? 0.1 : 1}
+        filter={!isMassFetching ? "drop-shadow(0px 0px 4px rgba(255,255,255,0.2))" : "none"}
+      >
+        {hasValidEnd && (
           <line 
-            x1={startPoint.x} y1={startPoint.y} 
-            x2={endPoint.x} y2={endPoint.y}
-            stroke={isFocused ? "#fbbf24" : actionColor} 
-            strokeWidth={isFocused ? "0.8" : "0.4"} 
-            strokeOpacity={isFocused ? 1 : 0.6}
-            strokeDasharray={event.type_name?.toLowerCase().includes('pass') ? "1,1" : "none"}
-            className="pointer-events-none"
+            x1={cx} y1={cy} 
+            x2={endPoint.x}
+            y2={endPoint.y}
+            stroke={eventId === focusedEventId ? "#fbbf24" : color} 
+            strokeWidth={eventId === focusedEventId ? "0.8" : strokeWidth} 
+            strokeOpacity={eventId === focusedEventId ? 1 : opacity}
+            strokeDasharray={eventId === focusedEventId ? "none" : dashArray}
+            className={!isMassFetching ? `animate-in fade-in duration-500 ${eventId === focusedEventId ? 'animate-pulse' : ''}` : ''}
           />
         )}
 
-        {/* Point d'action (Normalisé) */}
-        <TacticalPlot 
-          event={event}
-          mode="technical"
-          isFocused={isFocused}
-          isDimmed={isDimmed}
-          projectPoint={projectPoint}
-          isMassFetching={isMassFetching}
-          onHover={(ev, e) => {
-            setHoveredEvent(ev);
-            if (e) setMousePos({ x: e.clientX, y: e.clientY });
-          }}
-          onClick={(ev) => {
-            setFocusedEvent(ev);
-            setFocusedEventId(eventId);
-          }}
-        />
+        {actionType.includes('Shot') || actionType.includes('Goal') ? (
+          <path
+            d={`M ${cx} ${cy-1.5} L ${cx+0.4} ${cy-0.4} L ${cx+1.5} ${cy-0.4} L ${cx+0.6} ${cy+0.3} L ${cx+0.9} ${cy+1.4} L ${cx} ${cy+0.7} L ${cx-0.9} ${cy+1.4} L ${cx-0.6} ${cy+0.3} L ${cx-1.5} ${cy-0.4} L ${cx-0.4} ${cy-0.4} Z`}
+            fill={eventId === focusedEventId ? "#fbbf24" : color} 
+            fillOpacity={opacity}
+            stroke={isSuccess ? "white" : "#454a54"} 
+            strokeWidth="0.2"
+            className={!isMassFetching ? `animate-in fade-in zoom-in duration-300 ${eventId === focusedEventId ? 'animate-pulse' : ''}` : ''}
+          />
+        ) : actionType.includes('Tackle') ? (
+          <g transform={`translate(${cx}, ${cy}) scale(${eventId === focusedEventId ? 1.5 : 1})`}>
+            <line x1="-0.7" y1="-0.7" x2="0.7" y2="0.7" stroke={color} strokeWidth="0.4" />
+            <line x1="0.7" y1="-0.7" x2="-0.7" y2="0.7" stroke={color} strokeWidth="0.4" />
+          </g>
+        ) : (
+          <circle 
+            cx={cx} cy={cy} r={eventId === focusedEventId ? "2" : "0.8"} 
+            fill={eventId === focusedEventId ? "#fbbf24" : color} fillOpacity={opacity}
+            stroke={isSuccess ? "white" : "#454a54"} 
+            strokeWidth="0.2"
+            className={!isMassFetching ? `animate-in fade-in zoom-in duration-300 ${eventId === focusedEventId ? 'animate-pulse' : ''}` : ''}
+          />
+        )}
       </g>
     );
   });
