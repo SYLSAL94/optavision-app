@@ -60,12 +60,9 @@ const PITCH_STYLE_CONFIGS = {
   tactical: { grass: '#1f2937', line: 'rgba(209,213,219,0.34)', background: '#111827' }
 };
 
-const SIMPLEHEAT_SCRIPT_ID = 'simpleheat-script';
-const SIMPLEHEAT_SRC = 'https://cdn.jsdelivr.net/npm/simpleheat@0.4.0/simpleheat.min.js';
 const LIVE_FLUX_PAGE_SIZE = 20;
 const EMPTY_SELECTION_BOX = { startX: null, startY: null, endX: null, endY: null, isDrawing: false };
 const MIN_SELECTION_SIZE = 0.6;
-let simpleheatLoadPromise = null;
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 

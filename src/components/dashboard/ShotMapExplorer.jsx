@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, Info, Target, PlayCircle, Loader2 } from 'lu
 import GoalFrameSVG from './GoalFrameSVG';
 
 import { TacticalPitch } from './TacticalPitch';
-import { usePitchProjection } from '../../hooks/usePitchProjection';
+import { usePitchProjection, PITCH_DIMENSIONS as GLOBAL_DIMENSIONS } from '../../hooks/usePitchProjection';
 
 const SHOTS_PER_PAGE = 6;
 
@@ -20,9 +20,9 @@ export const calculateShotDistance = (event) => {
   const normalized = normalizeShotToAttackingGoal(event);
   if (!normalized) return null;
   const { x, y } = normalized;
-  // Distance basée sur les dimensions FIFA réelles (105x68)
-  const dist_x = (x - 100) * 1.05;
-  const dist_y = (y - 50) * 0.68;
+  // Distance basée sur les dimensions FIFA réelles centralisées
+  const dist_x = (x - 100) * (GLOBAL_DIMENSIONS.width / 100);
+  const dist_y = (y - 50) * (GLOBAL_DIMENSIONS.height / 100);
   return Math.sqrt(dist_x ** 2 + dist_y ** 2);
 };
 

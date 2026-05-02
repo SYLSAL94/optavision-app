@@ -1,12 +1,13 @@
+import { PITCH_DIMENSIONS as GLOBAL_DIMENSIONS } from '../../hooks/usePitchProjection';
 
 /**
  * PITCH_DIMENSIONS - Constantes de base pour le tracé du terrain (Standard FIFA)
  */
 const PITCH_DIMENSIONS = {
-  WIDTH: 105,
-  HEIGHT: 68,
-  CENTER_X: 105 / 2,
-  CENTER_Y: 68 / 2,
+  WIDTH: GLOBAL_DIMENSIONS.width,
+  HEIGHT: GLOBAL_DIMENSIONS.height,
+  CENTER_X: GLOBAL_DIMENSIONS.width / 2,
+  CENTER_Y: GLOBAL_DIMENSIONS.height / 2,
   PENALTY_AREA_WIDTH: 16.5,
   PENALTY_AREA_HEIGHT: 40.32,
   GOAL_AREA_WIDTH: 5.5,
