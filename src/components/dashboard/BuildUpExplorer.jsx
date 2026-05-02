@@ -178,18 +178,14 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], teamsLi
                           handleSequenceVideo(seq);
                         }}
                         disabled={loadingSequenceId !== null}
-                        className="flex items-center justify-center gap-2 px-4 py-1.5 min-w-[110px] text-[9px] font-bold tracking-widest uppercase rounded-full transition-all duration-300 backdrop-blur-md bg-[#131313]/80 border border-[#3cffd0] text-[#3cffd0] hover:bg-[#3cffd0] hover:text-[#131313] shadow-[0_0_10px_rgba(60,255,208,0.2)] hover:shadow-[0_0_20px_rgba(60,255,208,0.6)] disabled:opacity-50 disabled:cursor-wait"
+                        className="flex items-center justify-center gap-2 px-4 py-1.5 min-w-[110px] text-[9px] font-black tracking-[0.2em] uppercase rounded-full transition-all duration-300 backdrop-blur-md bg-black border border-[#3cffd0]/40 text-[#3cffd0] hover:bg-[#3cffd0] hover:text-black hover:border-[#3cffd0] shadow-[0_0_15px_rgba(60,255,208,0.2)] hover:shadow-[0_0_25px_rgba(60,255,208,0.5)] disabled:opacity-50 disabled:cursor-wait verge-label-mono"
                       >
                         {loadingSequenceId === seq.id ? (
-                          <>
-                            <Loader2 size={10} className="animate-spin" />
-                            <span>Extraction</span>
-                          </>
+                          <Loader2 size={12} className="animate-spin" />
                         ) : (
-                          <>
-                            <span>🎬 Lancer</span>
-                          </>
+                          <PlayCircle size={12} />
                         )}
+                        <span>{loadingSequenceId === seq.id ? 'Extraction' : 'Visualiser'}</span>
                       </button>
                       <TrendingUp size={14} className="text-[#3cffd0]" />
                       <span className="verge-label-mono text-xl font-black text-[#3cffd0]">{seq.threatScore.toFixed(3)}</span>

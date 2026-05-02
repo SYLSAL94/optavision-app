@@ -13,7 +13,8 @@ import {
   Download,
   Palette, Square,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  PlayCircle
 } from 'lucide-react';
 
 import { API_BASE_URL } from '../../config';
@@ -729,14 +730,25 @@ const EventExplorer = ({
                   </div>
                 </div>
                 <button
-                  onClick={(evt) => handleGenerateClip(evt, e)}
+                  onClick={async (evt) => {
+                    evt.stopPropagation();
+                    const eventId = e.opta_id || e.id;
+                    setGeneratingEventId(eventId);
+                    try {
+                      const videoUrl = await onPlayVideo?.(e);
+                      if (videoUrl) setActiveVideoUrl(videoUrl);
+                    } finally {
+                      setGeneratingEventId(null);
+                    }
+                  }}
                   disabled={generatingEventId === (e.opta_id || e.id)}
-                  className={`w-8 h-8 flex items-center justify-center rounded-full border transition-all shrink-0 ${generatingEventId === (e.opta_id || e.id) ? 'bg-[#3cffd0]/20 border-[#3cffd0]' : 'border-white/10 hover:border-[#3cffd0] hover:bg-[#3cffd0] hover:text-black text-[#949494]'}`}
+                  className="text-slate-400 hover:text-[#3cffd0] transition-all duration-300 transform hover:scale-110 shrink-0 disabled:opacity-30"
+                  title="Lancer la vidéo"
                 >
                   {generatingEventId === (e.opta_id || e.id) ? (
-                    <Loader2 size={12} className="animate-spin text-[#3cffd0]" />
+                    <Loader2 size={14} className="animate-spin text-[#3cffd0]" />
                   ) : (
-                    <Play size={12} fill="currentColor" />
+                    <PlayCircle size={20} />
                   )}
                 </button>
               </div>

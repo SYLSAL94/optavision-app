@@ -577,6 +577,7 @@ const OptaVisionDashboard = ({ user }) => {
                           loading={loading} 
                           matchIds={explorationFilters.matches}
                           playersList={playersList}
+                          teamsList={teamsList}
                           advancedMetricsList={advancedMetricsList}
                           onPlayVideo={handlePlaySingleVideo}
                           isVideoLoading={isVideoLoading}
@@ -604,6 +605,7 @@ const OptaVisionDashboard = ({ user }) => {
                           advancedMetricsList={advancedMetricsList}
                           teamsList={teamsList}
                           playersList={playersList}
+                          onPlayVideo={handlePlaySingleVideo}
                         />
                       ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center bg-[#131313] text-white/20">

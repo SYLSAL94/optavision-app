@@ -216,24 +216,22 @@ const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, isVideoLoadi
                    <span>{focusedShot.shotDistance !== null ? `${focusedShot.shotDistance.toFixed(1)}m` : '-'}</span>
                  </div>
                </div>
-               <button
-                 type="button"
-                 onClick={(e) => {
-                   e.stopPropagation();
-                   handleFocusedShotVideo();
-                 }}
-                 disabled={isVideoLoading}
-                 className="mt-4 flex w-full items-center justify-center gap-2 rounded-full border border-[#3cffd0] bg-[#131313]/80 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-[#3cffd0] shadow-[0_0_10px_rgba(60,255,208,0.2)] backdrop-blur-md transition-all duration-300 hover:bg-[#3cffd0] hover:text-[#131313] hover:shadow-[0_0_20px_rgba(60,255,208,0.6)] disabled:cursor-wait disabled:opacity-50"
-               >
-                 {isVideoLoading ? (
-                   <>
-                     <div className="h-3 w-3 animate-spin rounded-full border-2 border-[#3cffd0] border-t-transparent" />
-                     <span>Decoupe en cours...</span>
-                   </>
-                 ) : (
-                   <span>🎬 Lancer la vidéo</span>
-                 )}
-               </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleFocusedShotVideo();
+                  }}
+                  disabled={isVideoLoading}
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-full border border-[#3cffd0]/40 bg-black px-4 py-2 text-[9px] font-black uppercase tracking-[0.2em] text-[#3cffd0] shadow-[0_0_15px_rgba(60,255,208,0.2)] backdrop-blur-md transition-all duration-300 hover:bg-[#3cffd0] hover:text-black hover:border-[#3cffd0] hover:shadow-[0_0_25px_rgba(60,255,208,0.5)] disabled:cursor-wait disabled:opacity-50 verge-label-mono"
+                >
+                  {isVideoLoading ? (
+                    <Loader2 size={12} className="animate-spin text-[#3cffd0]" />
+                  ) : (
+                    <PlayCircle size={12} />
+                  )}
+                  <span>{isVideoLoading ? 'Extraction...' : 'Visualiser'}</span>
+                </button>
              </div>
            )}
 
