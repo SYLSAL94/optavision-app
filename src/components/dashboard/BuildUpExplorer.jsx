@@ -2,9 +2,12 @@ import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Activity, Clock, Hash, Zap, TrendingUp, Loader2, X } from 'lucide-react';
 import EventExplorer from './EventExplorer';
+import { OPTAVISION_API_URL } from '../../config';
 
 const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], advancedMetricsList = [], matchIds, onPlayVideo, isVideoLoading = false }) => {
   const [selectedSequence, setSelectedSequence] = useState(null);
+  const [sequenceEvents, setSequenceEvents] = useState([]);
+  const [sequenceLoading, setSequenceLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [loadingSequenceId, setLoadingSequenceId] = useState(null);
   const [activeVideoUrl, setActiveVideoUrl] = useState(null);
@@ -35,12 +38,67 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], advance
     setCurrentPage(1);
   }, [data]);
 
+  /**
+   * LAZY-LOADING : Fetch dédié des événements d'une séquence via la route /buildup/{seq_id}/events
+   * Architecture validée par l'Architecte DevOps (remplace le cache global eventsData)
+   */
+  const fetchSequenceEventsLazy = async (seq) => {
+    const seqId = seq.sub_sequence_id;
+    const matchId = seq.match_id || (Array.isArray(matchIds) ? matchIds[0] : matchIds);
+    if (!seqId) return [];
+
+    setSequenceLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (matchId) params.append('match_id', matchId);
+      const url = `${OPTAVISION_API_URL}/api/optavision/buildup/${encodeURIComponent(seqId)}/events?${params.toString()}`;
+      console.log("🌐 Lazy-Loading séquence :", url);
+
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`SEQUENCE_EVENTS_FAILURE: ${response.status}`);
+      const json = await response.json();
+      const events = json.events || [];
+      setSequenceEvents(events);
+      return events;
+    } catch (err) {
+      console.error("❌ Erreur Lazy-Loading séquence :", err);
+      setSequenceEvents([]);
+      return [];
+    } finally {
+      setSequenceLoading(false);
+    }
+  };
+
+  const handleSelectSequence = async (seq) => {
+    const newId = seq.id;
+    setSelectedSequence(newId);
+    await fetchSequenceEventsLazy(seq);
+  };
+
   const handleSequenceVideo = async (seq) => {
     if (!onPlayVideo) return;
     setLoadingSequenceId(seq.id);
     try {
-      const videoUrl = await onPlayVideo(seq);
-      if (videoUrl) setActiveVideoUrl(videoUrl);
+      // 1. Charger les événements frais (garantie zéro stale closure)
+      let events = sequenceEvents;
+      if (events.length === 0 || selectedSequence !== seq.id) {
+        events = await fetchSequenceEventsLazy(seq);
+      }
+
+      if (events.length > 0) {
+        // Construction d'un objet séquence enrichi avec les vrais événements
+        const sequencePayload = {
+          ...seq,
+          events: events,
+          match_id: events[0]?.match_id || seq.match_id,
+        };
+        const videoUrl = await onPlayVideo(sequencePayload);
+        if (videoUrl) setActiveVideoUrl(videoUrl);
+      } else {
+        // Fallback direct sur l'objet séquence brut
+        const videoUrl = await onPlayVideo(seq);
+        if (videoUrl) setActiveVideoUrl(videoUrl);
+      }
     } catch (err) {
       console.error("❌ Erreur génération clip Build-Up:", err);
     } finally {
@@ -74,7 +132,7 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], advance
                initial={{ opacity: 0, y: 20 }}
                animate={{ opacity: 1, y: 0 }}
                transition={{ delay: i * 0.05 }}
-               onClick={() => setSelectedSequence(seq.id)}
+               onClick={() => handleSelectSequence(seq)}
                className={`border p-6 rounded-[2px] group hover:border-[#3cffd0]/50 transition-all cursor-pointer relative overflow-hidden ${selectedSequence === seq.id ? 'bg-[#3cffd0]/10 border-[#3cffd0]' : 'bg-[#2d2d2d]/30 border-white/5'}`}
              >
                 {/* Threat Indicator Bar */}
@@ -134,7 +192,7 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], advance
                          <Zap size={12} />
                          <span className="verge-label-mono text-[8px] uppercase">Events</span>
                       </div>
-                      <span className="verge-label-mono text-sm text-white font-black">{seq.events.length}</span>
+                       <span className="verge-label-mono text-sm text-white font-black">{(seq.events || []).length}</span>
                    </div>
                 </div>
              </motion.div>
@@ -182,8 +240,9 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], advance
               data={data} 
               isSequenceMode={true}
               selectedSequence={selectedSequence}
+              eventsData={sequenceEvents}
               matchIds={matchIds} 
-              loading={loading} 
+              loading={loading || sequenceLoading} 
               playersList={playersList} 
               advancedMetricsList={advancedMetricsList} 
               onPlayVideo={onPlayVideo}
@@ -205,9 +264,9 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], advance
              </div>
              <div className="flex-1 py-10 flex flex-col items-center justify-center gap-6">
                 <span className="verge-label-mono text-[9px] text-[#3cffd0] font-black uppercase tracking-[0.3em]">Avec But</span>
-                <span className="verge-label-mono text-4xl text-white font-black tabular-nums">
-                  {sequences.filter(s => s.events.some(e => e.type === 'Goal' || (e.type === 'Shot' && e.outcome === 1))).length}
-                </span>
+                 <span className="verge-label-mono text-4xl text-white font-black tabular-nums">
+                   {sequences.filter(s => (s.events || []).some(e => e.type === 'Goal' || (e.type === 'Shot' && e.outcome === 1))).length}
+                 </span>
              </div>
              <div className="flex-1 py-10 flex flex-col items-center justify-center gap-6">
                 <span className="verge-label-mono text-[9px] text-[#3cffd0] font-black uppercase tracking-[0.3em]">Contre-Att.</span>

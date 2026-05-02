@@ -38,7 +38,8 @@ import { pollVideoJob } from '../../utils/videoJobs';
  * Aligné sur le Design System du projet Scouting.
  */
 const OptaVisionDashboard = ({ user }) => {
-  const [data, setData] = useState([]);
+  const [eventsData, setEventsData] = useState([]);
+  const [buildupSequences, setBuildupSequences] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isVideoLoading, setIsVideoLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -148,12 +149,12 @@ const OptaVisionDashboard = ({ user }) => {
       console.log("🚨 RÉPONSE API BRUTE :", json);
 
       // Data Binding : items pour le flux, total pour la pagination
-      setData(json.items || []);
+      setEventsData(json.items || []);
       setTotalEvents(json.total || 0);
     } catch (err) {
       console.error("❌ ERREUR DE FETCH :", err);
       setError(err.message);
-      setData([]);
+      setEventsData([]);
       setTotalEvents(0);
     } finally {
       setLoading(false);
@@ -269,15 +270,17 @@ const OptaVisionDashboard = ({ user }) => {
       if (!response.ok) throw new Error(`BUILDUP_DATA_FAILURE: ${response.status}`);
       const json = await response.json();
       console.log("🚨 RÉPONSE API BUILDUP :", json);
-      setData(json); // json contient { sequences: [...] }
+      setBuildupSequences(json.sequences || []);
     } catch (err) {
       console.error("❌ ERREUR DE FETCH BUILDUP :", err);
       setError(err.message);
-      setData({ sequences: [] });
+      setBuildupSequences([]);
     } finally {
       setLoading(false);
     }
   };
+
+
 
   const [availableActionTypes, setAvailableActionTypes] = useState([]);
   const [availableNextActionTypes, setAvailableNextActionTypes] = useState([]);
@@ -302,7 +305,6 @@ const OptaVisionDashboard = ({ user }) => {
           fetch(`${OPTAVISION_API_URL}/api/optavision/players`).then(r => r.json())
         ]);
 
-        // Structure de meta enrichie : { matches, teams, action_types, ... }
         setMatchesList(meta.matches || []);
         setAvailableActionTypes(meta.action_types || []);
         setCompetitionsList(meta.competitions || []);
@@ -314,15 +316,12 @@ const OptaVisionDashboard = ({ user }) => {
         setAdvancedMetricsList(meta.advanced_metrics_keys || []);
         setAvailableNextActionTypes(meta.next_action_types || meta.action_types || []);
         
-        // Unification du dictionnaire des équipes (ID -> Name)
         const teamObjects = meta.teams 
           ? Object.entries(meta.teams).map(([id, name]) => ({ id, name }))
           : t;
         setTeamsList(teamObjects);
         setPlayersList(p);
 
-
-        // Initialisation avec le premier match si vide
         if (meta.matches?.length > 0 && explorationFilters.matches.length === 0) {
           setExplorationFilters(prev => ({ ...prev, matches: [meta.matches[0].id] }));
         }
@@ -333,9 +332,9 @@ const OptaVisionDashboard = ({ user }) => {
     fetchMeta();
   }, []);
 
-  // Hydratation automatique
   useEffect(() => {
-    if (activeTool === 'sequences' || activeTool === 'ranking') return;
+    // On charge les événements de base même en mode séquences pour le cache spatial (Zero-Download)
+    if (activeTool === 'ranking') return;
     fetchEvents();
   }, [page, limit, explorationFilters, activeTool]);
 
@@ -348,12 +347,10 @@ const OptaVisionDashboard = ({ user }) => {
   return (
     <div className="min-h-screen bg-[#131313] text-white flex flex-col font-sans overflow-hidden">
 
-      {/* HEADER : SCOUTING STYLE (3 COLS) - MASQUÉ SI OUTIL ACTIF */}
       {!activeTool && (
         <header className="sticky top-0 z-[100] w-full px-8 bg-[#131313] border-b border-white/10 h-24 flex items-center shadow-2xl animate-in fade-in slide-in-from-top-4 duration-500">
           <div className="w-full max-w-[1700px] mx-auto grid grid-cols-2 md:grid-cols-3 items-center">
 
-            {/* Logo - Colonne Gauche */}
             <div className="flex items-center gap-8">
               <div className="flex items-center gap-4 cursor-pointer group w-fit" onClick={() => { setView('DASHBOARD'); setActiveTool(null); setIsFilterOpen(false); }}>
                 <div className="w-12 h-12 bg-white text-black rounded-[4px] flex items-center justify-center group-hover:bg-[#3cffd0] transition-colors">
@@ -366,7 +363,6 @@ const OptaVisionDashboard = ({ user }) => {
               </div>
             </div>
 
-            {/* Recherche Centrale (Intelligence Hub) */}
             <div className="flex justify-center order-3 md:order-2 col-span-2 md:col-span-1 mt-4 md:mt-0 px-4">
               <div className="w-full max-w-[500px] relative group">
                 <div className="absolute left-6 top-1/2 -translate-y-1/2 flex items-center gap-2 text-[#3cffd0]">
@@ -390,10 +386,9 @@ const OptaVisionDashboard = ({ user }) => {
               </div>
             </div>
 
-            {/* Espace Droite - User Menu & Theme Toggle */}
             <div className="hidden md:flex justify-end items-center gap-6 order-2 md:order-3">
               <button className="w-10 h-10 flex items-center justify-center text-secondary-text hover:text-white bg-white/5 border border-white/10 rounded-full transition-all">
-                <Activity size={18} className="rotate-45" /> {/* Simulation icône soleil du screen */}
+                <Activity size={18} className="rotate-45" />
               </button>
 
               <div className="relative">
@@ -411,7 +406,6 @@ const OptaVisionDashboard = ({ user }) => {
                   <ChevronDown size={14} className={`transition-transform duration-300 ${isUserMenuOpen ? 'rotate-180 text-black' : 'text-[#949494]'}`} />
                 </button>
 
-                {/* Dropdown Menu */}
                 <AnimatePresence>
                   {isUserMenuOpen && (
                     <>
@@ -465,17 +459,13 @@ const OptaVisionDashboard = ({ user }) => {
         </header>
       )}
 
-      {/* MAIN VIEW AREA */}
       <div className={`flex-1 flex flex-col overflow-hidden ${activeTool ? 'p-0' : 'p-8 md:p-12 lg:p-20 gap-12'}`}>
 
-
-        {/* DASHBOARD VIEW */}
         {view === 'DASHBOARD' && (
           <div className="flex-1 flex overflow-hidden relative">
 
             <div className={`flex-1 flex flex-col animate-in fade-in duration-500 overflow-hidden ${activeTool ? '' : 'space-y-12 pr-4'}`}>
 
-              {/* TABS NAVIGATION - MASQUÉ SI OUTIL ACTIF */}
               {!activeTool && (
                 <div className="flex items-center justify-between">
                   <nav className="flex items-center gap-2 bg-white/5 border border-white/10 p-1.5 rounded-full w-fit">
@@ -507,7 +497,6 @@ const OptaVisionDashboard = ({ user }) => {
                 </div>
               )}
 
-              {/* MAIN CONTENT : TILES OR INTERNAL VIEW */}
               <main className={`flex-1 overflow-y-auto scrollbar-verge ${activeTool ? '' : 'pb-32'}`}>
                 <AnimatePresence mode="wait">
                   {!activeTool ? (
@@ -561,7 +550,6 @@ const OptaVisionDashboard = ({ user }) => {
                       animate={{ opacity: 1 }}
                       className="w-full h-full bg-[#131313] relative overflow-hidden"
                     >
-                      {/* CLOSE BUTTON */}
                       <button
                         onClick={() => { setActiveTool(null); setIsFilterOpen(false); }}
                         className="absolute top-10 right-10 z-[250] w-12 h-12 bg-white/5 border border-white/10 rounded-full flex items-center justify-center text-[#949494] hover:text-white hover:bg-red-500 transition-all group"
@@ -569,12 +557,11 @@ const OptaVisionDashboard = ({ user }) => {
                         <X size={20} className="group-hover:rotate-90 transition-transform" />
                       </button>
 
-                      {/* ROUTAGE IMMERSIF DES MODULES */}
                       {activeTool === 'events' ? (
                         <div className="w-full h-full p-8 overflow-hidden bg-[#131313] animate-in fade-in duration-700">
-                          {/* HYDRATATION ET FILTRAGE DU JOURNAL DES ÉVÉNEMENTS */}
                           <EventExplorer
-                            data={data}
+                            data={eventsData}
+                            eventsData={eventsData}
                             matchIds={explorationFilters.matches}
                             loading={loading}
                             filters={explorationFilters}
@@ -586,7 +573,7 @@ const OptaVisionDashboard = ({ user }) => {
                         </div>
                       ) : activeTool === 'sequences' ? (
                         <BuildUpExplorer 
-                          data={data} 
+                          data={{ sequences: buildupSequences }} 
                           loading={loading} 
                           matchIds={explorationFilters.matches}
                           playersList={playersList}
@@ -596,7 +583,7 @@ const OptaVisionDashboard = ({ user }) => {
                         />
                       ) : activeTool === 'shots' ? (
                         <ShotMapExplorer
-                          data={data}
+                          data={eventsData}
                           loading={loading}
                           onPlayVideo={handlePlaySingleVideo}
                           isVideoLoading={isVideoLoading}
@@ -631,7 +618,6 @@ const OptaVisionDashboard = ({ user }) => {
               </main>
             </div>
 
-            {/* LATERAL FILTER PANEL (DRAWER LEFT) */}
             <AnimatePresence>
               {isFilterOpen && (
                 <>
@@ -700,7 +686,10 @@ const OptaVisionDashboard = ({ user }) => {
                         stadiumsList={stadiumsList}
                         teamsList={teamsList}
                         filters={explorationFilters}
-                        onApply={(filters) => { setExplorationFilters(filters); fetchBuildup(filters); }} 
+                        onApply={(filters) => { 
+                          setExplorationFilters(filters); 
+                          fetchBuildup(filters); 
+                        }} 
                         onClose={() => setIsFilterOpen(false)} 
                       />
                     )}
@@ -729,7 +718,6 @@ const OptaVisionDashboard = ({ user }) => {
               )}
             </AnimatePresence>
 
-            {/* FLOATING TOGGLE BUTTON (BOTTOM LEFT) - CONDITIONNEL */}
             <AnimatePresence>
               {activeTool && activeTool !== 'ranking' && (
                 <motion.button
@@ -746,7 +734,6 @@ const OptaVisionDashboard = ({ user }) => {
           </div>
         )}
 
-        {/* ADMIN PANEL : SETTINGS MODAL (PRO SPACE) */}
         <AnimatePresence>
           {isSettingsOpen && (
             <SettingsModal 

@@ -117,6 +117,7 @@ const EventExplorer = ({
   playersList = [], 
   selectedSequence,
   isSequenceMode = false,
+  eventsData = [],
   onPlayVideo,
   isVideoLoading = false
 }) => {
@@ -162,12 +163,20 @@ const EventExplorer = ({
 
       if (data.job_id) {
         const videoUrl = await pollVideoJob(data.job_id);
-        const a = document.createElement('a');
-        a.href = videoUrl;
-        a.download = `OptaVision_Mix_${matchId}_${eventIds.length}_clips.mp4`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        fetch(videoUrl)
+          .then(response => response.blob())
+          .then(blob => {
+            const blobUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = blobUrl;
+            a.download = `OptaVision_Mixage_${Date.now()}.mp4`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(blobUrl);
+            document.body.removeChild(a);
+          })
+          .catch(err => console.error("Erreur de téléchargement Blob :", err));
       } else {
         throw new Error("Aucun Job ID reçu de l'API");
       }
@@ -268,14 +277,30 @@ const EventExplorer = ({
 
   const displayData = useMemo(() => {
     if (isSequenceMode) {
-      if (!selectedSequence || !data?.sequences) return [];
-      return data.sequences
-        .filter(seq => seq.seq_uuid === selectedSequence || seq.sub_sequence_id === selectedSequence)
-        .map(seq => ({
-          ...seq,
-          events: (seq.events || []).filter(hasRenderablePlayerId)
-        }))
-        .filter(seq => seq.events.length > 0);
+      if (!selectedSequence || !eventsData) return [];
+      
+      // Extraction de l'ID numérique si selectedSequence est un composite (ex: "12345_67")
+      const targetId = String(selectedSequence).includes('_') 
+        ? selectedSequence.split('_').pop() 
+        : selectedSequence;
+
+      // Filtrage local "Zero-Download" : on cherche tous les événements liés à la séquence dans le cache global
+      const sequenceEvents = eventsData.filter(e => {
+        const metrics = typeof e.advanced_metrics === 'string' ? JSON.parse(e.advanced_metrics) : (e.advanced_metrics || {});
+        // On compare avec sub_sequence_id ou possession_id (fallback)
+        const seqId = String(metrics.sub_sequence_id || metrics.possession_id || '');
+        return seqId === String(targetId);
+      }).filter(hasRenderablePlayerId);
+
+      if (sequenceEvents.length === 0) return [];
+
+      // On retourne un objet compatible avec le reste du rendu SVG (format séquence)
+      // IMPORTANT : BuildUpLayer a besoin du team_id pour filtrer les actions de progression
+      return [{
+        id: selectedSequence,
+        team_id: sequenceEvents[0]?.team_id,
+        events: sequenceEvents
+      }];
     }
     const baseData = Array.isArray(data) ? data : (data?.items || []);
     let filtered = baseData.filter(e => hasRenderablePlayerId(e) && e.type !== 'Out' && e.type_id !== 5);
@@ -288,7 +313,7 @@ const EventExplorer = ({
       filtered = filtered.filter(e => String(e.team_id) !== String(localOpponent));
     }
     return filtered;
-  }, [data, filters, isSequenceMode, selectedSequence]);
+  }, [data, filters, isSequenceMode, selectedSequence, eventsData]);
 
   const globalPlayerMap = useMemo(() => {
     const map = {};
