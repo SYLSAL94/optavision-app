@@ -21,7 +21,8 @@ import {
   Play,
   GitBranch,
   Network,
-  Map
+  Map,
+  Radar
 } from 'lucide-react';
 import ExplorationFilterPanel from './ExplorationFilterPanel';
 import BuildUpFilterPanel from './BuildUpFilterPanel';
@@ -33,6 +34,7 @@ import ShotMapExplorer from './ShotMapExplorer';
 import RankingExplorer from './RankingExplorer';
 import ChainBoardExplorer from './ChainBoardExplorer';
 import PassMapExplorer from './PassMapExplorer';
+import PassSonarExplorer from './PassSonarExplorer';
 import TerritoryExplorer from './TerritoryExplorer';
 import GlobalVideoPlayer from './GlobalVideoPlayer';
 import SettingsModal from '../layout/SettingsModal';
@@ -61,7 +63,7 @@ const OptaVisionDashboard = ({ user }) => {
   const [teamsList, setTeamsList] = useState([]);
   const [playersList, setPlayersList] = useState([]);
   const [activeTab, setActiveTab] = useState('exploration');
-  const [activeTool, setActiveTool] = useState(null); // 'events', 'chainboard', 'passmap', 'territory', 'sequences', 'shots'
+  const [activeTool, setActiveTool] = useState(null); // 'events', 'chainboard', 'passmap', 'passsonar', 'territory', 'sequences', 'shots'
   const [globalVideoUrl, setGlobalVideoUrl] = useState(null);
   const [videoQueue, setVideoQueue] = useState([]);
   const [videoQueueIndex, setVideoQueueIndex] = useState(-1);
@@ -413,6 +415,7 @@ const OptaVisionDashboard = ({ user }) => {
     if (activeTool === 'ranking') return;
     if (activeTool === 'chainboard') return;
     if (activeTool === 'passmap') return;
+    if (activeTool === 'passsonar') return;
     if (activeTool === 'territory') return;
     if (activeTool === 'sequences') {
       Promise.resolve().then(() => fetchBuildup(explorationFilters));
@@ -618,6 +621,15 @@ const OptaVisionDashboard = ({ user }) => {
                       )}
                       {activeTab === 'exploration' && (
                         <TileSkeleton
+                          title="PassSonar"
+                          desc="Distribution directionnelle des passes par joueur, volume, distance, reussite et xT."
+                          icon={<Radar />}
+                          color="text-[#3cffd0]"
+                          onClick={() => setActiveTool('passsonar')}
+                        />
+                      )}
+                      {activeTab === 'exploration' && (
+                        <TileSkeleton
                           title="Territory"
                           desc="Carte de territoire API-first par zones, domination et recuperations."
                           icon={<Map />}
@@ -713,6 +725,10 @@ const OptaVisionDashboard = ({ user }) => {
                           onPlayVideo={handlePlaySingleVideo}
                           onPlayPlaylist={handlePlayPlaylist}
                           isVideoLoading={isVideoLoading}
+                        />
+                      ) : activeTool === 'passsonar' ? (
+                        <PassSonarExplorer
+                          filters={explorationFilters}
                         />
                       ) : activeTool === 'territory' ? (
                         <TerritoryExplorer
