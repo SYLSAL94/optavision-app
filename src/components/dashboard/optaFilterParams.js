@@ -17,6 +17,7 @@ export const appendExplorationFilterParams = (params, requestFilters = {}) => {
   if (requestFilters.location?.length > 0) params.append('location', requestFilters.location.join(','));
   if (requestFilters.zone?.length > 0) params.append('zone', requestFilters.zone.join(','));
   if (requestFilters.next_action_types?.length > 0) params.append('next_action_types', requestFilters.next_action_types.join(','));
+  if (requestFilters.previous_action_types?.length > 0) params.append('previous_action_types', requestFilters.previous_action_types.join(','));
   if (requestFilters.exclude_types?.length > 0) params.append('exclude_types', requestFilters.exclude_types.join(','));
   if (requestFilters.tactical_positions?.length > 0) params.append('tactical_positions', requestFilters.tactical_positions.join(','));
   if (requestFilters.exclude_positions?.length > 0) params.append('exclude_positions', requestFilters.exclude_positions.join(','));

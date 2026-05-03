@@ -25,6 +25,7 @@ const ExplorationFilterPanel = ({
   matchesList = [], 
   availableActionTypes = [], 
   availableNextActionTypes = [],
+  availablePreviousActionTypes = [],
   competitionsList = [],
   seasonsList = [],
   weeksList = [],
@@ -99,6 +100,7 @@ const ExplorationFilterPanel = ({
       phase: [],
       stadium: [],
       next_action_types: [],
+      previous_action_types: [],
       exclude_types: [],
       tactical_positions: [],
       exclude_positions: [],
@@ -261,7 +263,7 @@ const ExplorationFilterPanel = ({
           icon={<Activity size={18} />}
           isOpen={openSection === 'primary'}
           onToggle={() => setOpenSection(openSection === 'primary' ? null : 'primary')}
-          badge={(pendingFilters.types?.length || 0) + (pendingFilters.exclude_types?.length || 0) + (pendingFilters.next_action_types?.length || 0) + (pendingFilters.players?.length || 0)}
+          badge={(pendingFilters.types?.length || 0) + (pendingFilters.exclude_types?.length || 0) + (pendingFilters.next_action_types?.length || 0) + (pendingFilters.previous_action_types?.length || 0) + (pendingFilters.players?.length || 0)}
         >
           <div className="space-y-10">
             <MultiSelectWithChips 
@@ -279,6 +281,14 @@ const ExplorationFilterPanel = ({
               options={availableNextActionTypes.length > 0 ? availableNextActionTypes : availableActionTypes} 
               selected={pendingFilters.next_action_types || []} 
               onChange={(vals) => setPendingFilters({ ...pendingFilters, next_action_types: vals })} 
+              placeholder="Sélectionner..." 
+            />
+
+            <MultiSelectWithChips 
+              label="Action Précédente" 
+              options={availablePreviousActionTypes.length > 0 ? availablePreviousActionTypes : availableActionTypes} 
+              selected={pendingFilters.previous_action_types || []} 
+              onChange={(vals) => setPendingFilters({ ...pendingFilters, previous_action_types: vals })} 
               placeholder="Sélectionner..." 
             />
 

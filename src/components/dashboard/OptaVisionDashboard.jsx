@@ -82,6 +82,7 @@ const OptaVisionDashboard = ({ user }) => {
     phase: [],
     stadium: [],
     next_action_types: [],
+    previous_action_types: [],
     exclude_types: [],
     tactical_positions: [],
     exclude_positions: [],
@@ -343,6 +344,7 @@ const OptaVisionDashboard = ({ user }) => {
 
   const [availableActionTypes, setAvailableActionTypes] = useState([]);
   const [availableNextActionTypes, setAvailableNextActionTypes] = useState([]);
+  const [availablePreviousActionTypes, setAvailablePreviousActionTypes] = useState([]);
   const [competitionsList, setCompetitionsList] = useState([]);
   const [seasonsList, setSeasonsList] = useState([]);
   const [weeksList, setWeeksList] = useState([]);
@@ -374,6 +376,7 @@ const OptaVisionDashboard = ({ user }) => {
         setStadiumsList(meta.stadiums || []);
         setAdvancedMetricsList(meta.advanced_metrics_keys || []);
         setAvailableNextActionTypes(meta.next_action_types || meta.action_types || []);
+        setAvailablePreviousActionTypes(meta.previous_action_types || meta.action_types || []);
         
         const teamObjects = meta.teams 
           ? Object.entries(meta.teams).map(([id, name]) => ({ id, name }))
@@ -660,6 +663,7 @@ const OptaVisionDashboard = ({ user }) => {
                           matchesList={matchesList}
                           availableActionTypes={availableActionTypes}
                           availableNextActionTypes={availableNextActionTypes}
+                          availablePreviousActionTypes={availablePreviousActionTypes}
                           competitionsList={competitionsList}
                           seasonsList={seasonsList}
                           weeksList={weeksList}
@@ -706,6 +710,7 @@ const OptaVisionDashboard = ({ user }) => {
                         matchesList={matchesList}
                         availableActionTypes={availableActionTypes}
                         availableNextActionTypes={availableNextActionTypes}
+                        availablePreviousActionTypes={availablePreviousActionTypes}
                         competitionsList={competitionsList}
                         seasonsList={seasonsList}
                         weeksList={weeksList}
@@ -725,6 +730,7 @@ const OptaVisionDashboard = ({ user }) => {
                         matchesList={matchesList}
                         availableActionTypes={availableActionTypes}
                         availableNextActionTypes={availableNextActionTypes}
+                        availablePreviousActionTypes={availablePreviousActionTypes}
                         competitionsList={competitionsList}
                         seasonsList={seasonsList}
                         weeksList={weeksList}
