@@ -2,17 +2,17 @@ import { motion } from 'framer-motion';
 
 const POSITION_ZONES = [
   { id: 1, label: 'GK', top: '85%', left: '50%', codes: ['GK'] },
-  { id: 2, label: 'CB', top: '72%', left: '50%', codes: ['RCD', 'LCD'] },
+  { id: 2, label: 'CB', top: '72%', left: '50%', codes: ['RCB', 'CB', 'LCB'] },
   { id: 3, label: 'LB', top: '68%', left: '15%', codes: ['LB', 'LWB'] },
   { id: 4, label: 'RB', top: '68%', left: '85%', codes: ['RB', 'RWB'] },
-  { id: 5, label: 'DM', top: '58%', left: '50%', codes: ['RDM', 'LDM'] },
+  { id: 5, label: 'DM', top: '58%', left: '50%', codes: ['RDM', 'CDM', 'LDM'] },
   { id: 6, label: 'LM', top: '45%', left: '15%', codes: ['LM'] },
   { id: 7, label: 'RM', top: '45%', left: '85%', codes: ['RM'] },
-  { id: 8, label: 'CM', top: '45%', left: '50%', codes: ['CMF'] },
-  { id: 9, label: 'AM', top: '32%', left: '50%', codes: ['AMF', 'LAMF', 'RAMF'] },
+  { id: 8, label: 'CM', top: '45%', left: '50%', codes: ['RCM', 'CM', 'LCM'] },
+  { id: 9, label: 'AM', top: '32%', left: '50%', codes: ['RAM', 'CAM', 'LAM'] },
   { id: 10, label: 'LW', top: '20%', left: '15%', codes: ['LW'] },
   { id: 11, label: 'RW', top: '20%', left: '85%', codes: ['RW'] },
-  { id: 12, label: 'ST', top: '10%', left: '50%', codes: ['ST'] },
+  { id: 12, label: 'ST', top: '10%', left: '50%', codes: ['RCF', 'ST', 'LCF', 'SS'] },
 ];
 
 const FIELD_ZONE_GROUPS = [

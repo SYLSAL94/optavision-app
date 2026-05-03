@@ -21,6 +21,12 @@ export const appendExplorationFilterParams = (params, requestFilters = {}) => {
   if (requestFilters.exclude_types?.length > 0) params.append('exclude_types', requestFilters.exclude_types.join(','));
   if (requestFilters.tactical_positions?.length > 0) params.append('tactical_positions', requestFilters.tactical_positions.join(','));
   if (requestFilters.exclude_positions?.length > 0) params.append('exclude_positions', requestFilters.exclude_positions.join(','));
+  if (
+    (requestFilters.tactical_positions?.length > 0 || requestFilters.exclude_positions?.length > 0)
+    && requestFilters.position_filter_scope
+  ) {
+    params.append('position_filter_scope', requestFilters.position_filter_scope);
+  }
   if (requestFilters.start_zones?.length > 0) params.append('start_zones', requestFilters.start_zones.join(','));
   if (requestFilters.end_zones?.length > 0) params.append('end_zones', requestFilters.end_zones.join(','));
   if (requestFilters.competition?.length > 0) params.append('competition', requestFilters.competition.join(','));

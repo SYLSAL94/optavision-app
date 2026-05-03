@@ -98,6 +98,7 @@ const OptaVisionDashboard = ({ user }) => {
     exclude_types: [],
     tactical_positions: [],
     exclude_positions: [],
+    position_filter_scope: 'current',
     start_zones: [],
     end_zones: [],
     advanced_tactics: [],

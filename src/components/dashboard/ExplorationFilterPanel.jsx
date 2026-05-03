@@ -65,6 +65,16 @@ const ExplorationFilterPanel = ({
     });
   };
 
+  const updatePositionFilter = (key, values) => {
+    const uniqueValues = [...new Set(values)];
+    const oppositeKey = key === 'tactical_positions' ? 'exclude_positions' : 'tactical_positions';
+    setPendingFilters(prev => ({
+      ...prev,
+      [key]: uniqueValues,
+      [oppositeKey]: (prev[oppositeKey] || []).filter(position => !uniqueValues.includes(position))
+    }));
+  };
+
   const passDistanceMin = pendingFilters.pass_distance_min ?? DISTANCE_RANGE_MIN;
   const passDistanceMax = pendingFilters.pass_distance_max ?? DISTANCE_RANGE_MAX;
   const carryDistanceMin = pendingFilters.carry_distance_min ?? DISTANCE_RANGE_MIN;
@@ -104,6 +114,7 @@ const ExplorationFilterPanel = ({
       exclude_types: [],
       tactical_positions: [],
       exclude_positions: [],
+      position_filter_scope: 'current',
       start_zones: [],
       end_zones: [],
       advanced_tactics: [],
@@ -384,12 +395,40 @@ const ExplorationFilterPanel = ({
               placeholder="Sélectionner..." 
             />
 
+            <div className="space-y-3">
+              <label className="verge-label-mono text-[10px] text-hazard-white/40 block uppercase tracking-widest font-black">
+                Mode des postes
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { value: 'current', label: 'Courant' },
+                  { value: 'multi', label: 'Multi-postes' }
+                ].map(option => {
+                  const isActive = (pendingFilters.position_filter_scope || 'current') === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setPendingFilters({ ...pendingFilters, position_filter_scope: option.value })}
+                      className={`min-h-10 border rounded-[2px] verge-label-mono text-[9px] font-black uppercase tracking-widest transition-all ${
+                        isActive
+                          ? 'bg-jelly-mint border-jelly-mint text-absolute-black'
+                          : 'bg-surface-slate border-hazard-white/10 text-secondary-text hover:border-hazard-white/30 hover:text-hazard-white'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-4">
                 <label className="verge-label-mono text-[10px] text-hazard-white/40 mb-4 block uppercase tracking-widest font-black group-hover:text-hazard-white transition-colors">Positions Tactiques</label>
                 <TacticalPositionPicker 
                   selectedPositions={pendingFilters.tactical_positions || []}
-                  onChange={(vals) => setPendingFilters({ ...pendingFilters, tactical_positions: vals })}
+                  onChange={(vals) => updatePositionFilter('tactical_positions', vals)}
                 />
               </div>
 
@@ -397,7 +436,7 @@ const ExplorationFilterPanel = ({
                 <label className="verge-label-mono text-[10px] text-hazard-white/40 mb-4 block uppercase tracking-widest font-black group-hover:text-hazard-white transition-colors">Exclure Positions</label>
                 <TacticalPositionPicker 
                   selectedPositions={pendingFilters.exclude_positions || []}
-                  onChange={(vals) => setPendingFilters({ ...pendingFilters, exclude_positions: vals })}
+                  onChange={(vals) => updatePositionFilter('exclude_positions', vals)}
                 />
               </div>
             </div>
