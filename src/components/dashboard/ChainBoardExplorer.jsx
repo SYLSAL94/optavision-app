@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Circle, Square, Trash2, Network, Loader2, PlayCircle, MapPin, Search } from 'lucide-react';
+import { Circle, Square, Trash2, Network, Loader2, PlayCircle, MapPin, Search, RotateCw } from 'lucide-react';
 import { OPTAVISION_API_URL } from '../../config';
 import { TacticalPitch } from './TacticalPitch';
 import { EventTooltip } from './EventTooltip';
@@ -15,10 +15,19 @@ const ZONE_COLORS = {
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-const svgToOpta = (point) => ({
-  x: clamp((point.x / PITCH_DIMENSIONS.width) * 100, 0, 100),
-  y: clamp(100 - ((point.y / PITCH_DIMENSIONS.height) * 100), 0, 100)
-});
+const svgToOpta = (point, orientation = 'horizontal') => {
+  if (orientation === 'vertical') {
+    return {
+      x: clamp(100 - ((point.y / PITCH_DIMENSIONS.width) * 100), 0, 100),
+      y: clamp(100 - ((point.x / PITCH_DIMENSIONS.height) * 100), 0, 100)
+    };
+  }
+
+  return {
+    x: clamp((point.x / PITCH_DIMENSIONS.width) * 100, 0, 100),
+    y: clamp(100 - ((point.y / PITCH_DIMENSIONS.height) * 100), 0, 100)
+  };
+};
 
 const normaliseEvent = (event = {}) => ({
   ...event,
@@ -120,9 +129,11 @@ const ChainBoardLayer = ({ chains, selectedChainId, focusedEventId, projectPoint
   );
 };
 
-const ZoneOverlay = ({ zonesByMode, draftZone, projectPoint }) => {
+const ZoneOverlay = ({ zonesByMode, draftZone, projectPoint, orientation }) => {
   const renderZone = (zone, key, mode, index, isDraft = false) => {
     const colors = ZONE_COLORS[mode] || ZONE_COLORS.start;
+    const circleRx = (zone.radius / 100) * (orientation === 'vertical' ? PITCH_DIMENSIONS.height : PITCH_DIMENSIONS.width);
+    const circleRy = (zone.radius / 100) * (orientation === 'vertical' ? PITCH_DIMENSIONS.width : PITCH_DIMENSIONS.height);
     if (zone.shape === 'circle') {
       const center = projectPoint(zone.x, zone.y);
       if (!center) return null;
@@ -131,8 +142,8 @@ const ZoneOverlay = ({ zonesByMode, draftZone, projectPoint }) => {
           <ellipse
             cx={center.x}
             cy={center.y}
-            rx={(zone.radius / 100) * PITCH_DIMENSIONS.width}
-            ry={(zone.radius / 100) * PITCH_DIMENSIONS.height}
+            rx={circleRx}
+            ry={circleRy}
             fill={colors.fill}
             stroke={colors.stroke}
             strokeWidth="0.35"
@@ -194,8 +205,9 @@ const ChainBoardExplorer = ({ filters = {}, playersList = [], onPlayVideo, isVid
   const [focusedEvent, setFocusedEvent] = useState(null);
   const [hoveredEvent, setHoveredEvent] = useState(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [orientation, setOrientation] = useState('horizontal');
 
-  const { projectPoint, getPitchViewBox, getPitchSvgPoint } = usePitchProjection('horizontal');
+  const { projectPoint, getPitchViewBox, getPitchSvgPoint } = usePitchProjection(orientation);
   const pitchViewBox = useMemo(() => getPitchViewBox('full'), [getPitchViewBox]);
 
   const playerMap = useMemo(() => {
@@ -234,7 +246,7 @@ const ChainBoardExplorer = ({ filters = {}, playersList = [], onPlayVideo, isVid
     if (event.target.closest?.('[data-chain-event-id]')) return;
     const point = getPitchSvgPoint(event, pitchViewBox);
     if (!point) return;
-    const optaPoint = svgToOpta(point);
+    const optaPoint = svgToOpta(point, orientation);
     event.preventDefault();
 
     if (shape === 'circle') {
@@ -243,20 +255,20 @@ const ChainBoardExplorer = ({ filters = {}, playersList = [], onPlayVideo, isVid
     }
 
     setDrawState({ start: optaPoint, current: optaPoint });
-  }, [addZone, brushSize, getPitchSvgPoint, pitchViewBox, shape]);
+  }, [addZone, brushSize, getPitchSvgPoint, orientation, pitchViewBox, shape]);
 
   const handlePitchMouseMove = useCallback((event) => {
     const point = getPitchSvgPoint(event, pitchViewBox);
     if (!point) return;
     if (drawState.start) {
-      setDrawState(prev => ({ ...prev, current: svgToOpta(point) }));
+      setDrawState(prev => ({ ...prev, current: svgToOpta(point, orientation) }));
     }
-  }, [drawState.start, getPitchSvgPoint, pitchViewBox]);
+  }, [drawState.start, getPitchSvgPoint, orientation, pitchViewBox]);
 
   const handlePitchMouseUp = useCallback((event) => {
     if (!drawState.start) return;
     const point = getPitchSvgPoint(event, pitchViewBox);
-    const end = point ? svgToOpta(point) : drawState.current;
+    const end = point ? svgToOpta(point, orientation) : drawState.current;
     setDrawState(EMPTY_DRAW);
     if (!end) return;
     if (Math.abs(end.x - drawState.start.x) < 1 || Math.abs(end.y - drawState.start.y) < 1) return;
@@ -267,7 +279,7 @@ const ChainBoardExplorer = ({ filters = {}, playersList = [], onPlayVideo, isVid
       x2: end.x,
       y2: end.y
     });
-  }, [addZone, drawState, getPitchSvgPoint, pitchViewBox]);
+  }, [addZone, drawState, getPitchSvgPoint, orientation, pitchViewBox]);
 
   const clearZones = () => {
     setZonesByMode({ start: [], end: [], relay: [] });
@@ -449,21 +461,34 @@ const ChainBoardExplorer = ({ filters = {}, playersList = [], onPlayVideo, isVid
         </aside>
 
         <section className="min-w-0 bg-[#1a1a1a] border border-white/10 rounded-[4px] overflow-hidden relative min-h-[360px] sm:min-h-[460px] lg:min-h-[560px] xl:min-h-[620px] 2xl:h-full 2xl:min-h-0">
-          <div className="absolute left-3 right-3 top-3 sm:left-6 sm:right-auto sm:top-6 z-20 bg-black/60 border border-white/10 rounded-[2px] px-3 sm:px-4 py-2 flex items-center gap-2 sm:gap-3">
-            <MapPin size={13} className="text-[#3cffd0]" />
-            <span className="verge-label-mono text-[8px] sm:text-[9px] text-white font-black uppercase tracking-[0.15em] sm:tracking-[0.2em] truncate">
-              {shape === 'rectangle' ? 'Glisser sur le terrain' : 'Cliquer pour poser un cercle'}
-            </span>
+          <div className="absolute left-3 right-3 top-3 sm:left-6 sm:right-6 sm:top-6 z-20 flex flex-wrap items-center gap-2">
+            <div className="bg-black/60 border border-white/10 rounded-[2px] px-3 sm:px-4 py-2 flex items-center gap-2 sm:gap-3 min-w-0">
+              <MapPin size={13} className="text-[#3cffd0] shrink-0" />
+              <span className="verge-label-mono text-[8px] sm:text-[9px] text-white font-black uppercase tracking-[0.15em] sm:tracking-[0.2em] truncate">
+                {shape === 'rectangle' ? 'Glisser sur le terrain' : 'Cliquer pour poser un cercle'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setOrientation(current => (current === 'horizontal' ? 'vertical' : 'horizontal'))}
+              className="bg-black/70 border border-[#3cffd0]/30 rounded-[2px] px-3 py-2 flex items-center gap-2 text-[#3cffd0] hover:bg-[#3cffd0] hover:text-black transition-all"
+              title="Rotation de la carte"
+            >
+              <RotateCw size={13} />
+              <span className="verge-label-mono text-[8px] font-black uppercase tracking-[0.18em]">
+                {orientation === 'horizontal' ? 'Horizontal' : 'Vertical'}
+              </span>
+            </button>
           </div>
           <TacticalPitch
             style={{ grass: '#111827', line: 'rgba(255,255,255,0.16)', background: '#050505' }}
-            orientation="horizontal"
+            orientation={orientation}
             view="full"
             onMouseDown={handlePitchMouseDown}
             onMouseMove={handlePitchMouseMove}
             onMouseUp={handlePitchMouseUp}
           >
-            <ZoneOverlay zonesByMode={zonesByMode} draftZone={draftZone} projectPoint={projectPoint} />
+            <ZoneOverlay zonesByMode={zonesByMode} draftZone={draftZone} projectPoint={projectPoint} orientation={orientation} />
             <ChainBoardLayer
               chains={chains}
               selectedChainId={selectedChainId}
