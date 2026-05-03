@@ -213,8 +213,9 @@ const RankingExplorer = ({
   const totals = useMemo(() => {
     const totalActions = ranking.reduce((sum, row) => sum + Number(row.total_actions || 0), 0);
     const successfulActions = ranking.reduce((sum, row) => sum + Number(row.successful_actions || 0), 0);
+    const totalXt = ranking.reduce((sum, row) => sum + Number(row.total_xt_generated || 0), 0);
     const successRate = totalActions > 0 ? Math.round((successfulActions / totalActions) * 100) : 0;
-    return { totalActions, successfulActions, successRate };
+    return { totalActions, successfulActions, totalXt, successRate };
   }, [ranking]);
 
   const applyRankingFilters = (nextFilters) => {
@@ -247,8 +248,9 @@ const RankingExplorer = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 border-b border-white/5 bg-black/30">
+          <div className="grid grid-cols-4 border-b border-white/5 bg-black/30">
             {[
+              ['xT Crédit', totals.totalXt.toFixed(3)],
               ['Actions', totals.totalActions.toLocaleString()],
               ['Reussies', totals.successfulActions.toLocaleString()],
               ['Reussite', `${totals.successRate}%`]
@@ -260,9 +262,10 @@ const RankingExplorer = ({
             ))}
           </div>
 
-          <div className="grid grid-cols-[70px_minmax(0,1fr)_130px_130px_110px] gap-4 px-6 py-4 border-b border-white/5 bg-[#131313] verge-label-mono text-[8px] text-[#949494] uppercase tracking-widest font-black">
+          <div className="grid grid-cols-[70px_minmax(0,1fr)_120px_110px_110px_100px] gap-4 px-6 py-4 border-b border-white/5 bg-[#131313] verge-label-mono text-[8px] text-[#949494] uppercase tracking-widest font-black">
             <span>Rank</span>
             <span>Joueur</span>
+            <span className="text-right">xT Crédit</span>
             <span className="text-right">Actions</span>
             <span className="text-right">Reussies</span>
             <span className="text-right">Taux</span>
@@ -282,6 +285,7 @@ const RankingExplorer = ({
               ranking.map((player, index) => {
                 const totalActions = Number(player.total_actions || 0);
                 const successfulActions = Number(player.successful_actions || 0);
+                const totalXt = Number(player.total_xt_generated || 0);
                 const successRate = totalActions > 0 ? Math.round((successfulActions / totalActions) * 100) : 0;
                 return (
                   <motion.div
@@ -289,7 +293,7 @@ const RankingExplorer = ({
                     initial={{ opacity: 0, x: 16 }}
                     animate={{ opacity: 1, x: 0 }}
                     onClick={() => handleTargetPlayer(player)}
-                    className={`grid grid-cols-[70px_minmax(0,1fr)_130px_130px_110px] gap-4 items-center px-6 py-2.5 border-l-2 cursor-pointer transition-all group ${selectedPlayerForEvents?.player_id === player.player_id ? 'bg-[#3cffd0]/10 border-[#3cffd0]' : 'hover:bg-[#3cffd0]/5 border-transparent'}`}
+                    className={`grid grid-cols-[70px_minmax(0,1fr)_120px_110px_110px_100px] gap-4 items-center px-6 py-2.5 border-l-2 cursor-pointer transition-all group ${selectedPlayerForEvents?.player_id === player.player_id ? 'bg-[#3cffd0]/10 border-[#3cffd0]' : 'hover:bg-[#3cffd0]/5 border-transparent'}`}
                   >
                     <RankBadge rank={(page - 1) * RANKING_PAGE_SIZE + index + 1} />
                     <div className="min-w-0 flex items-center justify-between pr-4">
@@ -309,6 +313,7 @@ const RankingExplorer = ({
                         <Map size={12} />
                       </button>
                     </div>
+                    <div className="text-right verge-label-mono text-xl text-[#3cffd0] font-black">{totalXt.toFixed(3)}</div>
                     <div className="text-right verge-label-mono text-xl text-[#3cffd0] font-black">{totalActions}</div>
                     <div className="text-right verge-label-mono text-lg text-white font-black">{successfulActions}</div>
                     <div className="text-right">
@@ -398,7 +403,7 @@ const RankingExplorer = ({
                     const getPlayerName = (id) => id ? (globalPlayerMap[String(id)] || String(id)) : null;
                     const receiverName = getPlayerName(parsedMetrics?.receiver || e.receiver_id || e.receiver);
                     const opponentName = getPlayerName(parsedMetrics?.opponent_id);
-                    const xTLabel = formatSignedMetric(parsedMetrics?.xT);
+                    const xTLabel = formatSignedMetric(parsedMetrics?.xT_credit ?? e.xT_credit ?? parsedMetrics?.xT);
                     const isProgressive = parsedMetrics?.is_progressive === true || parsedMetrics?.is_progressive === 'true';
                     
                     const rawDuelWon = parsedMetrics?.duel_won === true || parsedMetrics?.duel_won === 'true';
@@ -435,7 +440,7 @@ const RankingExplorer = ({
                                 <span className="verge-label-mono text-[8px] text-[#949494] truncate">Vers: <span className="text-white/80">{receiverName}</span></span>
                               )}
                               {isPassLike && xTLabel && (
-                                <span className="verge-label-mono text-[8px] text-[#3cffd0] font-black">xT {xTLabel}</span>
+                                <span className="verge-label-mono text-[8px] text-[#3cffd0] font-black">xTc {xTLabel}</span>
                               )}
                               {isDuelLike && opponentName && (
                                 <span className="verge-label-mono text-[8px] text-[#949494] truncate">Contre: <span className="text-white/80">{opponentName}</span></span>

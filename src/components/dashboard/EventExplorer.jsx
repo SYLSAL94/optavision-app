@@ -472,7 +472,7 @@ const EventExplorer = ({
             const getPlayerName = (id) => id ? (globalPlayerMap[String(id)] || String(id)) : null;
             const receiverName = getPlayerName(parsedMetrics?.receiver || e.receiver_id || e.receiver);
             const opponentName = getPlayerName(parsedMetrics?.opponent_id);
-            const xTLabel = formatSignedMetric(parsedMetrics?.xT);
+            const xTLabel = formatSignedMetric(parsedMetrics?.xT_credit ?? e.xT_credit ?? parsedMetrics?.xT);
             
             const isProgressive = parsedMetrics?.is_progressive === true || parsedMetrics?.is_progressive === 'true';
             const duelWon = (parsedMetrics?.duel_won === true || parsedMetrics?.duel_won === 'true') && !FORCED_DUEL_LOSS_KEYS.has(typeKey);
@@ -509,7 +509,7 @@ const EventExplorer = ({
                     </div>
                     <div className="mt-1 flex items-center gap-2 overflow-hidden">
                       {isPassLike && receiverName && <span className="verge-label-mono text-[8px] text-[#949494] truncate">Vers: <span className="text-white/80">{receiverName}</span></span>}
-                      {isPassLike && xTLabel && <span className="verge-label-mono text-[8px] text-[#3cffd0] font-black">xT {xTLabel}</span>}
+                      {isPassLike && xTLabel && <span className="verge-label-mono text-[8px] text-[#3cffd0] font-black">xTc {xTLabel}</span>}
                       {isDuelLike && (parsedMetrics?.duel_won || duelLost) && (
                         <span className={`verge-label-mono text-[7px] px-1.5 py-0.5 rounded-[2px] text-black font-black uppercase ${duelWon ? 'bg-[#3cffd0]' : 'bg-[#ff4d4d]'}`}>
                           {duelWon ? 'Gagné' : 'Perdu'}
