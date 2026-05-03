@@ -92,7 +92,11 @@ const OptaVisionDashboard = ({ user }) => {
     endDate: '',
     player_id: [],
     receiver_id: [],
-    opponent_id: []
+    opponent_id: [],
+    pass_distance_min: null,
+    pass_distance_max: null,
+    carry_distance_min: null,
+    carry_distance_max: null
   });
   const [shotFilters, setShotFilters] = useState({
     outcomes: [],

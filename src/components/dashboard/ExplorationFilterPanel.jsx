@@ -12,6 +12,10 @@ import {
 import AccordionSection from './AccordionSection';
 import MultiSelectWithChips from '../ui/MultiSelectWithChips';
 import TacticalPositionPicker from './TacticalPositionPicker';
+import DualRangeSlider from '../ui/DualRangeSlider';
+
+const DISTANCE_RANGE_MIN = 0;
+const DISTANCE_RANGE_MAX = 80;
 
 /**
  * ExplorationFilterPanel - Version Dynamique (Auto-Discovery)
@@ -51,6 +55,30 @@ const ExplorationFilterPanel = ({
     setPendingFilters({ ...pendingFilters, [category]: value });
   };
 
+  const updateDistanceRange = (minKey, maxKey, nextMin, nextMax) => {
+    const isFullRange = nextMin === DISTANCE_RANGE_MIN && nextMax === DISTANCE_RANGE_MAX;
+    setPendingFilters({
+      ...pendingFilters,
+      [minKey]: isFullRange ? null : nextMin,
+      [maxKey]: isFullRange ? null : nextMax
+    });
+  };
+
+  const passDistanceMin = pendingFilters.pass_distance_min ?? DISTANCE_RANGE_MIN;
+  const passDistanceMax = pendingFilters.pass_distance_max ?? DISTANCE_RANGE_MAX;
+  const carryDistanceMin = pendingFilters.carry_distance_min ?? DISTANCE_RANGE_MIN;
+  const carryDistanceMax = pendingFilters.carry_distance_max ?? DISTANCE_RANGE_MAX;
+  const passDistanceActive = (
+    pendingFilters.pass_distance_min !== null && pendingFilters.pass_distance_min !== undefined
+  ) || (
+    pendingFilters.pass_distance_max !== null && pendingFilters.pass_distance_max !== undefined
+  );
+  const carryDistanceActive = (
+    pendingFilters.carry_distance_min !== null && pendingFilters.carry_distance_min !== undefined
+  ) || (
+    pendingFilters.carry_distance_max !== null && pendingFilters.carry_distance_max !== undefined
+  );
+
   const resetFilters = () => {
     const initial = {
       matches: [],
@@ -81,7 +109,11 @@ const ExplorationFilterPanel = ({
       endDate: '',
       player_id: [],
       receiver_id: [],
-      opponent_id: []
+      opponent_id: [],
+      pass_distance_min: null,
+      pass_distance_max: null,
+      carry_distance_min: null,
+      carry_distance_max: null
     };
     setPendingFilters(initial);
   };
@@ -389,6 +421,7 @@ const ExplorationFilterPanel = ({
           icon={<Zap size={18} />}
           isOpen={openSection === 'performance'}
           onToggle={() => setOpenSection(openSection === 'performance' ? null : 'performance')}
+          badge={(pendingFilters.min_xt > 0 ? 1 : 0) + (pendingFilters.outcome !== null && pendingFilters.outcome !== undefined ? 1 : 0) + (pendingFilters.advanced_tactics?.length || 0) + (passDistanceActive ? 1 : 0) + (carryDistanceActive ? 1 : 0)}
         >
           <div className="space-y-10">
             <FilterGroup label={`Seuil de Menace (xT >= ${pendingFilters.min_xt})`}>
@@ -404,6 +437,46 @@ const ExplorationFilterPanel = ({
                  <span>DANGER (+0.5)</span>
               </div>
             </FilterGroup>
+
+            <div className="space-y-8">
+              <DualRangeSlider
+                label="Distance des passes"
+                min={DISTANCE_RANGE_MIN}
+                max={DISTANCE_RANGE_MAX}
+                step={1}
+                unit="m"
+                currentMin={passDistanceMin}
+                currentMax={passDistanceMax}
+                onChange={(nextMin, nextMax) => updateDistanceRange('pass_distance_min', 'pass_distance_max', nextMin, nextMax)}
+              />
+
+              <DualRangeSlider
+                label="Distance des carries"
+                min={DISTANCE_RANGE_MIN}
+                max={DISTANCE_RANGE_MAX}
+                step={1}
+                unit="m"
+                currentMin={carryDistanceMin}
+                currentMax={carryDistanceMax}
+                onChange={(nextMin, nextMax) => updateDistanceRange('carry_distance_min', 'carry_distance_max', nextMin, nextMax)}
+              />
+
+              {(passDistanceActive || carryDistanceActive) && (
+                <button
+                  type="button"
+                  onClick={() => setPendingFilters({
+                    ...pendingFilters,
+                    pass_distance_min: null,
+                    pass_distance_max: null,
+                    carry_distance_min: null,
+                    carry_distance_max: null
+                  })}
+                  className="verge-label-mono text-[9px] text-[#949494] hover:text-white uppercase font-black transition-colors"
+                >
+                  Reinitialiser distances
+                </button>
+              )}
+            </div>
 
             <FilterGroup label="Résultat de l'action">
                <div className="grid grid-cols-3 gap-2">

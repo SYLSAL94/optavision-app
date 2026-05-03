@@ -30,6 +30,19 @@ export const appendExplorationFilterParams = (params, requestFilters = {}) => {
   if (requestFilters.stadium?.length > 0) params.append('stadium', requestFilters.stadium.join(','));
   if (requestFilters.advanced_tactics?.length > 0) params.append('advanced_tactics', requestFilters.advanced_tactics.join(','));
 
+  if (requestFilters.pass_distance_min !== null && requestFilters.pass_distance_min !== undefined) {
+    params.append('min_pass_distance', requestFilters.pass_distance_min.toString());
+  }
+  if (requestFilters.pass_distance_max !== null && requestFilters.pass_distance_max !== undefined) {
+    params.append('max_pass_distance', requestFilters.pass_distance_max.toString());
+  }
+  if (requestFilters.carry_distance_min !== null && requestFilters.carry_distance_min !== undefined) {
+    params.append('min_carry_distance', requestFilters.carry_distance_min.toString());
+  }
+  if (requestFilters.carry_distance_max !== null && requestFilters.carry_distance_max !== undefined) {
+    params.append('max_carry_distance', requestFilters.carry_distance_max.toString());
+  }
+
   return params;
 };
 
