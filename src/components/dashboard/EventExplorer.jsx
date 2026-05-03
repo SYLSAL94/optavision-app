@@ -81,6 +81,7 @@ const EventExplorer = ({
   isSequenceMode = false,
   eventsData = [],
   onPlayVideo,
+  onPlayPlaylist,
   isVideoLoading = false
 }) => {
   const [generatingEventId, setGeneratingEventId] = useState(null);
@@ -91,8 +92,6 @@ const EventExplorer = ({
   const [showEvents, setShowEvents] = useState(true);
   const [liveFluxPage, setLiveFluxPage] = useState(1);
   const [selectionBox, setSelectionBox] = useState(EMPTY_SELECTION_BOX);
-  const [playlist, setPlaylist] = useState([]);
-  const [playlistIndex, setPlaylistIndex] = useState(-1);
   const [isDownloading, setIsDownloading] = useState(false);
 
   // --- MOTEUR GÉOMÉTRIQUE UNIFIÉ ---
@@ -231,6 +230,8 @@ const EventExplorer = ({
 
   const handlePitchMouseDown = useCallback((event) => {
     if (event.button !== 0 || loading) return;
+    if (event.target.closest?.('[data-event-id]')) return;
+
     const point = getPitchSvgPoint(event, pitchViewBox);
     if (!point) return;
 
@@ -377,20 +378,7 @@ const EventExplorer = ({
 
   React.useEffect(() => {
     setSelectionBox({ ...EMPTY_SELECTION_BOX });
-    setPlaylist([]);
-    setPlaylistIndex(-1);
   }, [matchIds]);
-
-  React.useEffect(() => {
-    if (playlistIndex >= 0 && playlistIndex < playlist.length) {
-      const playNext = async () => {
-        setGeneratingEventId('batch');
-        await handlePlayFocusedVideo(playlist[playlistIndex]);
-        setGeneratingEventId(null);
-      };
-      playNext();
-    }
-  }, [playlistIndex, playlist]);
 
   React.useEffect(() => () => {
   }, []);
@@ -429,10 +417,17 @@ const EventExplorer = ({
             <button
               type="button"
               disabled={generatingEventId === 'batch'}
-              onClick={() => {
-                if (liveEventRows.length > 0) {
-                  setPlaylist(liveEventRows);
-                  setPlaylistIndex(0);
+              onClick={async () => {
+                if (liveEventRows.length === 0) return;
+                setGeneratingEventId('batch');
+                try {
+                  if (onPlayPlaylist) {
+                    await onPlayPlaylist(liveEventRows);
+                  } else {
+                    await handlePlayFocusedVideo(liveEventRows[0]);
+                  }
+                } finally {
+                  setGeneratingEventId(null);
                 }
               }}
               className={`px-3 py-1.5 rounded-[2px] verge-label-mono text-[9px] font-black uppercase flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(60,255,208,0.3)] ${generatingEventId === 'batch' ? 'bg-[#3cffd0]/20 text-[#3cffd0] cursor-wait' : 'bg-[#3cffd0] hover:bg-[#2edeb4] text-black cursor-pointer'}`}
@@ -693,7 +688,9 @@ const EventExplorer = ({
             onMouseDown={handlePitchMouseDown}
             onMouseMove={handlePitchMouseMove}
             onMouseUp={handlePitchMouseUp}
-            onClick={() => {
+            onClick={(event) => {
+              if (event.target.closest?.('[data-event-id]')) return;
+
               setFocusedEvent(null);
               setFocusedEventId(null);
               setHoveredEvent(null);

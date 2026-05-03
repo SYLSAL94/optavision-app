@@ -2,7 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 
-const GlobalVideoPlayer = ({ url, onClose, title = "OptaVision Elite Video Feed" }) => {
+const GlobalVideoPlayer = ({ url, onClose, onEnded, title = "OptaVision Elite Video Feed" }) => {
   return (
     <AnimatePresence>
       {url && (
@@ -32,9 +32,11 @@ const GlobalVideoPlayer = ({ url, onClose, title = "OptaVision Elite Video Feed"
             </div>
             <div className="aspect-video bg-black flex items-center justify-center">
               <video
+                key={url}
                 src={url}
                 controls
                 autoPlay
+                onEnded={onEnded}
                 className="w-full h-full object-contain"
               />
             </div>

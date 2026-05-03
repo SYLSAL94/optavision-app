@@ -34,6 +34,8 @@ import { API_BASE_URL, OPTAVISION_API_URL } from '../../config';
 import { appendExplorationFilterParams } from './optaFilterParams';
 import { pollVideoJob } from '../../utils/videoJobs';
 
+const DEFAULT_VIDEO_TITLE = "OptaVision Elite Video Feed";
+
 /**
  * OptaVisionDashboard - Squelette UI/UX Premium (Style The Verge)
  * Aligné sur le Design System du projet Scouting.
@@ -55,6 +57,9 @@ const OptaVisionDashboard = ({ user }) => {
   const [activeTab, setActiveTab] = useState('exploration');
   const [activeTool, setActiveTool] = useState(null); // 'events', 'sequences', 'shots'
   const [globalVideoUrl, setGlobalVideoUrl] = useState(null);
+  const [videoQueue, setVideoQueue] = useState([]);
+  const [videoQueueIndex, setVideoQueueIndex] = useState(-1);
+  const [videoPlayerTitle, setVideoPlayerTitle] = useState(DEFAULT_VIDEO_TITLE);
   const [view, setView] = useState('DASHBOARD');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -163,7 +168,13 @@ const OptaVisionDashboard = ({ user }) => {
     }
   };
 
-  const handlePlaySingleVideo = async (event) => {
+  const handlePlaySingleVideo = async (event, options = {}) => {
+    if (!options.preserveQueue) {
+      setVideoQueue([]);
+      setVideoQueueIndex(-1);
+      setVideoPlayerTitle(DEFAULT_VIDEO_TITLE);
+    }
+
     const isSequence = Array.isArray(event?.events) && event.events.length > 0;
     const targetEvent = isSequence
       ? event.events[0]
@@ -240,6 +251,39 @@ const OptaVisionDashboard = ({ user }) => {
     } finally {
       setIsVideoLoading(false);
     }
+  };
+
+  const handlePlayPlaylist = async (events = []) => {
+    const nextQueue = Array.isArray(events) ? events.filter(Boolean) : [];
+    if (nextQueue.length === 0) return null;
+
+    setVideoQueue(nextQueue);
+    setVideoQueueIndex(0);
+    setVideoPlayerTitle(`Rafale 1/${nextQueue.length}`);
+    return handlePlaySingleVideo(nextQueue[0], { preserveQueue: true });
+  };
+
+  const handleVideoEnded = async () => {
+    if (videoQueueIndex < 0 || videoQueue.length === 0 || isVideoLoading) return;
+
+    const nextIndex = videoQueueIndex + 1;
+    if (nextIndex >= videoQueue.length) {
+      setVideoQueue([]);
+      setVideoQueueIndex(-1);
+      setVideoPlayerTitle(DEFAULT_VIDEO_TITLE);
+      return;
+    }
+
+    setVideoQueueIndex(nextIndex);
+    setVideoPlayerTitle(`Rafale ${nextIndex + 1}/${videoQueue.length}`);
+    await handlePlaySingleVideo(videoQueue[nextIndex], { preserveQueue: true });
+  };
+
+  const handleCloseGlobalVideo = () => {
+    setGlobalVideoUrl(null);
+    setVideoQueue([]);
+    setVideoQueueIndex(-1);
+    setVideoPlayerTitle(DEFAULT_VIDEO_TITLE);
   };
 
   const fetchBuildup = async (filters) => {
@@ -583,6 +627,7 @@ const OptaVisionDashboard = ({ user }) => {
                             advancedMetricsList={advancedMetricsList}
                             playersList={playersList}
                             onPlayVideo={handlePlaySingleVideo}
+                            onPlayPlaylist={handlePlayPlaylist}
                             isVideoLoading={isVideoLoading}
                           />
                         </div>
@@ -765,7 +810,9 @@ const OptaVisionDashboard = ({ user }) => {
 
       <GlobalVideoPlayer 
         url={globalVideoUrl} 
-        onClose={() => setGlobalVideoUrl(null)} 
+        onClose={handleCloseGlobalVideo}
+        onEnded={handleVideoEnded}
+        title={videoPlayerTitle}
       />
     </div>
   );
