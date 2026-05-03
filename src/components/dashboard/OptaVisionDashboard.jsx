@@ -20,7 +20,8 @@ import {
   Shield,
   Play,
   GitBranch,
-  Network
+  Network,
+  Map
 } from 'lucide-react';
 import ExplorationFilterPanel from './ExplorationFilterPanel';
 import BuildUpFilterPanel from './BuildUpFilterPanel';
@@ -32,6 +33,7 @@ import ShotMapExplorer from './ShotMapExplorer';
 import RankingExplorer from './RankingExplorer';
 import ChainBoardExplorer from './ChainBoardExplorer';
 import PassMapExplorer from './PassMapExplorer';
+import TerritoryExplorer from './TerritoryExplorer';
 import GlobalVideoPlayer from './GlobalVideoPlayer';
 import SettingsModal from '../layout/SettingsModal';
 import { API_BASE_URL, OPTAVISION_API_URL } from '../../config';
@@ -59,7 +61,7 @@ const OptaVisionDashboard = ({ user }) => {
   const [teamsList, setTeamsList] = useState([]);
   const [playersList, setPlayersList] = useState([]);
   const [activeTab, setActiveTab] = useState('exploration');
-  const [activeTool, setActiveTool] = useState(null); // 'events', 'chainboard', 'passmap', 'sequences', 'shots'
+  const [activeTool, setActiveTool] = useState(null); // 'events', 'chainboard', 'passmap', 'territory', 'sequences', 'shots'
   const [globalVideoUrl, setGlobalVideoUrl] = useState(null);
   const [videoQueue, setVideoQueue] = useState([]);
   const [videoQueueIndex, setVideoQueueIndex] = useState(-1);
@@ -403,6 +405,7 @@ const OptaVisionDashboard = ({ user }) => {
     if (activeTool === 'ranking') return;
     if (activeTool === 'chainboard') return;
     if (activeTool === 'passmap') return;
+    if (activeTool === 'territory') return;
     if (activeTool === 'sequences') {
       Promise.resolve().then(() => fetchBuildup(explorationFilters));
       return;
@@ -605,6 +608,15 @@ const OptaVisionDashboard = ({ user }) => {
                           onClick={() => setActiveTool('passmap')}
                         />
                       )}
+                      {activeTab === 'exploration' && (
+                        <TileSkeleton
+                          title="Territory"
+                          desc="Carte de territoire API-first par zones, domination et recuperations."
+                          icon={<Map />}
+                          color="text-[#8be9fd]"
+                          onClick={() => setActiveTool('territory')}
+                        />
+                      )}
                       {activeTab === 'ranking' && (
                         <TileSkeleton
                           title="Ranking Performance"
@@ -693,6 +705,10 @@ const OptaVisionDashboard = ({ user }) => {
                           onPlayVideo={handlePlaySingleVideo}
                           onPlayPlaylist={handlePlayPlaylist}
                           isVideoLoading={isVideoLoading}
+                        />
+                      ) : activeTool === 'territory' ? (
+                        <TerritoryExplorer
+                          filters={explorationFilters}
                         />
                       ) : activeTool === 'ranking' ? (
                         <RankingExplorer
