@@ -27,7 +27,74 @@ export const calculateShotDistance = (event) => {
 const isGoalShot = (shot) => {
   const typeId = Number(shot?.type_id);
   const typeName = String(shot?.type_name || shot?.type || '').trim().toLowerCase();
-  return shot?.isGoal === true || typeId === 16 || typeName === 'goal' || typeName === 'own goal';
+  const status = String(shot?.shot_status || shot?.advanced_metrics?.shot_status || '').trim().toLowerCase();
+  return shot?.isGoal === true || typeId === 16 || typeName === 'goal' || typeName === 'own goal' || status === 'goal';
+};
+
+const parseAdvancedMetrics = (event) => {
+  const raw = event?.advanced_metrics || event?.advancedMetrics || {};
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+  return raw && typeof raw === 'object' ? raw : {};
+};
+
+const firstMetric = (event, metrics, keys) => {
+  for (const key of keys) {
+    const value = event?.[key] ?? metrics?.[key];
+    if (value !== null && value !== undefined && value !== '') return value;
+  }
+  return null;
+};
+
+const hasMetricFlag = (metrics, key) => (
+  metrics?.[key] === true || metrics?.[key] === 1 || metrics?.[key] === 'true'
+);
+
+const deriveBodyPart = (shot, metrics) => {
+  const explicit = firstMetric(shot, metrics, ['body_part_name', 'bodyPart', 'body_part']);
+  if (explicit) return explicit;
+  if (hasMetricFlag(metrics, 'is_shot_head')) return 'Tete';
+  if (hasMetricFlag(metrics, 'is_shot_left_footed')) return 'Pied gauche';
+  if (hasMetricFlag(metrics, 'is_shot_right_footed')) return 'Pied droit';
+  if (hasMetricFlag(metrics, 'is_shot_overhead')) return 'Retourne';
+  return 'Non renseigne';
+};
+
+const deriveShotTags = (metrics) => {
+  const tags = [];
+  if (hasMetricFlag(metrics, 'is_shot_big_chance')) tags.push('Big chance');
+  if (hasMetricFlag(metrics, 'is_shot_one_on_one')) tags.push('1v1');
+  if (hasMetricFlag(metrics, 'is_shot_fast_break')) tags.push('Transition');
+  if (hasMetricFlag(metrics, 'is_shot_from_corner')) tags.push('Corner');
+  if (hasMetricFlag(metrics, 'is_shot_free_kick') || hasMetricFlag(metrics, 'is_shot_direct_free_kick')) tags.push('Coup franc');
+  if (hasMetricFlag(metrics, 'is_shot_penalty')) tags.push('Penalty');
+  if (hasMetricFlag(metrics, 'is_shot_assisted')) tags.push('Assiste');
+  if (hasMetricFlag(metrics, 'is_shot_volley')) tags.push('Volee');
+  if (hasMetricFlag(metrics, 'is_shot_first_touch')) tags.push('1ere touche');
+  if (hasMetricFlag(metrics, 'is_shot_follows_dribble')) tags.push('Apres dribble');
+  if (hasMetricFlag(metrics, 'is_shot_deflection')) tags.push('Deviation');
+  return tags;
+};
+
+const statusLabel = (shot) => {
+  const status = String(shot?.shot_status || shot?.type_name || shot?.type || 'Tir').trim();
+  const normalized = status.toLowerCase();
+  if (normalized === 'goal') return 'But';
+  if (normalized === 'saved') return 'Arret';
+  if (normalized === 'blocked') return 'Bloque';
+  if (normalized === 'post') return 'Poteau';
+  if (normalized === 'missed') return 'Manque';
+  return status;
+};
+
+const formatMetric = (value, digits = 2) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric.toFixed(digits) : '-';
 };
 
 const ShotMapLayer = ({ shots, focusedShot, onShotFocus, projectPoint }) => {
@@ -98,17 +165,34 @@ const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, isVideoLoadi
         (event.type_id >= 13 && event.type_id <= 16) ||
         ['Shot', 'Goal', 'MissedShots', 'SavedShot', 'ShotOnPost'].includes(event.type)
       )
-      .map(shot => ({
-        ...shot,
-        isGoal: isGoalShot(shot),
-        shotDistance: calculateShotDistance(shot),
-      }));
+      .map(shot => {
+        const metrics = parseAdvancedMetrics(shot);
+        const xG = firstMetric(shot, metrics, ['xG', 'xg']);
+        const xGOT = firstMetric(shot, metrics, ['xGOT', 'xgot', 'psxg']);
+        const xT = firstMetric(shot, metrics, ['xT', 'xT_credit']);
+        const shotStatus = firstMetric(shot, metrics, ['shot_status']);
+        const bodyPart = deriveBodyPart(shot, metrics);
+        const shotTags = deriveShotTags(metrics);
+
+        return {
+          ...shot,
+          advanced_metrics: metrics,
+          xG: xG !== null ? Number(xG) : null,
+          xGOT: xGOT !== null ? Number(xGOT) : null,
+          xT: xT !== null ? Number(xT) : Number(shot.xT ?? 0),
+          shot_status: shotStatus || shot.shot_status,
+          body_part_name: bodyPart,
+          shot_tags: shotTags,
+          isGoal: isGoalShot({ ...shot, advanced_metrics: metrics, shot_status: shotStatus }),
+          shotDistance: calculateShotDistance(shot),
+        };
+      });
   }, [data]);
 
   // --- MOTEUR DE VIRTUALISATION (Optimisation Shot Map) ---
   const scrollContainerRef = useRef(null);
   const [scrollTop, setScrollTop] = useState(0);
-  const ROW_HEIGHT = 85; 
+  const ROW_HEIGHT = 102; 
   const BUFFER_ROWS = 5;
 
   const handleScroll = (e) => {
@@ -219,7 +303,7 @@ const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, isVideoLoadi
                     <div className="mt-1 truncate text-xs font-black uppercase">{focusedShot.playerName || 'Joueur'}</div>
                   </div>
                   <div className={`px-2 py-0.5 rounded-[2px] verge-label-mono text-[7px] font-black uppercase ${focusedShot.isGoal ? 'bg-[#3cffd0] text-black' : 'bg-white/10 text-white'}`}>
-                    {focusedShot.isGoal ? 'Goal' : 'Miss'}
+                    {statusLabel(focusedShot)}
                   </div>
                 </div>
                 <div className="space-y-2 verge-label-mono text-[8px] uppercase text-[#949494]">
@@ -233,8 +317,31 @@ const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, isVideoLoadi
                   </div>
                   <div className="flex justify-between font-bold">
                     <span>Surface</span>
-                    <span className="text-white">{focusedShot.body_part_name || focusedShot.bodyPart || 'Pied'}</span>
+                    <span className="text-white">{focusedShot.body_part_name || 'Non renseigne'}</span>
                   </div>
+                  <div className="grid grid-cols-3 gap-2 pt-2">
+                    <div className="bg-black/30 border border-white/10 rounded-[2px] p-2">
+                      <div className="text-[7px] text-[#666]">xG</div>
+                      <div className="text-white text-[10px] mt-1">{formatMetric(focusedShot.xG)}</div>
+                    </div>
+                    <div className="bg-black/30 border border-white/10 rounded-[2px] p-2">
+                      <div className="text-[7px] text-[#666]">xGOT</div>
+                      <div className="text-white text-[10px] mt-1">{formatMetric(focusedShot.xGOT)}</div>
+                    </div>
+                    <div className="bg-black/30 border border-white/10 rounded-[2px] p-2">
+                      <div className="text-[7px] text-[#666]">xT</div>
+                      <div className="text-white text-[10px] mt-1">{formatMetric(focusedShot.xT)}</div>
+                    </div>
+                  </div>
+                  {focusedShot.shot_tags?.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-2">
+                      {focusedShot.shot_tags.map(tag => (
+                        <span key={tag} className="px-2 py-1 bg-white/5 border border-white/10 rounded-[2px] text-[7px] text-white">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={(e) => {
@@ -302,7 +409,7 @@ const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, isVideoLoadi
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="verge-label-mono text-[11px] text-white uppercase font-black truncate">
-                          {s.type_name || s.type || 'TIR'}
+                          {statusLabel(s)}
                         </span>
                         {s.isGoal && (
                           <span className="verge-label-mono text-[7px] px-1.5 py-0.5 rounded-[2px] bg-[#3cffd0] text-black font-black uppercase shadow-[0_0_10px_rgba(60,255,208,0.4)]">
@@ -317,7 +424,7 @@ const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, isVideoLoadi
                         <span className="verge-label-mono text-[8px] text-[#666]">
                           <span className="text-white/60">{s.shotDistance?.toFixed(1)}m</span> • {s.body_part_name || s.bodyPart || 'Pied'}
                         </span>
-                        {s.xG && (
+                        {Number.isFinite(Number(s.xG)) && (
                           <span className="verge-label-mono text-[8px] text-[#3cffd0] font-black">
                             xG {Number(s.xG).toFixed(2)}
                           </span>

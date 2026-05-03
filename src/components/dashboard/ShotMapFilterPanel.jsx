@@ -16,6 +16,8 @@ const DEFAULT_FILTERS = {
   bodyParts: [],
   situations: [],
   distanceMax: null,
+  minXg: null,
+  minXgot: null,
   matches: [],
   competition: [],
   season: [],
@@ -39,16 +41,55 @@ const OUTCOME_OPTIONS = [
 ];
 
 const BODY_PART_OPTIONS = [
-  { id: 'is_shot_head', label: 'Tete' },
   { id: 'is_shot_right_footed', label: 'Pied droit' },
-  { id: 'is_shot_left_footed', label: 'Pied gauche' }
+  { id: 'is_shot_left_footed', label: 'Pied gauche' },
+  { id: 'is_shot_head', label: 'Tete' },
+  { id: 'is_shot_overhead', label: 'Retourne' }
 ];
 
-const SITUATION_OPTIONS = [
-  { id: 'is_shot_fast_break', label: 'Contre-attaque' },
+const CONTEXT_OPTIONS = [
   { id: 'is_shot_regular_play', label: 'Jeu place' },
+  { id: 'is_shot_fast_break', label: 'Transition' },
   { id: 'is_shot_big_chance', label: 'Grosse occasion' },
-  { id: 'is_shot_out_of_box_centre', label: 'Hors surface' }
+  { id: 'is_shot_one_on_one', label: '1v1 gardien' },
+  { id: 'is_shot_assisted', label: 'Tir assiste' },
+  { id: 'is_shot_intentional_assist', label: 'Assist intentionnel' },
+  { id: 'is_shot_individual_play', label: 'Action individuelle' }
+];
+
+const SET_PIECE_OPTIONS = [
+  { id: 'is_shot_penalty', label: 'Penalty' },
+  { id: 'is_shot_set_piece', label: 'CPA' },
+  { id: 'is_shot_from_corner', label: 'Depuis corner' },
+  { id: 'is_shot_free_kick', label: 'Coup franc' },
+  { id: 'is_shot_direct_free_kick', label: 'Coup franc direct' }
+];
+
+const TECHNICAL_OPTIONS = [
+  { id: 'is_shot_volley', label: 'Volee' },
+  { id: 'is_shot_half_volley', label: 'Demi-volee' },
+  { id: 'is_shot_first_touch', label: '1ere touche' },
+  { id: 'is_shot_follows_dribble', label: 'Apres dribble' },
+  { id: 'is_shot_lob', label: 'Lob' },
+  { id: 'is_shot_rising', label: 'Montant' },
+  { id: 'is_shot_dipping', label: 'Plongeant' },
+  { id: 'is_shot_swerve_left', label: 'Effet gauche' },
+  { id: 'is_shot_swerve_right', label: 'Effet droite' },
+  { id: 'is_shot_swerve_moving', label: 'Effet mobile' }
+];
+
+const DEFLECTION_OPTIONS = [
+  { id: 'is_shot_deflection', label: 'Deviation' },
+  { id: 'is_shot_keeper_touched', label: 'Gardien touche' },
+  { id: 'is_shot_saved_off_line', label: 'Sauve sur ligne' },
+  { id: 'is_shot_blocked_by_teammate', label: 'Contre coequipier' },
+  { id: 'is_shot_block_by_hand', label: 'Contre main' },
+  { id: 'is_goal_line_decision', label: 'Goal-line decision' }
+];
+
+const LOCATION_OPTIONS = [
+  { id: 'is_shot_out_of_box_centre', label: 'Hors surface centre' },
+  { id: 'is_shot_regular_play', label: 'Dans le jeu' }
 ];
 
 const mergeFilters = (filters) => ({
@@ -72,6 +113,8 @@ const ShotMapFilterPanel = ({
   const [openSection, setOpenSection] = useState('matches');
   const [pendingFilters, setPendingFilters] = useState(mergeFilters(filters));
   const distanceValue = pendingFilters.distanceMax ?? 40;
+  const minXgValue = pendingFilters.minXg ?? 0;
+  const minXgotValue = pendingFilters.minXgot ?? 0;
 
   useEffect(() => {
     setPendingFilters(mergeFilters(filters));
@@ -112,6 +155,28 @@ const ShotMapFilterPanel = ({
         ? 'bg-red-500 text-white border-red-400'
         : 'bg-[#131313] text-[#949494] border-white/5 hover:text-white hover:border-red-500/30'
     }`
+  );
+
+  const renderTagOptions = (options, columns = 'grid-cols-2') => (
+    <div className={`grid ${columns} gap-2`}>
+      {options.map(option => {
+        const active = pendingFilters.situations.includes(option.id);
+        return (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => toggleArrayFilter('situations', option.id)}
+            className={`min-h-[42px] px-3 py-2 border transition-colors rounded-[2px] text-left ${
+              active
+                ? 'bg-red-500/15 border-red-500 text-white'
+                : 'bg-transparent border-white/5 text-white/60 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <span className="verge-label-mono text-[9px] uppercase font-black leading-tight">{option.label}</span>
+          </button>
+        );
+      })}
+    </div>
   );
 
   return (
@@ -225,23 +290,40 @@ const ShotMapFilterPanel = ({
 
         <AccordionSection
           id="precision"
-          title="Precision & Resultat"
+          title="Resultat & Qualite"
           icon={<Crosshair size={18} />}
           isOpen={openSection === 'precision'}
           onToggle={() => toggleSection('precision')}
-          subtitle="BUTS & CADRES"
+          subtitle="ISSUE, xG & xGOT"
         >
-          <div className="grid grid-cols-2 gap-2">
-            {OUTCOME_OPTIONS.map(option => (
-              <button
-                key={option.id}
-                type="button"
-                onClick={() => toggleArrayFilter('outcomes', option.id)}
-                className={optionClassName(pendingFilters.outcomes.includes(option.id))}
-              >
-                {option.label}
-              </button>
-            ))}
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-2">
+              {OUTCOME_OPTIONS.map(option => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => toggleArrayFilter('outcomes', option.id)}
+                  className={optionClassName(pendingFilters.outcomes.includes(option.id))}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            <QualitySlider
+              label="xG minimum"
+              value={minXgValue}
+              isActive={pendingFilters.minXg !== null && pendingFilters.minXg !== undefined}
+              onChange={(value) => updateFilters({ minXg: value })}
+              onClear={() => updateFilters({ minXg: null })}
+            />
+            <QualitySlider
+              label="xGOT minimum"
+              value={minXgotValue}
+              isActive={pendingFilters.minXgot !== null && pendingFilters.minXgot !== undefined}
+              onChange={(value) => updateFilters({ minXgot: value })}
+              onClear={() => updateFilters({ minXgot: null })}
+            />
           </div>
         </AccordionSection>
 
@@ -256,7 +338,7 @@ const ShotMapFilterPanel = ({
           <div className="space-y-8">
             <div className="space-y-4">
               <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block">Partie du corps</label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 {BODY_PART_OPTIONS.map(option => (
                   <button
                     key={option.id}
@@ -272,62 +354,65 @@ const ShotMapFilterPanel = ({
             </div>
 
             <div className="space-y-4">
-              <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block">Situation</label>
-              <div className="space-y-2">
-                {SITUATION_OPTIONS.map(option => {
-                  const active = pendingFilters.situations.includes(option.id);
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      onClick={() => toggleArrayFilter('situations', option.id)}
-                      className={`w-full flex items-center justify-between p-3 border transition-colors ${
-                        active
-                          ? 'bg-red-500/15 border-red-500 text-white'
-                          : 'bg-transparent border-white/5 text-white/60 hover:text-white hover:bg-white/5'
-                      }`}
-                    >
-                      <span className="verge-label-mono text-[10px] uppercase font-black">{option.label}</span>
-                      <div className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-red-400 shadow-[0_0_8px_red]' : 'bg-white/20'}`} />
-                    </button>
-                  );
-                })}
-              </div>
+              <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block">Contexte</label>
+              {renderTagOptions(CONTEXT_OPTIONS)}
+            </div>
+
+            <div className="space-y-4">
+              <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block">Coups de pied arretes</label>
+              {renderTagOptions(SET_PIECE_OPTIONS)}
+            </div>
+
+            <div className="space-y-4">
+              <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block">Technique de frappe</label>
+              {renderTagOptions(TECHNICAL_OPTIONS)}
+            </div>
+
+            <div className="space-y-4">
+              <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block">Gardien, deviation & ligne</label>
+              {renderTagOptions(DEFLECTION_OPTIONS)}
             </div>
           </div>
         </AccordionSection>
 
         <AccordionSection
           id="geometry"
-          title="Geometrie"
+          title="Geometrie & Localisation"
           icon={<Zap size={18} />}
           isOpen={openSection === 'geometry'}
           onToggle={() => toggleSection('geometry')}
-          subtitle="DISTANCE"
+          subtitle="DISTANCE & ZONES"
         >
-          <div className="p-8 bg-[#2d2d2d]/50 border border-white/5 rounded-[2px] relative overflow-hidden">
-            <div className="flex justify-between items-center mb-6">
-              <label className="verge-label-mono text-[10px] text-white font-black uppercase tracking-widest">Distance max</label>
-              <span className="verge-label-mono text-[11px] text-red-500 font-black">
-                {pendingFilters.distanceMax === null ? 'Tout' : `${pendingFilters.distanceMax}m`}
-              </span>
+          <div className="space-y-6">
+            <div className="p-8 bg-[#2d2d2d]/50 border border-white/5 rounded-[2px] relative overflow-hidden">
+              <div className="flex justify-between items-center mb-6">
+                <label className="verge-label-mono text-[10px] text-white font-black uppercase tracking-widest">Distance max</label>
+                <span className="verge-label-mono text-[11px] text-red-500 font-black">
+                  {pendingFilters.distanceMax === null ? 'Tout' : `${pendingFilters.distanceMax}m`}
+                </span>
+              </div>
+              <input
+                type="range"
+                min="5"
+                max="40"
+                step="1"
+                value={distanceValue}
+                onChange={(event) => updateFilters({ distanceMax: Number(event.target.value) })}
+                className="w-full h-1 bg-white/10 appearance-none cursor-pointer accent-red-500"
+              />
+              <button
+                type="button"
+                onClick={() => updateFilters({ distanceMax: null })}
+                className="mt-5 verge-label-mono text-[9px] text-[#949494] hover:text-white uppercase font-black"
+              >
+                Inclure toutes les distances
+              </button>
             </div>
-            <input
-              type="range"
-              min="5"
-              max="40"
-              step="1"
-              value={distanceValue}
-              onChange={(event) => updateFilters({ distanceMax: Number(event.target.value) })}
-              className="w-full h-1 bg-white/10 appearance-none cursor-pointer accent-red-500"
-            />
-            <button
-              type="button"
-              onClick={() => updateFilters({ distanceMax: null })}
-              className="mt-5 verge-label-mono text-[9px] text-[#949494] hover:text-white uppercase font-black"
-            >
-              Inclure toutes les distances
-            </button>
+
+            <div className="space-y-4">
+              <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block">Localisation Opta</label>
+              {renderTagOptions(LOCATION_OPTIONS)}
+            </div>
           </div>
         </AccordionSection>
 
@@ -402,6 +487,33 @@ const FilterGroup = ({ label, children }) => (
       {label}
     </label>
     {children}
+  </div>
+);
+
+const QualitySlider = ({ label, value, isActive, onChange, onClear }) => (
+  <div className="p-5 bg-[#2d2d2d]/50 border border-white/5 rounded-[2px]">
+    <div className="flex justify-between items-center mb-4">
+      <label className="verge-label-mono text-[9px] text-white font-black uppercase tracking-widest">{label}</label>
+      <span className="verge-label-mono text-[10px] text-red-500 font-black">
+        {isActive ? Number(value).toFixed(2) : 'Off'}
+      </span>
+    </div>
+    <input
+      type="range"
+      min="0"
+      max="1"
+      step="0.01"
+      value={value}
+      onChange={(event) => onChange(Number(event.target.value))}
+      className="w-full h-1 bg-white/10 appearance-none cursor-pointer accent-red-500"
+    />
+    <button
+      type="button"
+      onClick={onClear}
+      className="mt-4 verge-label-mono text-[8px] text-[#949494] hover:text-white uppercase font-black"
+    >
+      Desactiver ce seuil
+    </button>
   </div>
 );
 

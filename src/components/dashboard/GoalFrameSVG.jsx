@@ -33,9 +33,31 @@ const toNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const shotStatus = (shot) => {
+  const raw = readMetric(shot, 'shot_status') || shot?.shot_status || shot?.type_name || shot?.type || '';
+  return String(raw).trim().toLowerCase();
+};
+
 const isGoal = (shot) => {
-  const type = String(shot?.type_name || shot?.type || '').toLowerCase();
-  return shot?.isGoal === true || Number(shot?.type_id) === 16 || type.includes('goal');
+  const status = shotStatus(shot);
+  return shot?.isGoal === true || Number(shot?.type_id) === 16 || status.includes('goal');
+};
+
+const markerStyleFor = (shot) => {
+  const status = shotStatus(shot);
+  if (isGoal(shot)) return { fill: '#3cffd0', stroke: '#ffffff', label: 'Goal' };
+  if (status.includes('saved')) return { fill: '#8be9fd', stroke: '#dff7ff', label: 'Saved' };
+  if (status.includes('post') || status.includes('woodwork')) return { fill: '#ffd03c', stroke: '#fff2a8', label: 'Post' };
+  if (status.includes('blocked')) return { fill: '#949494', stroke: '#d7d7d7', label: 'Blocked' };
+  return { fill: '#ff4d4d', stroke: '#ffd0d0', label: 'Missed' };
+};
+
+const markerRadiusFor = (shot, isFocused) => {
+  const xgot = toNumber(readMetric(shot, 'xGOT') ?? readMetric(shot, 'xgot') ?? readMetric(shot, 'psxg'));
+  const xg = toNumber(readMetric(shot, 'xG') ?? readMetric(shot, 'xg'));
+  const quality = xgot ?? xg ?? 0;
+  const base = 2.8 + clamp(quality, 0, 1) * 3.2;
+  return isFocused ? base + 1.2 : base;
 };
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -115,6 +137,11 @@ const GoalFrameSVG = ({ shots = [], focusedShot, onShotFocus }) => {
         const renderItem = ({ shot, cx, cy, goal }, index, isFocused) => {
           const shotId = shot.opta_id ?? shot.id;
           const isDimmed = focusedShotId !== null && !isFocused;
+          const markerStyle = markerStyleFor(shot);
+          const radius = markerRadiusFor(shot, isFocused);
+          const playerName = shot.playerName || shot.player_name || 'Joueur';
+          const minute = shot.minute ?? shot.min ?? '-';
+          const xg = toNumber(readMetric(shot, 'xG') ?? readMetric(shot, 'xg'));
 
           return (
             <g
@@ -130,7 +157,7 @@ const GoalFrameSVG = ({ shots = [], focusedShot, onShotFocus }) => {
                 <circle
                   cx={cx}
                   cy={cy}
-                  r="5.2"
+                  r={radius + 2}
                   fill="none"
                   stroke="#3cffd0"
                   strokeWidth="1"
@@ -140,12 +167,17 @@ const GoalFrameSVG = ({ shots = [], focusedShot, onShotFocus }) => {
               <circle
                 cx={cx}
                 cy={cy}
-                r={isFocused ? 4.4 : goal ? 3.4 : 2.8}
-                fill={goal ? '#3cffd0' : '#ff4d4d'}
-                stroke={isFocused ? "#ffffff" : "#050505"}
+                r={radius}
+                fill={markerStyle.fill}
+                fillOpacity={isDimmed ? 0.35 : 0.82}
+                stroke={isFocused ? "#ffffff" : markerStyle.stroke}
                 strokeWidth={isFocused ? 1.2 : 0.8}
                 style={{ filter: isFocused ? 'drop-shadow(0 0 5px #ffffff)' : (goal ? 'drop-shadow(0 0 3px #3cffd0)' : 'none') }}
-              />
+              >
+                <title>
+                  {`${playerName} - ${minute}' - ${markerStyle.label}${xg !== null ? ` - xG ${xg.toFixed(2)}` : ''}`}
+                </title>
+              </circle>
             </g>
           );
         };

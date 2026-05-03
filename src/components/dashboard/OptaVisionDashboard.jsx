@@ -110,6 +110,8 @@ const OptaVisionDashboard = ({ user }) => {
     bodyParts: [],
     situations: [],
     distanceMax: null,
+    minXg: null,
+    minXgot: null,
     matches: [],
     competition: [],
     season: [],
@@ -136,6 +138,12 @@ const OptaVisionDashboard = ({ user }) => {
     if (filters?.outcomes?.length > 0) params.append('shot_outcomes', filters.outcomes.join(','));
     if (filters?.distanceMax !== null && filters?.distanceMax !== undefined) {
       params.append('distance_max', filters.distanceMax.toString());
+    }
+    if (filters?.minXg !== null && filters?.minXg !== undefined) {
+      params.append('min_xg', filters.minXg.toString());
+    }
+    if (filters?.minXgot !== null && filters?.minXgot !== undefined) {
+      params.append('min_xgot', filters.minXgot.toString());
     }
   };
 
