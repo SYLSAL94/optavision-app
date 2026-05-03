@@ -8,6 +8,22 @@ import { createExplorationSearchParams } from './optaFilterParams';
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
+const getInitials = (name) => {
+  const safeName = String(name || '').trim();
+  if (!safeName) return '--';
+
+  const parts = safeName
+    .split(/\s+/)
+    .map(part => part.replace(/[^\p{L}\p{N}]/gu, ''))
+    .filter(Boolean);
+
+  if (parts.length >= 2) {
+    return `${parts[0][0] || ''}${parts[parts.length - 1][0] || ''}`.toUpperCase();
+  }
+
+  return safeName.slice(0, 2).toUpperCase();
+};
+
 const PassMapLayer = ({ team, selectedLink, onSelectLink, projectPoint }) => {
   const players = team?.players || [];
   const links = team?.links || [];
@@ -51,7 +67,7 @@ const PassMapLayer = ({ team, selectedLink, onSelectLink, projectPoint }) => {
               stroke="transparent"
               strokeWidth="4"
               className="cursor-pointer pointer-events-auto"
-              onClick={() => onSelectLink({ ...link, id, index })}
+              onClick={() => onSelectLink(selectedLink?.id === id ? null : { ...link, id, index })}
             />
           </g>
         );
@@ -81,7 +97,7 @@ const PassMapLayer = ({ team, selectedLink, onSelectLink, projectPoint }) => {
               fill="#ffffff"
               fontWeight="900"
             >
-              {player.rank}
+              {getInitials(player.playerName)}
             </text>
           </g>
         );
@@ -97,7 +113,7 @@ const StatBox = ({ label, value }) => (
   </div>
 );
 
-const PassMapExplorer = ({ filters = {}, onPlayVideo, isVideoLoading = false }) => {
+const PassMapExplorer = ({ filters = {}, onPlayVideo, onPlayPlaylist, isVideoLoading = false }) => {
   const [teams, setTeams] = useState([]);
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [selectedLink, setSelectedLink] = useState(null);
@@ -120,6 +136,7 @@ const PassMapExplorer = ({ filters = {}, onPlayVideo, isVideoLoading = false }) 
     const params = createExplorationSearchParams(filters, {
       players_per_team: String(playersPerTeam),
       min_link_count: String(minLinkCount),
+      events_per_link: '1000',
     });
 
     try {
@@ -149,8 +166,22 @@ const PassMapExplorer = ({ filters = {}, onPlayVideo, isVideoLoading = false }) 
   const block = selectedTeam?.blockMetrics;
   const topLinks = selectedTeam?.links || [];
   const topPlayers = selectedTeam?.players || [];
+  const selectedConnectionEvents = useMemo(() => (
+    Array.isArray(selectedLink?.events)
+      ? selectedLink.events.filter(event => event?.opta_id && event?.match_id)
+      : []
+  ), [selectedLink]);
 
   const playSelectedLink = () => {
+    if (selectedConnectionEvents.length > 0) {
+      if (onPlayPlaylist) {
+        onPlayPlaylist(selectedConnectionEvents);
+        return;
+      }
+      onPlayVideo?.(selectedConnectionEvents[0]);
+      return;
+    }
+
     if (!selectedLink?.sample_opta_id || !selectedLink?.sample_match_id) return;
     onPlayVideo?.({
       opta_id: selectedLink.sample_opta_id,
@@ -172,6 +203,16 @@ const PassMapExplorer = ({ filters = {}, onPlayVideo, isVideoLoading = false }) 
         distance_m: selectedLink.avg_distance_m,
       },
     });
+  };
+
+  const playConnectionClip = (clipIndex) => {
+    const nextQueue = selectedConnectionEvents.slice(clipIndex);
+    if (nextQueue.length === 0) return;
+    if (onPlayPlaylist) {
+      onPlayPlaylist(nextQueue);
+      return;
+    }
+    onPlayVideo?.(nextQueue[0]);
   };
 
   return (
@@ -340,17 +381,16 @@ const PassMapExplorer = ({ filters = {}, onPlayVideo, isVideoLoading = false }) 
               <h3 className="verge-label-mono text-sm text-white font-black uppercase tracking-widest">Connexions</h3>
               <p className="verge-label-mono text-[8px] text-[#949494] uppercase tracking-[0.25em] mt-1">{topLinks.length} liens filtres</p>
             </div>
-            {selectedLink && (
-              <button
-                type="button"
-                onClick={playSelectedLink}
-                disabled={isVideoLoading || !selectedLink.sample_opta_id}
-                className="px-4 py-2 rounded-full border border-[#3cffd0]/40 text-[#3cffd0] hover:bg-[#3cffd0] hover:text-black verge-label-mono text-[8px] font-black uppercase flex items-center gap-2 disabled:opacity-40"
-              >
-                {isVideoLoading ? <Loader2 size={12} className="animate-spin" /> : <PlayCircle size={12} />}
-                Video
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={playSelectedLink}
+              disabled={isVideoLoading || (selectedConnectionEvents.length === 0 && (!selectedLink?.sample_opta_id || !selectedLink?.sample_match_id))}
+              className="px-4 py-2 rounded-full border border-[#3cffd0]/40 text-[#3cffd0] hover:bg-[#3cffd0] hover:text-black verge-label-mono text-[8px] font-black uppercase flex items-center gap-2 disabled:border-white/10 disabled:bg-white/5 disabled:text-white/25 disabled:hover:bg-white/5 disabled:hover:text-white/25 disabled:cursor-not-allowed transition-all"
+              title={selectedLink ? 'Lancer la rafale de cette connexion' : 'Selectionnez une connexion'}
+            >
+              {isVideoLoading ? <Loader2 size={12} className="animate-spin" /> : <PlayCircle size={12} />}
+              Rafale
+            </button>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto scrollbar-verge divide-y divide-white/[0.04]">
@@ -363,7 +403,7 @@ const PassMapExplorer = ({ filters = {}, onPlayVideo, isVideoLoading = false }) 
                   type="button"
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
-                  onClick={() => setSelectedLink({ ...link, id, index })}
+                  onClick={() => setSelectedLink(current => current?.id === id ? null : { ...link, id, index })}
                   className={`w-full text-left p-5 transition-all ${isSelected ? 'bg-[#3cffd0]/10 border-l-2 border-[#3cffd0]' : 'hover:bg-white/5 border-l-2 border-transparent'}`}
                 >
                   <div className="flex items-center justify-between gap-4">
@@ -379,6 +419,12 @@ const PassMapExplorer = ({ filters = {}, onPlayVideo, isVideoLoading = false }) 
                     <span>xT {Number(link.xT || 0).toFixed(3)}</span>
                     <span>|</span>
                     <span>{Number(link.avg_distance_m || 0).toFixed(1)}m</span>
+                    {Array.isArray(link.events) && link.events.length > 0 && (
+                      <>
+                        <span>|</span>
+                        <span>{link.events.length} videos</span>
+                      </>
+                    )}
                   </div>
                 </motion.button>
               );
@@ -394,13 +440,65 @@ const PassMapExplorer = ({ filters = {}, onPlayVideo, isVideoLoading = false }) 
             )}
           </div>
 
+          {selectedLink && (
+            <div className="shrink-0 border-t border-white/10 bg-black/20">
+              <div className="p-4 border-b border-white/5 flex items-center justify-between gap-3">
+                <div>
+                  <div className="verge-label-mono text-[8px] text-[#949494] uppercase tracking-widest font-black">Playlist connexion</div>
+                  <div className="verge-label-mono text-[8px] text-[#3cffd0] uppercase tracking-[0.18em] mt-1">
+                    {selectedConnectionEvents.length} clips disponibles
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={playSelectedLink}
+                  disabled={isVideoLoading || selectedConnectionEvents.length === 0}
+                  className="px-3 py-2 rounded-full border border-[#3cffd0]/40 text-[#3cffd0] hover:bg-[#3cffd0] hover:text-black verge-label-mono text-[8px] font-black uppercase flex items-center gap-2 disabled:border-white/10 disabled:bg-white/5 disabled:text-white/25 disabled:hover:bg-white/5 disabled:hover:text-white/25 disabled:cursor-not-allowed"
+                >
+                  {isVideoLoading ? <Loader2 size={11} className="animate-spin" /> : <PlayCircle size={11} />}
+                  Tout
+                </button>
+              </div>
+              <div className="max-h-56 overflow-y-auto scrollbar-verge divide-y divide-white/[0.04]">
+                {selectedConnectionEvents.length > 0 ? selectedConnectionEvents.map((event, index) => (
+                  <button
+                    key={event.opta_id || `${event.match_id}-${event.event_id}-${index}`}
+                    type="button"
+                    onClick={() => playConnectionClip(index)}
+                    disabled={isVideoLoading}
+                    className="w-full px-4 py-3 text-left hover:bg-white/5 disabled:opacity-40 disabled:cursor-wait transition-all"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="verge-label-mono text-[8px] text-[#3cffd0] font-black uppercase tracking-widest">Clip {index + 1}</span>
+                      <span className="verge-label-mono text-[8px] text-[#949494]">
+                        {event.minute ?? event.min ?? 0}'{String(event.sec ?? 0).padStart(2, '0')}
+                      </span>
+                    </div>
+                    <div className="mt-1 verge-label-mono text-[9px] text-white/80 uppercase truncate">
+                      {event.playerName || selectedLink.sourceName || selectedLink.source} vers {event.receiverName || selectedLink.targetName || selectedLink.target}
+                    </div>
+                    <div className="mt-1 flex items-center gap-2 text-[8px] verge-label-mono uppercase text-[#949494]">
+                      <span>xT {Number(event.xT || event.advanced_metrics?.xT || 0).toFixed(3)}</span>
+                      <span>|</span>
+                      <span>{Number(event.distance_m || event.advanced_metrics?.distance_m || 0).toFixed(1)}m</span>
+                    </div>
+                  </button>
+                )) : (
+                  <div className="p-4 verge-label-mono text-[9px] text-[#949494] uppercase tracking-[0.2em]">
+                    Aucun clip detaille retourne pour cette connexion.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {topPlayers.length > 0 && (
             <div className="shrink-0 border-t border-white/10 p-4 bg-black/20">
               <div className="verge-label-mono text-[8px] text-[#949494] uppercase tracking-widest font-black mb-3">Legende joueurs</div>
               <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto scrollbar-verge pr-1">
                 {topPlayers.map(player => (
                   <div key={player.player_id} className="flex items-center gap-2 min-w-0">
-                    <span className="w-5 h-5 shrink-0 bg-[#3cffd0] text-black rounded-[2px] flex items-center justify-center verge-label-mono text-[8px] font-black">{player.rank}</span>
+                    <span className="w-6 h-5 shrink-0 bg-[#3cffd0] text-black rounded-[2px] flex items-center justify-center verge-label-mono text-[8px] font-black">{getInitials(player.playerName)}</span>
                     <span className="verge-label-mono text-[8px] text-white/80 truncate uppercase">{player.playerName}</span>
                   </div>
                 ))}

@@ -691,6 +691,7 @@ const OptaVisionDashboard = ({ user }) => {
                         <PassMapExplorer
                           filters={explorationFilters}
                           onPlayVideo={handlePlaySingleVideo}
+                          onPlayPlaylist={handlePlayPlaylist}
                           isVideoLoading={isVideoLoading}
                         />
                       ) : activeTool === 'ranking' ? (
