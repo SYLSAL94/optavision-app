@@ -22,7 +22,8 @@ import {
   GitBranch,
   Network,
   Map,
-  Radar
+  Radar,
+  UsersRound
 } from 'lucide-react';
 import ExplorationFilterPanel from './ExplorationFilterPanel';
 import BuildUpFilterPanel from './BuildUpFilterPanel';
@@ -38,6 +39,7 @@ import PassSonarExplorer from './PassSonarExplorer';
 import PassFlowExplorer from './PassFlowExplorer';
 import TerritoryExplorer from './TerritoryExplorer';
 import PlayerRadarExplorer from './PlayerRadarExplorer';
+import FormationViewerExplorer from './FormationViewerExplorer';
 import GlobalVideoPlayer from './GlobalVideoPlayer';
 import SettingsModal from '../layout/SettingsModal';
 import { API_BASE_URL, OPTAVISION_API_URL } from '../../config';
@@ -65,7 +67,7 @@ const OptaVisionDashboard = ({ user }) => {
   const [teamsList, setTeamsList] = useState([]);
   const [playersList, setPlayersList] = useState([]);
   const [activeTab, setActiveTab] = useState('exploration');
-  const [activeTool, setActiveTool] = useState(null); // 'events', 'chainboard', 'passmap', 'passsonar', 'passflow', 'territory', 'playerradar', 'sequences', 'shots'
+  const [activeTool, setActiveTool] = useState(null); // 'events', 'chainboard', 'passmap', 'passsonar', 'passflow', 'territory', 'playerradar', 'formationviewer', 'sequences', 'shots'
   const [globalVideoUrl, setGlobalVideoUrl] = useState(null);
   const [videoQueue, setVideoQueue] = useState([]);
   const [videoQueueIndex, setVideoQueueIndex] = useState(-1);
@@ -421,6 +423,7 @@ const OptaVisionDashboard = ({ user }) => {
     if (activeTool === 'passflow') return;
     if (activeTool === 'territory') return;
     if (activeTool === 'playerradar') return;
+    if (activeTool === 'formationviewer') return;
     if (activeTool === 'sequences') {
       Promise.resolve().then(() => fetchBuildup(explorationFilters));
       return;
@@ -659,6 +662,15 @@ const OptaVisionDashboard = ({ user }) => {
                           onClick={() => setActiveTool('playerradar')}
                         />
                       )}
+                      {activeTab === 'exploration' && (
+                        <TileSkeleton
+                          title="Formation Viewer"
+                          desc="Affichage API-first des structures, postes et changements tactiques."
+                          icon={<UsersRound />}
+                          color="text-[#ffd03c]"
+                          onClick={() => setActiveTool('formationviewer')}
+                        />
+                      )}
                       {activeTab === 'ranking' && (
                         <TileSkeleton
                           title="Ranking Performance"
@@ -762,6 +774,10 @@ const OptaVisionDashboard = ({ user }) => {
                         />
                       ) : activeTool === 'playerradar' ? (
                         <PlayerRadarExplorer
+                          filters={explorationFilters}
+                        />
+                      ) : activeTool === 'formationviewer' ? (
+                        <FormationViewerExplorer
                           filters={explorationFilters}
                         />
                       ) : activeTool === 'ranking' ? (
