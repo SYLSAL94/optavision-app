@@ -35,7 +35,9 @@ import RankingExplorer from './RankingExplorer';
 import ChainBoardExplorer from './ChainBoardExplorer';
 import PassMapExplorer from './PassMapExplorer';
 import PassSonarExplorer from './PassSonarExplorer';
+import PassFlowExplorer from './PassFlowExplorer';
 import TerritoryExplorer from './TerritoryExplorer';
+import PlayerRadarExplorer from './PlayerRadarExplorer';
 import GlobalVideoPlayer from './GlobalVideoPlayer';
 import SettingsModal from '../layout/SettingsModal';
 import { API_BASE_URL, OPTAVISION_API_URL } from '../../config';
@@ -63,7 +65,7 @@ const OptaVisionDashboard = ({ user }) => {
   const [teamsList, setTeamsList] = useState([]);
   const [playersList, setPlayersList] = useState([]);
   const [activeTab, setActiveTab] = useState('exploration');
-  const [activeTool, setActiveTool] = useState(null); // 'events', 'chainboard', 'passmap', 'passsonar', 'territory', 'sequences', 'shots'
+  const [activeTool, setActiveTool] = useState(null); // 'events', 'chainboard', 'passmap', 'passsonar', 'passflow', 'territory', 'playerradar', 'sequences', 'shots'
   const [globalVideoUrl, setGlobalVideoUrl] = useState(null);
   const [videoQueue, setVideoQueue] = useState([]);
   const [videoQueueIndex, setVideoQueueIndex] = useState(-1);
@@ -416,7 +418,9 @@ const OptaVisionDashboard = ({ user }) => {
     if (activeTool === 'chainboard') return;
     if (activeTool === 'passmap') return;
     if (activeTool === 'passsonar') return;
+    if (activeTool === 'passflow') return;
     if (activeTool === 'territory') return;
+    if (activeTool === 'playerradar') return;
     if (activeTool === 'sequences') {
       Promise.resolve().then(() => fetchBuildup(explorationFilters));
       return;
@@ -630,11 +634,29 @@ const OptaVisionDashboard = ({ user }) => {
                       )}
                       {activeTab === 'exploration' && (
                         <TileSkeleton
+                          title="PassFlow"
+                          desc="Flux directionnels API-first entre zones, volume, distance, reussite et xT."
+                          icon={<GitBranch />}
+                          color="text-[#ffd03c]"
+                          onClick={() => setActiveTool('passflow')}
+                        />
+                      )}
+                      {activeTab === 'exploration' && (
+                        <TileSkeleton
                           title="Territory"
                           desc="Carte de territoire API-first par zones, domination et recuperations."
                           icon={<Map />}
                           color="text-[#8be9fd]"
                           onClick={() => setActiveTool('territory')}
+                        />
+                      )}
+                      {activeTab === 'exploration' && (
+                        <TileSkeleton
+                          title="Player Radar"
+                          desc="Pizza chart API-first des profils joueurs avec percentiles contextuels."
+                          icon={<Radar />}
+                          color="text-[#3cffd0]"
+                          onClick={() => setActiveTool('playerradar')}
                         />
                       )}
                       {activeTab === 'ranking' && (
@@ -730,8 +752,16 @@ const OptaVisionDashboard = ({ user }) => {
                         <PassSonarExplorer
                           filters={explorationFilters}
                         />
+                      ) : activeTool === 'passflow' ? (
+                        <PassFlowExplorer
+                          filters={explorationFilters}
+                        />
                       ) : activeTool === 'territory' ? (
                         <TerritoryExplorer
+                          filters={explorationFilters}
+                        />
+                      ) : activeTool === 'playerradar' ? (
+                        <PlayerRadarExplorer
                           filters={explorationFilters}
                         />
                       ) : activeTool === 'ranking' ? (
