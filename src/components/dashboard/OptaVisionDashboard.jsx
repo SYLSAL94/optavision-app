@@ -18,7 +18,8 @@ import {
   LogOut,
   ChevronDown,
   Shield,
-  Play
+  Play,
+  GitBranch
 } from 'lucide-react';
 import ExplorationFilterPanel from './ExplorationFilterPanel';
 import BuildUpFilterPanel from './BuildUpFilterPanel';
@@ -28,6 +29,7 @@ import EventExplorer from './EventExplorer';
 import BuildUpExplorer from './BuildUpExplorer';
 import ShotMapExplorer from './ShotMapExplorer';
 import RankingExplorer from './RankingExplorer';
+import ChainBoardExplorer from './ChainBoardExplorer';
 import GlobalVideoPlayer from './GlobalVideoPlayer';
 import SettingsModal from '../layout/SettingsModal';
 import { API_BASE_URL, OPTAVISION_API_URL } from '../../config';
@@ -55,7 +57,7 @@ const OptaVisionDashboard = ({ user }) => {
   const [teamsList, setTeamsList] = useState([]);
   const [playersList, setPlayersList] = useState([]);
   const [activeTab, setActiveTab] = useState('exploration');
-  const [activeTool, setActiveTool] = useState(null); // 'events', 'sequences', 'shots'
+  const [activeTool, setActiveTool] = useState(null); // 'events', 'chainboard', 'sequences', 'shots'
   const [globalVideoUrl, setGlobalVideoUrl] = useState(null);
   const [videoQueue, setVideoQueue] = useState([]);
   const [videoQueueIndex, setVideoQueueIndex] = useState(-1);
@@ -397,6 +399,7 @@ const OptaVisionDashboard = ({ user }) => {
   useEffect(() => {
     // On charge les événements de base même en mode séquences pour le cache spatial (Zero-Download)
     if (activeTool === 'ranking') return;
+    if (activeTool === 'chainboard') return;
     if (activeTool === 'sequences') {
       Promise.resolve().then(() => fetchBuildup(explorationFilters));
       return;
@@ -581,6 +584,15 @@ const OptaVisionDashboard = ({ user }) => {
                           onClick={() => setActiveTool('events')}
                         />
                       )}
+                      {activeTab === 'exploration' && (
+                        <TileSkeleton
+                          title="ChainBoard"
+                          desc="Detection API-first des chaines par zones de depart, arrivee et relais."
+                          icon={<GitBranch />}
+                          color="text-[#ffd03c]"
+                          onClick={() => setActiveTool('chainboard')}
+                        />
+                      )}
                       {activeTab === 'ranking' && (
                         <TileSkeleton
                           title="Ranking Performance"
@@ -653,6 +665,13 @@ const OptaVisionDashboard = ({ user }) => {
                         <ShotMapExplorer
                           data={eventsData}
                           loading={loading}
+                          onPlayVideo={handlePlaySingleVideo}
+                          isVideoLoading={isVideoLoading}
+                        />
+                      ) : activeTool === 'chainboard' ? (
+                        <ChainBoardExplorer
+                          filters={explorationFilters}
+                          playersList={playersList}
                           onPlayVideo={handlePlaySingleVideo}
                           isVideoLoading={isVideoLoading}
                         />
