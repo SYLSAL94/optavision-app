@@ -36,6 +36,7 @@ export const appendExplorationFilterParams = (params, requestFilters = {}) => {
   if (requestFilters.phase?.length > 0) params.append('phase', requestFilters.phase.join(','));
   if (requestFilters.stadium?.length > 0) params.append('stadium', requestFilters.stadium.join(','));
   if (requestFilters.advanced_tactics?.length > 0) params.append('advanced_tactics', requestFilters.advanced_tactics.join(','));
+  if (requestFilters.include_technical === true) params.append('include_technical', 'true');
 
   if (requestFilters.pass_distance_min !== null && requestFilters.pass_distance_min !== undefined) {
     params.append('min_pass_distance', requestFilters.pass_distance_min.toString());

@@ -110,7 +110,8 @@ const OptaVisionDashboard = ({ user }) => {
     pass_distance_min: null,
     pass_distance_max: null,
     carry_distance_min: null,
-    carry_distance_max: null
+    carry_distance_max: null,
+    include_technical: false
   });
   const [shotFilters, setShotFilters] = useState({
     outcomes: [],

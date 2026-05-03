@@ -126,7 +126,8 @@ const ExplorationFilterPanel = ({
       pass_distance_min: null,
       pass_distance_max: null,
       carry_distance_min: null,
-      carry_distance_max: null
+      carry_distance_max: null,
+      include_technical: false
     };
     setPendingFilters(initial);
   };
@@ -222,6 +223,37 @@ const ExplorationFilterPanel = ({
             </div>
 
             <div className="h-px bg-white/5 my-4" />
+
+            <div className="flex items-center justify-between gap-6 border border-white/10 bg-[#0b0b0b] p-5 rounded-[2px]">
+              <div className="min-w-0">
+                <div className="verge-label-mono text-[10px] text-white uppercase tracking-widest font-black">
+                  Afficher evenements techniques
+                </div>
+                <div className="verge-label-mono text-[8px] text-[#949494] uppercase tracking-widest mt-2 leading-relaxed">
+                  Audit raw, substitutions, starts, outs et corrections
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={!!pendingFilters.include_technical}
+                onClick={() => setPendingFilters({
+                  ...pendingFilters,
+                  include_technical: !pendingFilters.include_technical
+                })}
+                className={`relative h-7 w-14 shrink-0 rounded-full border transition-all ${
+                  pendingFilters.include_technical
+                    ? 'bg-[#3cffd0] border-[#3cffd0]'
+                    : 'bg-[#1d1d1d] border-white/15'
+                }`}
+              >
+                <span
+                  className={`absolute top-1 h-5 w-5 rounded-full bg-white transition-transform ${
+                    pendingFilters.include_technical ? 'translate-x-7' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
 
             <MultiSelectWithChips 
               label="Sélection Individuelle (Match)" 
