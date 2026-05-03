@@ -14,6 +14,7 @@ import {
   Palette, Square,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   PlayCircle
 } from 'lucide-react';
 
@@ -93,6 +94,7 @@ const EventExplorer = ({
   const [liveFluxPage, setLiveFluxPage] = useState(1);
   const [selectionBox, setSelectionBox] = useState(EMPTY_SELECTION_BOX);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isMixMenuOpen, setIsMixMenuOpen] = useState(false);
 
   // --- MOTEUR GÉOMÉTRIQUE UNIFIÉ ---
   const { projectPoint, getPitchViewBox, getPitchSvgPoint } = usePitchProjection(orientation);
@@ -179,6 +181,8 @@ const EventExplorer = ({
   const liveEventRows = useMemo(() => (
     ((isSequenceMode && data && Array.isArray(data.sequences)) ? spatialDisplayData[0]?.events : spatialDisplayData) || []
   ), [isSequenceMode, data, spatialDisplayData]);
+  const videoActionCount = liveEventRows.length;
+  const isVideoActionDisabled = loading || videoActionCount === 0;
 
   const handlePitchMouseMove = useCallback((event) => {
     const point = getPitchSvgPoint(event, pitchViewBox);
@@ -250,7 +254,6 @@ const EventExplorer = ({
 
   // --- 4. MÉTRIQUES ET RENDU SPATIAL ---
   const mapEventCount = countDisplayEvents(spatialDisplayData, isSequenceMode && data && Array.isArray(data.sequences));
-  const selectedSpatialEventCount = selectionBounds ? mapEventCount : 0;
   const isEventLimitExceeded = mapEventCount > 1000;
   const shouldShowEvents = showEvents && !isEventLimitExceeded;
   const pitchDisplayData = shouldShowEvents
@@ -263,8 +266,9 @@ const EventExplorer = ({
     return events.filter(hasRenderablePlayerId);
   }, [isSequenceMode, data, spatialDisplayData]);
 
-  const handleDownloadMix = async () => {
+  const handleDownloadMix = async (mixMode = 'standard') => {
     if (liveEventRows.length === 0) return;
+    setIsMixMenuOpen(false);
     setIsDownloading(true);
     try {
       const savedConfig = localStorage.getItem('optavision_video_config');
@@ -281,7 +285,8 @@ const EventExplorer = ({
           event_ids: eventIds,
           before_buffer: videoCfg.before_buffer,
           after_buffer: videoCfg.after_buffer,
-          min_clip_gap: videoCfg.min_clip_gap
+          min_clip_gap: videoCfg.min_clip_gap,
+          mix_mode: mixMode
         })
       });
 
@@ -297,7 +302,7 @@ const EventExplorer = ({
             const a = document.createElement('a');
             a.style.display = 'none';
             a.href = blobUrl;
-            a.download = `OptaVision_Mixage_${Date.now()}.mp4`;
+            a.download = `OptaVision_Mixage_${mixMode}_${Date.now()}.mp4`;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(blobUrl);
@@ -413,41 +418,67 @@ const EventExplorer = ({
           <span className="verge-label-mono text-[10px] text-white font-black uppercase tracking-[0.2em]">Flux Live Analyst (Virtualized)</span>
         </div>
         <div className="flex items-center gap-2">
-          {selectedSpatialEventCount > 0 && (
-            <button
-              type="button"
-              disabled={generatingEventId === 'batch'}
-              onClick={async () => {
-                if (liveEventRows.length === 0) return;
-                setGeneratingEventId('batch');
-                try {
-                  if (onPlayPlaylist) {
-                    await onPlayPlaylist(liveEventRows);
-                  } else {
-                    await handlePlayFocusedVideo(liveEventRows[0]);
-                  }
-                } finally {
-                  setGeneratingEventId(null);
+          <button
+            type="button"
+            disabled={isVideoActionDisabled || generatingEventId === 'batch'}
+            onClick={async () => {
+              if (liveEventRows.length === 0) return;
+              setGeneratingEventId('batch');
+              try {
+                if (onPlayPlaylist) {
+                  await onPlayPlaylist(liveEventRows);
+                } else {
+                  await handlePlayFocusedVideo(liveEventRows[0]);
                 }
-              }}
-              className={`px-3 py-1.5 rounded-[2px] verge-label-mono text-[9px] font-black uppercase flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(60,255,208,0.3)] ${generatingEventId === 'batch' ? 'bg-[#3cffd0]/20 text-[#3cffd0] cursor-wait' : 'bg-[#3cffd0] hover:bg-[#2edeb4] text-black cursor-pointer'}`}
-            >
-              {generatingEventId === 'batch' ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} fill="currentColor" />}
-              Rafale ({selectedSpatialEventCount})
-            </button>
-          )}
-          {selectedSpatialEventCount > 0 && (
+              } finally {
+                setGeneratingEventId(null);
+              }
+            }}
+            className={`px-3 py-1.5 rounded-[2px] verge-label-mono text-[9px] font-black uppercase flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(60,255,208,0.3)] ${isVideoActionDisabled ? 'bg-[#3cffd0]/10 text-[#3cffd0]/35 cursor-not-allowed shadow-none' : generatingEventId === 'batch' ? 'bg-[#3cffd0]/20 text-[#3cffd0] cursor-wait' : 'bg-[#3cffd0] hover:bg-[#2edeb4] text-black cursor-pointer'}`}
+            title={selectionBounds ? 'Lancer une rafale sur la sélection spatiale' : 'Lancer une rafale sur le résultat filtré'}
+          >
+            {generatingEventId === 'batch' ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} fill="currentColor" />}
+            Rafale ({videoActionCount})
+          </button>
+          <div className="relative">
             <button
               type="button"
-              disabled={isDownloading}
-              onClick={handleDownloadMix}
-              className={`px-3 py-1.5 rounded-[2px] verge-label-mono text-[9px] font-black uppercase flex items-center gap-2 transition-all border border-white/10 ${isDownloading ? 'bg-white/10 text-[#949494] cursor-wait' : 'bg-black/40 hover:bg-white/10 text-white cursor-pointer'}`}
-              title="Télécharger le mixage physique (MP4)"
+              disabled={isVideoActionDisabled || isDownloading}
+              onClick={() => setIsMixMenuOpen(prev => !prev)}
+              className={`px-3 py-1.5 rounded-[2px] verge-label-mono text-[9px] font-black uppercase flex items-center gap-2 transition-all border border-white/10 ${isVideoActionDisabled ? 'bg-black/20 text-white/25 cursor-not-allowed' : isDownloading ? 'bg-white/10 text-[#949494] cursor-wait' : 'bg-black/40 hover:bg-white/10 text-white cursor-pointer'}`}
+              title={selectionBounds ? 'Télécharger le mixage de la sélection spatiale' : 'Télécharger le mixage du résultat filtré'}
             >
               {isDownloading ? <Loader2 size={10} className="animate-spin" /> : <Download size={10} />}
               Mixage
+              <ChevronDown size={10} className={`transition-transform ${isMixMenuOpen ? 'rotate-180' : ''}`} />
             </button>
-          )}
+            <AnimatePresence>
+              {isMixMenuOpen && !isVideoActionDisabled && !isDownloading && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.12 }}
+                  className="absolute right-0 top-[calc(100%+6px)] z-50 w-40 overflow-hidden rounded-[2px] border border-white/10 bg-[#0b0b0b] shadow-2xl"
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadMix('standard')}
+                    className="w-full px-3 py-2 text-left verge-label-mono text-[9px] font-black uppercase text-white hover:bg-white/10"
+                  >
+                    Standard
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadMix('advanced')}
+                    className="w-full border-t border-white/10 px-3 py-2 text-left verge-label-mono text-[9px] font-black uppercase text-[#3cffd0] hover:bg-[#3cffd0]/10"
+                  >
+                    Avancé
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
           <span className="verge-label-mono text-[9px] text-[#949494] bg-white/5 px-3 py-1.5 rounded-[2px] border border-white/5">
             {liveEventRows.length.toLocaleString()} TOTAL
           </span>
