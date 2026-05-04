@@ -399,7 +399,9 @@ const OptaVisionDashboard = ({ user }) => {
       : null;
 
     if (!matchId || !eventId) {
-      throw new Error("match_id et event_id requis pour générer la vidéo");
+      const message = "match_id et event_id requis pour generer la video";
+      if (!options.suppressAlert) alert(message);
+      return null;
     }
 
     setIsVideoLoading(true);
@@ -418,6 +420,7 @@ const OptaVisionDashboard = ({ user }) => {
           sequence_id: event.sub_sequence_id || event.seq_uuid || event.id,
           sequence_start_seconds: sequenceStartSeconds,
           sequence_end_seconds: sequenceEndSeconds,
+          sequence_period_id: firstSequenceEvent?.period_id ?? firstSequenceEvent?.period ?? event?.period_id ?? event?.period ?? null,
         } : {})
       };
 
@@ -442,11 +445,31 @@ const OptaVisionDashboard = ({ user }) => {
       return payload.video_url;
     } catch (err) {
       console.error("Erreur generation video:", err);
-      alert(err.message || "Erreur generation video");
+      if (!options.suppressAlert) {
+        alert(err.message || "Erreur generation video");
+      }
       return null;
     } finally {
       setIsVideoLoading(false);
     }
+  };
+
+  const playQueueFromIndex = async (queue, startIndex = 0) => {
+    const safeQueue = Array.isArray(queue) ? queue : [];
+    for (let index = startIndex; index < safeQueue.length; index += 1) {
+      setVideoQueue(safeQueue);
+      setVideoQueueIndex(index);
+      setVideoPlayerTitle(`Mixage View ${index + 1}/${safeQueue.length}`);
+      const videoUrl = await handlePlaySingleVideo(safeQueue[index], { preserveQueue: true, suppressAlert: true });
+      if (videoUrl) return videoUrl;
+      console.warn(`Mixage View: clip ${index + 1}/${safeQueue.length} ignore car la video source est indisponible.`);
+    }
+
+    setVideoQueue([]);
+    setVideoQueueIndex(-1);
+    setVideoPlayerTitle(DEFAULT_VIDEO_TITLE);
+    alert("Aucun clip video valide dans cette selection.");
+    return null;
   };
 
   const handlePlayPlaylist = async (events = []) => {
@@ -455,13 +478,11 @@ const OptaVisionDashboard = ({ user }) => {
     if (nextQueue.length === 0) return null;
 
     if (nextQueue.length !== rawQueue.length) {
-      console.info(`Rafale merge-aware: ${rawQueue.length} actions regroupees en ${nextQueue.length} clips.`);
+      console.info(`Mixage View merge-aware: ${rawQueue.length} actions regroupees en ${nextQueue.length} clips.`);
     }
 
     setVideoQueue(nextQueue);
-    setVideoQueueIndex(0);
-    setVideoPlayerTitle(`Rafale 1/${nextQueue.length}`);
-    return handlePlaySingleVideo(nextQueue[0], { preserveQueue: true });
+    return playQueueFromIndex(nextQueue, 0);
   };
 
   const handleVideoEnded = async () => {
@@ -475,9 +496,7 @@ const OptaVisionDashboard = ({ user }) => {
       return;
     }
 
-    setVideoQueueIndex(nextIndex);
-    setVideoPlayerTitle(`Rafale ${nextIndex + 1}/${videoQueue.length}`);
-    await handlePlaySingleVideo(videoQueue[nextIndex], { preserveQueue: true });
+    await playQueueFromIndex(videoQueue, nextIndex);
   };
 
   const handleCloseGlobalVideo = () => {

@@ -73,6 +73,151 @@ const formatMatchClock = (event = {}) => {
   return `P${Number.isFinite(periodId) ? periodId : '?'} ${minuteLabel}${secondsLabel}`;
 };
 
+const getEventEndPoint = (event) => {
+  const metrics = parseAdvancedMetrics(event);
+  const x = Number(metrics.end_x ?? metrics.endX ?? event?.end_x ?? event?.endX);
+  const y = Number(metrics.end_y ?? metrics.endY ?? event?.end_y ?? event?.endY);
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+};
+
+const orderEventsForMix = (events = [], mode = 'standard') => {
+  if (mode !== 'advanced' || events.length <= 2) return events;
+
+  const entries = events.map((event, index) => {
+    const metrics = parseAdvancedMetrics(event);
+    const x = Number(event?.x);
+    const y = Number(event?.y);
+    return {
+      event,
+      index,
+      type: String(metrics.type_name || event?.type_name || event?.type_id || '').toLowerCase(),
+      player: String(event?.player_id || event?.playerName || metrics.player_id || ''),
+      start: Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null,
+      end: getEventEndPoint(event),
+    };
+  });
+
+  const pool = entries.slice(1);
+  const ordered = [entries[0]];
+  while (pool.length > 0) {
+    const last = ordered[ordered.length - 1];
+    const anchor = last.end || last.start;
+    let bestIndex = 0;
+    let bestScore = -Infinity;
+
+    pool.forEach((entry, index) => {
+      let score = 0;
+      if (entry.player && entry.player !== last.player) score += 4;
+      if (entry.type && entry.type !== last.type) score += 3;
+      if (anchor && entry.start) {
+        const distance = Math.hypot(anchor.x - entry.start.x, anchor.y - entry.start.y);
+        score += Math.max(0, 4 - distance / 18);
+      }
+      score -= index * 0.01;
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = index;
+      }
+    });
+
+    ordered.push(pool.splice(bestIndex, 1)[0]);
+  }
+
+  return ordered.map((entry) => entry.event);
+};
+
+const getEventPeriodId = (event) => {
+  const period = Number(event?.period_id ?? event?.periodId ?? event?.period);
+  return Number.isFinite(period) ? period : null;
+};
+
+const getEventMatchSeconds = (event) => {
+  const minute = Number(event?.minute ?? event?.min ?? 0);
+  const second = Number(event?.sec ?? event?.second ?? 0);
+  if (!Number.isFinite(minute) || !Number.isFinite(second)) return null;
+
+  const periodId = getEventPeriodId(event);
+  const periodBase = { 2: 45, 3: 90, 4: 105 }[periodId] || 0;
+  const normalizedMinute = periodBase > 0 && minute < periodBase ? minute + periodBase : minute;
+  return normalizedMinute * 60 + second;
+};
+
+const buildMixClipEntries = (events = [], videoCfg = {}) => {
+  const before = Number(videoCfg.before_buffer ?? 3);
+  const after = Number(videoCfg.after_buffer ?? 5);
+
+  return events.map((event, index) => {
+    const eventId = event.opta_id || event.event_id || event.id;
+    const matchId = event.match_id || event.matchId;
+    const periodId = getEventPeriodId(event);
+    const eventSeconds = getEventMatchSeconds(event);
+    if (!eventId || !matchId || !Number.isFinite(eventSeconds)) return null;
+
+    return {
+      key: `${matchId}:${eventId}:${index}`,
+      eventId,
+      matchId,
+      periodId,
+      eventSeconds,
+      windowStart: Math.max(0, eventSeconds - before),
+      windowEnd: eventSeconds + after,
+      clip: {
+        match_id: matchId,
+        event_id: eventId,
+        trim_before_seconds: before,
+        trim_after_seconds: after,
+      },
+    };
+  }).filter(Boolean);
+};
+
+const mergeMixClipEntries = (entries = [], videoCfg = {}) => {
+  const minGap = Number(videoCfg.min_clip_gap ?? 0.5);
+  const groups = [];
+
+  entries.forEach((entry) => {
+    const lastGroup = groups[groups.length - 1];
+    const canMerge = Boolean(
+      lastGroup
+      && lastGroup.matchId === entry.matchId
+      && lastGroup.periodId === entry.periodId
+      && entry.windowStart <= lastGroup.windowEnd + minGap
+    );
+
+    if (canMerge) {
+      lastGroup.entries.push(entry);
+      lastGroup.windowStart = Math.min(lastGroup.windowStart, entry.windowStart);
+      lastGroup.windowEnd = Math.max(lastGroup.windowEnd, entry.windowEnd);
+      return;
+    }
+
+    groups.push({
+      matchId: entry.matchId,
+      periodId: entry.periodId,
+      windowStart: entry.windowStart,
+      windowEnd: entry.windowEnd,
+      entries: [entry],
+    });
+  });
+
+  return groups.map((group, index) => {
+    if (group.entries.length === 1) return group.entries[0].clip;
+
+    const eventIds = [...new Set(group.entries.map((entry) => entry.eventId).filter(Boolean))];
+    return {
+      match_id: group.matchId,
+      event_id: eventIds[0],
+      event_ids: eventIds,
+      sequence_id: `mix-merge-${group.matchId}-${Math.round(group.windowStart * 10)}-${Math.round(group.windowEnd * 10)}-${index}`,
+      sequence_start_seconds: group.windowStart,
+      sequence_end_seconds: group.windowEnd,
+      sequence_period_id: group.periodId,
+      trim_before_seconds: 0,
+      trim_after_seconds: 0,
+    };
+  });
+};
+
 const DUEL_EVENT_KEYS = new Set(['takeon', 'tackle', 'aerial', 'challenge', 'interception', 'ballrecovery', 'foul', 'blockedpass', 'dispossessed']);
 const DUEL_EVENT_IDS = new Set(['4', '50', '74']);
 const FORCED_DUEL_LOSS_KEYS = new Set(['blockedpass', 'dispossessed']);
@@ -324,21 +469,36 @@ const EventExplorer = ({
     setIsDownloading(true);
     try {
       const savedConfig = localStorage.getItem('optavision_video_config');
-      const videoCfg = savedConfig ? JSON.parse(savedConfig) : { before_buffer: 3, after_buffer: 5, min_clip_gap: 0.5 };
+      const videoCfg = savedConfig
+        ? { before_buffer: 3, after_buffer: 5, min_clip_gap: 0.5, ...JSON.parse(savedConfig) }
+        : { before_buffer: 3, after_buffer: 5, min_clip_gap: 0.5 };
       
-      const eventIds = liveEventRows.map(e => e.opta_id || e.id);
-      const matchId = liveEventRows[0].match_id || liveEventRows[0].matchId || matchIds?.[0];
+      const orderedEvents = orderEventsForMix(
+        liveEventRows.map((event) => ({
+          ...event,
+          match_id: event.match_id || event.matchId || matchIds?.[0],
+        })),
+        mixMode
+      );
+      const clipEntries = buildMixClipEntries(orderedEvents, videoCfg);
+      const clips = mergeMixClipEntries(clipEntries, videoCfg);
 
-      const response = await fetch(`${API_BASE_URL}/api/optavision/download-mix`, {
+      if (clips.length === 0) {
+        throw new Error('Aucun clip valide pour le Mixage DL');
+      }
+      if (clips.length !== clipEntries.length) {
+        console.info(`Mixage DL merge-aware: ${clipEntries.length} actions regroupees en ${clips.length} clips.`);
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/optavision/playlist-mix`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          match_id: matchId,
-          event_ids: eventIds,
-          before_buffer: videoCfg.before_buffer,
-          after_buffer: videoCfg.after_buffer,
+          match_id: clips[0]?.match_id || null,
+          clips,
           min_clip_gap: videoCfg.min_clip_gap,
-          mix_mode: mixMode
+          mix_mode: mixMode,
+          delivery: 'download'
         })
       });
 
@@ -354,7 +514,7 @@ const EventExplorer = ({
             const a = document.createElement('a');
             a.style.display = 'none';
             a.href = blobUrl;
-            a.download = `OptaVision_Mixage_${mixMode}_${Date.now()}.mp4`;
+            a.download = `OptaVision_MixageDL_${mixMode}_${Date.now()}.mp4`;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(blobUrl);
@@ -491,10 +651,10 @@ const EventExplorer = ({
               }
             }}
             className={`px-3 py-1.5 rounded-[2px] verge-label-mono text-[9px] font-black uppercase flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(60,255,208,0.3)] ${isVideoActionDisabled ? 'bg-[#3cffd0]/10 text-[#3cffd0]/35 cursor-not-allowed shadow-none' : generatingEventId === 'batch' ? 'bg-[#3cffd0]/20 text-[#3cffd0] cursor-wait' : 'bg-[#3cffd0] hover:bg-[#2edeb4] text-black cursor-pointer'}`}
-            title={selectionBounds ? 'Lancer une rafale sur la sélection spatiale' : 'Lancer une rafale sur le résultat filtré'}
+            title={selectionBounds ? 'Lire le Mixage View de la sélection spatiale' : 'Lire le Mixage View du résultat filtré'}
           >
             {generatingEventId === 'batch' ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} fill="currentColor" />}
-            Rafale ({videoActionCount})
+            Mixage View ({videoActionCount})
           </button>
           <div className="relative">
             <button
@@ -502,10 +662,10 @@ const EventExplorer = ({
               disabled={isVideoActionDisabled || isDownloading}
               onClick={() => setIsMixMenuOpen(prev => !prev)}
               className={`px-3 py-1.5 rounded-[2px] verge-label-mono text-[9px] font-black uppercase flex items-center gap-2 transition-all border border-white/10 ${isVideoActionDisabled ? 'bg-black/20 text-white/25 cursor-not-allowed' : isDownloading ? 'bg-white/10 text-[#949494] cursor-wait' : 'bg-black/40 hover:bg-white/10 text-white cursor-pointer'}`}
-              title={selectionBounds ? 'Télécharger le mixage de la sélection spatiale' : 'Télécharger le mixage du résultat filtré'}
+              title={selectionBounds ? 'Télécharger le Mixage DL de la sélection spatiale' : 'Télécharger le Mixage DL du résultat filtré'}
             >
               {isDownloading ? <Loader2 size={10} className="animate-spin" /> : <Download size={10} />}
-              Mixage
+              Mixage DL
               <ChevronDown size={10} className={`transition-transform ${isMixMenuOpen ? 'rotate-180' : ''}`} />
             </button>
             <AnimatePresence>
@@ -522,14 +682,14 @@ const EventExplorer = ({
                     onClick={() => handleDownloadMix('standard')}
                     className="w-full px-3 py-2 text-left verge-label-mono text-[9px] font-black uppercase text-white hover:bg-white/10"
                   >
-                    Standard
+                    DL Standard
                   </button>
                   <button
                     type="button"
                     onClick={() => handleDownloadMix('advanced')}
                     className="w-full border-t border-white/10 px-3 py-2 text-left verge-label-mono text-[9px] font-black uppercase text-[#3cffd0] hover:bg-[#3cffd0]/10"
                   >
-                    Avancé
+                    DL Avance
                   </button>
                 </motion.div>
               )}

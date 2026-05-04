@@ -7,6 +7,16 @@ import { pollVideoJob } from '../../utils/videoJobs';
 
 const DEFAULT_TRIM_BEFORE = 5;
 const DEFAULT_TRIM_AFTER = 8;
+const DEFAULT_VIDEO_CONFIG = { before_buffer: 3, after_buffer: 5, min_clip_gap: 0.5 };
+
+const readVideoConfig = () => {
+  try {
+    const savedConfig = localStorage.getItem('optavision_video_config');
+    return savedConfig ? { ...DEFAULT_VIDEO_CONFIG, ...JSON.parse(savedConfig) } : DEFAULT_VIDEO_CONFIG;
+  } catch {
+    return DEFAULT_VIDEO_CONFIG;
+  }
+};
 
 const parseAdvancedMetrics = (item) => {
   const raw = item?.advanced_metrics || {};
@@ -183,6 +193,27 @@ const getStartCoordinates = (item) => {
   return x !== null && y !== null ? { x, y } : null;
 };
 
+const getItemPeriodId = (item) => {
+  const firstEvent = Array.isArray(item?.events) && item.events.length > 0 ? item.events[0] : null;
+  const period = Number(firstEvent?.period_id ?? firstEvent?.period ?? item?.period_id ?? item?.period);
+  return Number.isFinite(period) ? period : null;
+};
+
+const getItemMatchSeconds = (item, fallbackValue = null) => {
+  const direct = Number(fallbackValue);
+  if (Number.isFinite(direct)) return direct;
+
+  const firstEvent = Array.isArray(item?.events) && item.events.length > 0 ? item.events[0] : item;
+  const minute = Number(firstEvent?.minute ?? firstEvent?.min ?? item?.minute ?? item?.min ?? 0);
+  const second = Number(firstEvent?.sec ?? firstEvent?.second ?? item?.sec ?? item?.second ?? 0);
+  if (!Number.isFinite(minute) || !Number.isFinite(second)) return null;
+
+  const periodId = getItemPeriodId(item);
+  const periodBase = { 2: 45, 3: 90, 4: 105 }[periodId] || 0;
+  const normalizedMinute = periodBase > 0 && minute < periodBase ? minute + periodBase : minute;
+  return normalizedMinute * 60 + second;
+};
+
 const getItemVideoPayload = (item, trim) => {
   if (!item) return null;
   const isSequence = Array.isArray(item.events) && item.events.length > 0;
@@ -201,19 +232,21 @@ const getItemVideoPayload = (item, trim) => {
   const sequenceEnd = Number.isFinite(numericEnd)
     ? numericEnd
     : (parseClockSeconds(item.end_time) ?? (Number(lastEvent?.minute ?? lastEvent?.min ?? 0) * 60 + Number(lastEvent?.sec ?? lastEvent?.second ?? 0)));
+  const sequencePeriodId = firstEvent?.period_id ?? firstEvent?.period ?? item?.period_id ?? item?.period ?? null;
 
   return {
     match_id: matchId,
     event_id: eventId,
     before_buffer: Number(trim.before || 0),
     after_buffer: Number(trim.after || 0),
-    min_clip_gap: 0.5,
+    min_clip_gap: Number(trim.minGap ?? DEFAULT_VIDEO_CONFIG.min_clip_gap),
     force_rebuild: true,
     ...(isSequence ? {
       event_ids: item.events.map(getVideoEventId).filter(Boolean),
       sequence_id: item.sub_sequence_id || item.seq_uuid || item.playlist_item_id || item.id,
       sequence_start_seconds: sequenceStart,
       sequence_end_seconds: sequenceEnd,
+      sequence_period_id: sequencePeriodId,
     } : {})
   };
 };
@@ -255,6 +288,61 @@ const orderPlaylistEntriesForMix = (entries, mode) => {
     ordered.push(pool.splice(bestIndex, 1)[0]);
   }
   return ordered;
+};
+
+const mergePlaylistEntriesForMix = (entries = [], videoCfg = DEFAULT_VIDEO_CONFIG) => {
+  const minGap = Number(videoCfg.min_clip_gap ?? DEFAULT_VIDEO_CONFIG.min_clip_gap);
+  const groups = [];
+
+  entries.forEach((entry) => {
+    const lastGroup = groups[groups.length - 1];
+    const canMerge = Boolean(
+      lastGroup
+      && lastGroup.matchId === entry.matchId
+      && lastGroup.periodId === entry.periodId
+      && Number.isFinite(lastGroup.windowEnd)
+      && Number.isFinite(entry.windowStart)
+      && entry.windowStart <= lastGroup.windowEnd + minGap
+    );
+
+    if (canMerge) {
+      lastGroup.entries.push(entry);
+      lastGroup.windowStart = Math.min(lastGroup.windowStart, entry.windowStart);
+      lastGroup.windowEnd = Math.max(lastGroup.windowEnd, entry.windowEnd);
+      return;
+    }
+
+    groups.push({
+      matchId: entry.matchId,
+      periodId: entry.periodId,
+      windowStart: entry.windowStart,
+      windowEnd: entry.windowEnd,
+      entries: [entry],
+    });
+  });
+
+  return groups.map((group, index) => {
+    if (group.entries.length === 1) return group.entries[0];
+
+    const eventIds = [...new Set(group.entries.flatMap((entry) => entry.eventIds || []).filter(Boolean))];
+    const first = group.entries[0];
+    return {
+      ...first,
+      key: `playlist-merge-${group.matchId}-${Math.round(group.windowStart * 10)}-${Math.round(group.windowEnd * 10)}-${index}`,
+      mergedCount: group.entries.length,
+      clip: {
+        match_id: group.matchId,
+        event_id: eventIds[0],
+        event_ids: eventIds,
+        sequence_id: `playlist-merge-${group.matchId}-${Math.round(group.windowStart * 10)}-${Math.round(group.windowEnd * 10)}-${index}`,
+        sequence_start_seconds: group.windowStart,
+        sequence_end_seconds: group.windowEnd,
+        sequence_period_id: group.periodId,
+        trim_before_seconds: 0,
+        trim_after_seconds: 0,
+      },
+    };
+  });
 };
 
 const PlaylistSpatialLayer = ({ items, selectedItem, onSelect, projectPoint }) => (
@@ -336,6 +424,7 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
   const [localVideoError, setLocalVideoError] = useState(null);
   const [mixMode, setMixMode] = useState('standard');
   const [mixLoading, setMixLoading] = useState(false);
+  const [mixDownloadLoading, setMixDownloadLoading] = useState(false);
   const [error, setError] = useState(null);
   const { projectPoint } = usePitchProjection('horizontal');
 
@@ -434,9 +523,11 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
     || Number(trimAfter) !== Number(selectedItem?.trim_after_seconds ?? DEFAULT_TRIM_AFTER)
   );
 
+  const playlistVideoConfig = readVideoConfig();
+
   const selectedVideoPayload = useMemo(
-    () => getItemVideoPayload(selectedItem, { before: trimBefore, after: trimAfter }),
-    [selectedItem, trimAfter, trimBefore]
+    () => getItemVideoPayload(selectedItem, { before: trimBefore, after: trimAfter, minGap: playlistVideoConfig.min_clip_gap }),
+    [selectedItem, trimAfter, trimBefore, playlistVideoConfig.min_clip_gap]
   );
 
   const playlistMixEntries = useMemo(() => {
@@ -445,8 +536,14 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
       const isSelected = selectedKey && getPlaylistItemKey(item) === selectedKey;
       const before = isSelected ? trimBefore : Number(item?.trim_before_seconds ?? DEFAULT_TRIM_BEFORE);
       const after = isSelected ? trimAfter : Number(item?.trim_after_seconds ?? DEFAULT_TRIM_AFTER);
-      const payload = getItemVideoPayload(item, { before, after });
+      const payload = getItemVideoPayload(item, { before, after, minGap: playlistVideoConfig.min_clip_gap });
       if (!payload) return null;
+      const periodId = getItemPeriodId(item);
+      const rawStart = getItemMatchSeconds(item, payload.sequence_start_seconds);
+      const rawEnd = getItemMatchSeconds(item, payload.sequence_end_seconds ?? payload.sequence_start_seconds);
+      const windowStart = Number.isFinite(rawStart) ? Math.max(0, rawStart - before) : null;
+      const windowEnd = Number.isFinite(rawEnd) ? rawEnd + after : null;
+      const eventIds = payload.event_ids || [payload.event_id].filter(Boolean);
       return {
         key: getPlaylistItemKey(item),
         type: String(getItemLabel(item)).toLowerCase(),
@@ -454,6 +551,10 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
         start: getStartCoordinates(item),
         end: getEndCoordinates(item),
         matchId: payload.match_id,
+        periodId,
+        windowStart,
+        windowEnd,
+        eventIds,
         clip: {
           match_id: payload.match_id,
           event_id: payload.event_id,
@@ -461,25 +562,32 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
           sequence_id: payload.sequence_id,
           sequence_start_seconds: payload.sequence_start_seconds,
           sequence_end_seconds: payload.sequence_end_seconds,
+          sequence_period_id: payload.sequence_period_id,
           trim_before_seconds: payload.before_buffer,
           trim_after_seconds: payload.after_buffer,
         },
       };
     }).filter(Boolean);
-  }, [items, selectedItem, trimAfter, trimBefore]);
+  }, [items, selectedItem, trimAfter, trimBefore, playlistVideoConfig.min_clip_gap]);
 
   const orderedPlaylistMixEntries = useMemo(
     () => orderPlaylistEntriesForMix(playlistMixEntries, mixMode),
     [mixMode, playlistMixEntries]
   );
 
-  const playlistMixMatchIds = useMemo(
-    () => [...new Set(orderedPlaylistMixEntries.map((entry) => entry.matchId).filter(Boolean))],
-    [orderedPlaylistMixEntries]
+  const mergedPlaylistMixEntries = useMemo(
+    () => mergePlaylistEntriesForMix(orderedPlaylistMixEntries, playlistVideoConfig),
+    [orderedPlaylistMixEntries, playlistVideoConfig.min_clip_gap]
   );
 
-  const canGeneratePlaylistMix = orderedPlaylistMixEntries.length > 0
-    && orderedPlaylistMixEntries.every((entry) => entry.matchId);
+  const playlistMixMatchIds = useMemo(
+    () => [...new Set(mergedPlaylistMixEntries.map((entry) => entry.matchId).filter(Boolean))],
+    [mergedPlaylistMixEntries]
+  );
+
+  const canGeneratePlaylistMix = mergedPlaylistMixEntries.length > 0
+    && mergedPlaylistMixEntries.every((entry) => entry.matchId);
+  const playlistMergeCount = Math.max(0, orderedPlaylistMixEntries.length - mergedPlaylistMixEntries.length);
 
   const previewStart = selectedItem?.item_kind === 'sequence'
     ? toNumber(selectedItem?.start_seconds ?? selectedItem?.sequence_start_seconds)
@@ -632,9 +740,10 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
         body: JSON.stringify({
           match_id: playlistMixMatchIds[0] || null,
           playlist_id: selectedPlaylistId,
-          clips: orderedPlaylistMixEntries.map((entry) => entry.clip),
+          clips: mergedPlaylistMixEntries.map((entry) => entry.clip),
           mix_mode: mixMode,
-          min_clip_gap: 0.5,
+          min_clip_gap: playlistVideoConfig.min_clip_gap,
+          delivery: 'view',
         })
       });
       const json = await response.json().catch(() => ({}));
@@ -648,6 +757,51 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
     } finally {
       setMixLoading(false);
       setLocalVideoLoading(false);
+    }
+  };
+
+  const handleDownloadPlaylistMix = async () => {
+    if (!canGeneratePlaylistMix) {
+      setLocalVideoError('Aucun clip valide dans la playlist ou match_id manquant.');
+      return;
+    }
+
+    setMixDownloadLoading(true);
+    setLocalVideoError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/optavision/playlist-mix`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          match_id: playlistMixMatchIds[0] || null,
+          playlist_id: selectedPlaylistId,
+          clips: mergedPlaylistMixEntries.map((entry) => entry.clip),
+          mix_mode: mixMode,
+          min_clip_gap: playlistVideoConfig.min_clip_gap,
+          delivery: 'download',
+        })
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(json.detail || 'Erreur generation Mixage DL playlist');
+
+      const videoUrl = json.video_url || (json.job_id ? await pollVideoJob(json.job_id) : null);
+      if (!videoUrl) throw new Error('Aucune URL video retournee pour le Mixage DL.');
+
+      const blobResponse = await fetch(videoUrl);
+      const blob = await blobResponse.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = blobUrl;
+      a.download = `OptaVision_Playlist_MixageDL_${mixMode}_${Date.now()}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(blobUrl);
+      document.body.removeChild(a);
+    } catch (err) {
+      setLocalVideoError(err.message || 'Erreur Mixage DL playlist');
+    } finally {
+      setMixDownloadLoading(false);
     }
   };
 
@@ -704,13 +858,13 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
                   <div className="verge-label-mono text-[8px] font-black uppercase tracking-[0.22em] text-[#ffd03c]">
-                    Export playlist
+                    Mixage playlist
                   </div>
                   <div className="mt-1 verge-label-mono text-[7px] font-black uppercase tracking-[0.16em] text-[#777]">
-                    {orderedPlaylistMixEntries.length} clips - {playlistMixMatchIds.length || 0} matchs
+                    {mergedPlaylistMixEntries.length} clips - {playlistMixMatchIds.length || 0} matchs
                   </div>
                 </div>
-                {mixLoading && <Loader2 size={14} className="shrink-0 animate-spin text-[#ffd03c]" />}
+                {(mixLoading || mixDownloadLoading) && <Loader2 size={14} className="shrink-0 animate-spin text-[#ffd03c]" />}
               </div>
               <div className="grid grid-cols-2 gap-2">
                 {[
@@ -730,16 +884,31 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
               <button
                 type="button"
                 onClick={handleGeneratePlaylistMix}
-                disabled={!canGeneratePlaylistMix || localVideoLoading || mixLoading}
+                disabled={!canGeneratePlaylistMix || localVideoLoading || mixLoading || mixDownloadLoading}
                 className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-[3px] border border-[#ffd03c]/40 bg-[#ffd03c] px-3 verge-label-mono text-[8px] font-black uppercase tracking-[0.16em] text-black transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-                title="Genere toute la playlist avec les rognages individuels"
+                title="Lire toute la playlist dans l'app avec les rognages individuels"
               >
                 {mixLoading ? <Loader2 size={14} className="animate-spin" /> : <Shuffle size={14} />}
-                Mixer playlist
+                Mixage View
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadPlaylistMix}
+                disabled={!canGeneratePlaylistMix || localVideoLoading || mixLoading || mixDownloadLoading}
+                className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-[3px] border border-[#ffd03c]/35 bg-black/30 px-3 verge-label-mono text-[8px] font-black uppercase tracking-[0.16em] text-[#ffd03c] transition-all hover:border-[#ffd03c]/70 hover:bg-[#ffd03c]/10 disabled:cursor-not-allowed disabled:opacity-40"
+                title="Telecharger toute la playlist avec les rognages individuels"
+              >
+                {mixDownloadLoading ? <Loader2 size={14} className="animate-spin" /> : <Shuffle size={14} />}
+                Mixage DL
               </button>
               {playlistMixMatchIds.length > 1 && (
                 <div className="mt-2 rounded-[2px] border border-[#ffd03c]/20 bg-black/25 px-3 py-2 verge-label-mono text-[7px] font-black uppercase tracking-[0.12em] text-[#ffd03c]">
                   Multi-match actif
+                </div>
+              )}
+              {playlistMergeCount > 0 && (
+                <div className="mt-2 rounded-[2px] border border-[#3cffd0]/20 bg-black/25 px-3 py-2 verge-label-mono text-[7px] font-black uppercase tracking-[0.12em] text-[#3cffd0]">
+                  {playlistMergeCount} merges actifs - gap {playlistVideoConfig.min_clip_gap}s
                 </div>
               )}
             </div>
@@ -928,7 +1097,7 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
                   <div className="flex h-full flex-col items-center justify-center text-[#3cffd0]">
                     <Loader2 size={34} className="animate-spin" />
                     <div className="mt-5 verge-label-mono text-[9px] font-black uppercase tracking-[0.25em]">
-                      {mixLoading ? 'Generation du mixage playlist' : 'Generation du clip rogne'}
+                      {mixLoading ? 'Generation du Mixage View playlist' : mixDownloadLoading ? 'Generation du Mixage DL playlist' : 'Generation du clip rogne'}
                     </div>
                   </div>
                 ) : localVideoUrl ? (
@@ -1021,7 +1190,7 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
                   <button
                     type="button"
                     onClick={() => handleGenerateLocalVideo(selectedItem)}
-                    disabled={!selectedVideoPayload || localVideoLoading || mixLoading}
+                    disabled={!selectedVideoPayload || localVideoLoading || mixLoading || mixDownloadLoading}
                     className="flex h-11 items-center justify-center gap-2 rounded-[3px] border border-[#3cffd0]/40 bg-[#3cffd0] px-4 verge-label-mono text-[9px] font-black uppercase tracking-[0.2em] text-black transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {localVideoLoading ? <Loader2 size={14} className="animate-spin" /> : <PlayCircle size={15} />}
