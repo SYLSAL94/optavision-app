@@ -49,9 +49,15 @@ import SettingsModal from '../layout/SettingsModal';
 import { API_BASE_URL, OPTAVISION_API_URL } from '../../config';
 import { appendExplorationFilterParams } from './optaFilterParams';
 import { pollVideoJob } from '../../utils/videoJobs';
+import {
+  getEventMatchSeconds as resolveEventMatchSeconds,
+  getPeriodId as resolvePeriodId,
+  normalizeMatchSeconds,
+  parseClockSeconds,
+} from '../../utils/videoTime';
 
 const DEFAULT_VIDEO_TITLE = "OptaVision Elite Video Feed";
-const DEFAULT_VIDEO_CONFIG = { before_buffer: 3, after_buffer: 5, min_clip_gap: 0.5 };
+const DEFAULT_VIDEO_CONFIG = { before_buffer: 3, after_buffer: 3, min_clip_gap: 3 };
 
 const readVideoConfig = () => {
   try {
@@ -64,27 +70,9 @@ const readVideoConfig = () => {
 
 const getVideoEventId = (event) => event?.opta_id || event?.event_id || event?.id || null;
 
-const parseClockSeconds = (value) => {
-  if (!value) return null;
-  const match = String(value).match(/(\d+)'(\d+)/);
-  return match ? Number(match[1]) * 60 + Number(match[2]) : null;
-};
-
 const getEventSeconds = (event) => {
-  const directSeconds = Number(
-    event?.seconds ??
-    event?.event_seconds ??
-    event?.cumulative_seconds ??
-    event?.video_seconds
-  );
-  if (Number.isFinite(directSeconds)) return directSeconds;
-
-  const clockSeconds = parseClockSeconds(event?.clock || event?.time || event?.start_time);
-  if (Number.isFinite(clockSeconds)) return clockSeconds;
-
-  const minute = Number(event?.minute ?? event?.min ?? 0);
-  const second = Number(event?.second ?? event?.sec ?? 0);
-  return Number.isFinite(minute) && Number.isFinite(second) ? minute * 60 + second : null;
+  const seconds = resolveEventMatchSeconds(event);
+  return Number.isFinite(seconds) ? seconds : null;
 };
 
 const formatClipClock = (seconds) => {
@@ -110,12 +98,15 @@ const getQueueItemMatchId = (item, parts) => (
 );
 
 const getQueueItemWindow = (item, parts, videoCfg) => {
+  const periodId = resolvePeriodId(item) ?? resolvePeriodId(parts?.[0]);
   const numericStart = Number(item?.start_seconds ?? item?.sequence_start_seconds);
   const numericEnd = Number(item?.end_seconds ?? item?.sequence_end_seconds);
   if (Number.isFinite(numericStart) && Number.isFinite(numericEnd)) {
+    const start = normalizeMatchSeconds(numericStart, periodId);
+    const end = normalizeMatchSeconds(numericEnd, periodId);
     return {
-      start: Math.max(0, numericStart),
-      end: Math.max(numericStart, numericEnd),
+      start: Number.isFinite(start) ? Math.max(0, start) : null,
+      end: Number.isFinite(start) && Number.isFinite(end) ? Math.max(start, end) : null,
     };
   }
 
@@ -138,6 +129,7 @@ const normalizeRafaleQueue = (events = [], videoCfg = DEFAULT_VIDEO_CONFIG) => {
   rawItems.forEach((item, index) => {
     const parts = getQueueItemParts(item);
     const matchId = getQueueItemMatchId(item, parts);
+    const periodId = resolvePeriodId(item) ?? resolvePeriodId(parts?.[0]);
     const ids = parts.map(getVideoEventId).filter(Boolean).map(String);
     const primaryKey = `${matchId || 'match'}:${ids.join('|') || getVideoEventId(item) || index}`;
     if (seenKeys.has(primaryKey)) return;
@@ -149,6 +141,7 @@ const normalizeRafaleQueue = (events = [], videoCfg = DEFAULT_VIDEO_CONFIG) => {
       parts,
       ids,
       matchId,
+      periodId,
       start: window.start,
       end: window.end,
       index,
@@ -159,8 +152,11 @@ const normalizeRafaleQueue = (events = [], videoCfg = DEFAULT_VIDEO_CONFIG) => {
       lastGroup &&
       matchId &&
       lastGroup.matchId === matchId &&
+      lastGroup.periodId === periodId &&
+      Number.isFinite(lastGroup.start) &&
       Number.isFinite(lastGroup.end) &&
       Number.isFinite(nextItem.start) &&
+      nextItem.start >= lastGroup.start &&
       nextItem.start <= lastGroup.end + minGap
     );
 
@@ -175,6 +171,7 @@ const normalizeRafaleQueue = (events = [], videoCfg = DEFAULT_VIDEO_CONFIG) => {
 
     groups.push({
       matchId,
+      periodId,
       start: nextItem.start,
       end: nextItem.end,
       items: [nextItem],
@@ -202,6 +199,7 @@ const normalizeRafaleQueue = (events = [], videoCfg = DEFAULT_VIDEO_CONFIG) => {
       id: `rafale-merge-${group.matchId || 'match'}-${Math.round((group.start || 0) * 10)}-${Math.round((group.end || 0) * 10)}-${firstId}`,
       sub_sequence_id: `rafale-merge-${group.matchId || 'match'}-${Math.round((group.start || 0) * 10)}-${Math.round((group.end || 0) * 10)}-${firstId}`,
       match_id: group.matchId || firstPart?.match_id || firstPart?.matchId,
+      period_id: group.periodId ?? firstPart?.period_id ?? firstPart?.period,
       start_seconds: group.start,
       end_seconds: group.end,
       sequence_start_seconds: group.start,
@@ -211,6 +209,7 @@ const normalizeRafaleQueue = (events = [], videoCfg = DEFAULT_VIDEO_CONFIG) => {
       type_name: 'Rafale merge',
       rafale_merged: true,
       rafale_merge_count: uniqueParts.length,
+      rafale_window_includes_buffers: true,
       events: uniqueParts,
     };
   });
@@ -378,24 +377,20 @@ const OptaVisionDashboard = ({ user }) => {
       : event;
     const eventId = targetEvent?.opta_id || targetEvent?.id;
     const matchId = targetEvent?.match_id || targetEvent?.matchId || event?.match_id || event?.matchId || explorationFilters.matches?.[0];
-    const parseClock = (value) => {
-      if (!value) return null;
-      const match = String(value).match(/(\d+)'(\d+)/);
-      return match ? Number(match[1]) * 60 + Number(match[2]) : null;
-    };
     const firstSequenceEvent = isSequence ? event.events[0] : null;
     const lastSequenceEvent = isSequence ? event.events[event.events.length - 1] : null;
     const numericSequenceStart = Number(event.start_seconds ?? event.sequence_start_seconds);
     const numericSequenceEnd = Number(event.end_seconds ?? event.sequence_end_seconds);
+    const sequencePeriodId = firstSequenceEvent?.period_id ?? firstSequenceEvent?.period ?? event?.period_id ?? event?.period ?? null;
     const sequenceStartSeconds = isSequence
       ? (Number.isFinite(numericSequenceStart)
-        ? numericSequenceStart
-        : (parseClock(event.start_time) ?? (Number(firstSequenceEvent?.min ?? firstSequenceEvent?.minute ?? 0) * 60 + Number(firstSequenceEvent?.sec ?? firstSequenceEvent?.second ?? 0))))
+        ? normalizeMatchSeconds(numericSequenceStart, sequencePeriodId)
+        : (parseClockSeconds(event.start_time, sequencePeriodId) ?? getEventSeconds(firstSequenceEvent)))
       : null;
     const sequenceEndSeconds = isSequence
       ? (Number.isFinite(numericSequenceEnd)
-        ? numericSequenceEnd
-        : (parseClock(event.end_time) ?? (Number(lastSequenceEvent?.min ?? lastSequenceEvent?.minute ?? 0) * 60 + Number(lastSequenceEvent?.sec ?? lastSequenceEvent?.second ?? 0))))
+        ? normalizeMatchSeconds(numericSequenceEnd, sequencePeriodId)
+        : (parseClockSeconds(event.end_time, sequencePeriodId) ?? getEventSeconds(lastSequenceEvent)))
       : null;
 
     if (!matchId || !eventId) {
@@ -408,19 +403,22 @@ const OptaVisionDashboard = ({ user }) => {
     try {
       // Récupération de la config globale (buffers FFmpeg)
       const videoCfg = readVideoConfig();
+      const sequenceWindowIncludesBuffers = Boolean(
+        isSequence && (event?.rafale_window_includes_buffers || event?.window_includes_buffers)
+      );
 
       const requestPayload = {
         match_id: matchId,
         event_id: eventId,
-        before_buffer: videoCfg.before_buffer,
-        after_buffer: videoCfg.after_buffer,
+        before_buffer: sequenceWindowIncludesBuffers ? 0 : videoCfg.before_buffer,
+        after_buffer: sequenceWindowIncludesBuffers ? 0 : videoCfg.after_buffer,
         min_clip_gap: videoCfg.min_clip_gap,
         ...(isSequence ? {
           event_ids: event.events.map((item) => item.opta_id || item.id).filter(Boolean),
           sequence_id: event.sub_sequence_id || event.seq_uuid || event.id,
           sequence_start_seconds: sequenceStartSeconds,
           sequence_end_seconds: sequenceEndSeconds,
-          sequence_period_id: firstSequenceEvent?.period_id ?? firstSequenceEvent?.period ?? event?.period_id ?? event?.period ?? null,
+          sequence_period_id: sequencePeriodId,
         } : {})
       };
 
@@ -1187,6 +1185,7 @@ const OptaVisionDashboard = ({ user }) => {
         onClose={handleCloseGlobalVideo}
         onEnded={handleVideoEnded}
         title={videoPlayerTitle}
+        enableEndedWatchdog={videoQueue.length > 0}
       />
     </div>
   );

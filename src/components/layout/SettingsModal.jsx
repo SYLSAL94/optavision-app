@@ -50,8 +50,8 @@ const SettingsModal = ({ isOpen, onClose, user, initialTab = 'profile' }) => {
     const saved = localStorage.getItem('optavision_video_config');
     return saved ? JSON.parse(saved) : {
       before_buffer: 3,
-      after_buffer: 5,
-      min_clip_gap: 0.5
+      after_buffer: 3,
+      min_clip_gap: 3
     };
   });
 

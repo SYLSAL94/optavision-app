@@ -1,8 +1,29 @@
-import React from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 
-const GlobalVideoPlayer = ({ url, onClose, onEnded, title = "OptaVision Elite Video Feed" }) => {
+const GlobalVideoPlayer = ({ url, onClose, onEnded, title = "OptaVision Elite Video Feed", enableEndedWatchdog = false }) => {
+  const endedRef = useRef(false);
+
+  useEffect(() => {
+    endedRef.current = false;
+  }, [url]);
+
+  const triggerEnded = useCallback(() => {
+    if (endedRef.current) return;
+    endedRef.current = true;
+    onEnded?.();
+  }, [onEnded]);
+
+  const handleTimeUpdate = useCallback((event) => {
+    if (!enableEndedWatchdog) return;
+    const video = event.currentTarget;
+    if (!Number.isFinite(video.duration) || video.duration <= 0) return;
+    if (video.currentTime > 0 && video.duration - video.currentTime <= 0.35) {
+      triggerEnded();
+    }
+  }, [enableEndedWatchdog, triggerEnded]);
+
   return (
     <AnimatePresence>
       {url && (
@@ -36,7 +57,9 @@ const GlobalVideoPlayer = ({ url, onClose, onEnded, title = "OptaVision Elite Vi
                 src={url}
                 controls
                 autoPlay
-                onEnded={onEnded}
+                onEnded={triggerEnded}
+                onError={enableEndedWatchdog ? triggerEnded : undefined}
+                onTimeUpdate={handleTimeUpdate}
                 className="w-full h-full object-contain"
               />
             </div>

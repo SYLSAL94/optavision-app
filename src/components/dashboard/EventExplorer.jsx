@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 
 import { API_BASE_URL } from '../../config';
-import { pollVideoJob } from '../../utils/videoJobs';
+import { pollVideoJobDetails } from '../../utils/videoJobs';
 import { TacticalPitch } from './TacticalPitch';
 import { usePitchProjection } from '../../hooks/usePitchProjection';
 import { BuildUpLayer } from './BuildUpLayer';
@@ -151,7 +151,7 @@ const getEventMatchSeconds = (event) => {
 
 const buildMixClipEntries = (events = [], videoCfg = {}) => {
   const before = Number(videoCfg.before_buffer ?? 3);
-  const after = Number(videoCfg.after_buffer ?? 5);
+  const after = Number(videoCfg.after_buffer ?? 3);
 
   return events.map((event, index) => {
     const eventId = event.opta_id || event.event_id || event.id;
@@ -179,7 +179,7 @@ const buildMixClipEntries = (events = [], videoCfg = {}) => {
 };
 
 const mergeMixClipEntries = (entries = [], videoCfg = {}) => {
-  const minGap = Number(videoCfg.min_clip_gap ?? 0.5);
+  const minGap = Number(videoCfg.min_clip_gap ?? 3);
   const groups = [];
 
   entries.forEach((entry) => {
@@ -188,6 +188,10 @@ const mergeMixClipEntries = (entries = [], videoCfg = {}) => {
       lastGroup
       && lastGroup.matchId === entry.matchId
       && lastGroup.periodId === entry.periodId
+      && Number.isFinite(lastGroup.windowStart)
+      && Number.isFinite(lastGroup.windowEnd)
+      && Number.isFinite(entry.windowStart)
+      && entry.windowStart >= lastGroup.windowStart
       && entry.windowStart <= lastGroup.windowEnd + minGap
     );
 
@@ -519,8 +523,8 @@ const EventExplorer = ({
     try {
       const savedConfig = localStorage.getItem('optavision_video_config');
       const videoCfg = savedConfig
-        ? { before_buffer: 3, after_buffer: 5, min_clip_gap: 0.5, ...JSON.parse(savedConfig) }
-        : { before_buffer: 3, after_buffer: 5, min_clip_gap: 0.5 };
+        ? { before_buffer: 3, after_buffer: 3, min_clip_gap: 3, ...JSON.parse(savedConfig) }
+        : { before_buffer: 3, after_buffer: 3, min_clip_gap: 3 };
       
       const orderedEvents = orderEventsForMix(
         liveEventRows.map((event) => ({
@@ -531,6 +535,7 @@ const EventExplorer = ({
       );
       const clipEntries = buildMixClipEntries(orderedEvents, videoCfg);
       const clips = mergeMixClipEntries(clipEntries, videoCfg);
+      const invalidClipCount = Math.max(0, orderedEvents.length - clipEntries.length);
 
       if (clips.length === 0) {
         throw new Error('Aucun clip valide pour le Mixage DL');
@@ -555,7 +560,12 @@ const EventExplorer = ({
       if (!response.ok) throw new Error(data.detail || 'Erreur lors du mixage vidéo');
 
       if (data.job_id) {
-        const videoUrl = await pollVideoJob(data.job_id);
+        const jobPayload = await pollVideoJobDetails(data.job_id);
+        const videoUrl = jobPayload.video_url;
+        const skippedCount = Number(jobPayload.skipped_clip_count ?? 0);
+        if (invalidClipCount > 0 || skippedCount > 0) {
+          alert(`Mixage DL termine avec avertissement: ${invalidClipCount} actions invalides avant envoi, ${skippedCount} clips sautes par le backend.`);
+        }
         fetch(videoUrl)
           .then(response => response.blob())
           .then(blob => {

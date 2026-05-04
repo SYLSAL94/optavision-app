@@ -3,7 +3,7 @@ import { API_BASE_URL } from '../config';
 const POLL_INTERVAL_MS = 3000;
 const ACTIVE_STATUSES = new Set(['processing', 'queued', 'running']);
 
-export const pollVideoJob = (jobId, { intervalMs = POLL_INTERVAL_MS } = {}) => {
+export const pollVideoJobDetails = (jobId, { intervalMs = POLL_INTERVAL_MS } = {}) => {
   if (!jobId) {
     return Promise.reject(new Error('job_id manquant'));
   }
@@ -28,7 +28,7 @@ export const pollVideoJob = (jobId, { intervalMs = POLL_INTERVAL_MS } = {}) => {
             reject(new Error('Job termine sans URL video'));
             return;
           }
-          resolve(payload.video_url);
+          resolve(payload);
           return;
         }
 
@@ -52,4 +52,9 @@ export const pollVideoJob = (jobId, { intervalMs = POLL_INTERVAL_MS } = {}) => {
 
     setTimeout(poll, intervalMs);
   });
+};
+
+export const pollVideoJob = async (jobId, options = {}) => {
+  const payload = await pollVideoJobDetails(jobId, options);
+  return payload.video_url;
 };
