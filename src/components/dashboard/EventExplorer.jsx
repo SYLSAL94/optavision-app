@@ -71,6 +71,18 @@ const countDisplayEvents = (items, sequenceMode) => (
   sequenceMode ? items.reduce((sum, seq) => sum + ((seq.events || []).length), 0) : items.length
 );
 
+const getSelectionBounds = (box, includeDraft = false) => {
+  if (!includeDraft && box?.isDrawing) return null;
+  const { startX, startY, endX, endY } = box || {};
+  if (![startX, startY, endX, endY].every(Number.isFinite)) return null;
+  const x = Math.min(startX, endX);
+  const y = Math.min(startY, endY);
+  const width = Math.abs(endX - startX);
+  const height = Math.abs(endY - startY);
+  if (width < MIN_SELECTION_SIZE || height < MIN_SELECTION_SIZE) return null;
+  return { x, y, width, height, xMax: x + width, yMax: y + height };
+};
+
 
 const EventExplorer = ({ 
   data = [], 
@@ -93,6 +105,8 @@ const EventExplorer = ({
   const [showEvents, setShowEvents] = useState(true);
   const [liveFluxPage, setLiveFluxPage] = useState(1);
   const [selectionBox, setSelectionBox] = useState(EMPTY_SELECTION_BOX);
+  const selectionFrameRef = useRef(null);
+  const pendingSelectionPointRef = useRef(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isMixMenuOpen, setIsMixMenuOpen] = useState(false);
 
@@ -155,16 +169,8 @@ const EventExplorer = ({
   }, [data, filters, isSequenceMode, selectedSequence, eventsData]);
 
   // --- 3. INTELLIGENCE SPATIALE & FILTRAGE ---
-  const selectionBounds = useMemo(() => {
-    const { startX, startY, endX, endY } = selectionBox;
-    if (![startX, startY, endX, endY].every(Number.isFinite)) return null;
-    const x = Math.min(startX, endX);
-    const y = Math.min(startY, endY);
-    const width = Math.abs(endX - startX);
-    const height = Math.abs(endY - startY);
-    if (width < MIN_SELECTION_SIZE || height < MIN_SELECTION_SIZE) return null;
-    return { x, y, width, height, xMax: x + width, yMax: y + height };
-  }, [selectionBox]);
+  const selectionBounds = useMemo(() => getSelectionBounds(selectionBox, false), [selectionBox]);
+  const visualSelectionBounds = useMemo(() => getSelectionBounds(selectionBox, true), [selectionBox]);
 
   const spatialDisplayData = useMemo(() => {
     if (!selectionBounds) return displayData;
@@ -185,8 +191,26 @@ const EventExplorer = ({
   const isVideoActionDisabled = loading || videoActionCount === 0;
 
   const handlePitchMouseMove = useCallback((event) => {
-    const point = getPitchSvgPoint(event, pitchViewBox);
-    if (!point) return;
+    if (selectionBox.isDrawing) {
+      const point = getPitchSvgPoint(event, pitchViewBox);
+      if (!point) return;
+
+      pendingSelectionPointRef.current = point;
+      if (!selectionFrameRef.current) {
+        selectionFrameRef.current = window.requestAnimationFrame(() => {
+          const nextPoint = pendingSelectionPointRef.current;
+          pendingSelectionPointRef.current = null;
+          selectionFrameRef.current = null;
+          if (!nextPoint) return;
+          setSelectionBox(prev => (
+            prev.isDrawing
+              ? { ...prev, endX: nextPoint.x, endY: nextPoint.y }
+              : prev
+          ));
+        });
+      }
+      return;
+    }
 
     const target = event.target.closest('[data-event-id]');
     if (target) {
@@ -199,17 +223,18 @@ const EventExplorer = ({
     } else {
       setHoveredEvent(null);
     }
-
-    setSelectionBox(prev => {
-      if (!prev.isDrawing) return prev;
-      return { ...prev, endX: point.x, endY: point.y };
-    });
-  }, [getPitchSvgPoint, pitchViewBox, liveEventRows]);
+  }, [getPitchSvgPoint, pitchViewBox, liveEventRows, selectionBox.isDrawing]);
 
   const handlePitchMouseUp = useCallback((event) => {
     const point = getPitchSvgPoint(event, pitchViewBox);
 
-    const target = event.target.closest('[data-event-id]');
+    if (selectionFrameRef.current) {
+      window.cancelAnimationFrame(selectionFrameRef.current);
+      selectionFrameRef.current = null;
+      pendingSelectionPointRef.current = null;
+    }
+
+    const target = !selectionBox.isDrawing ? event.target.closest('[data-event-id]') : null;
     if (target) {
       const eventId = target.getAttribute('data-event-id');
       const foundEvent = liveEventRows.find(e => String(e.opta_id ?? e.id) === String(eventId));
@@ -230,7 +255,7 @@ const EventExplorer = ({
       }
       return { ...next, isDrawing: false };
     });
-  }, [getPitchSvgPoint, pitchViewBox, liveEventRows]);
+  }, [getPitchSvgPoint, pitchViewBox, liveEventRows, selectionBox.isDrawing]);
 
   const handlePitchMouseDown = useCallback((event) => {
     if (event.button !== 0 || loading) return;
@@ -386,6 +411,10 @@ const EventExplorer = ({
   }, [matchIds]);
 
   React.useEffect(() => () => {
+    if (selectionFrameRef.current) {
+      window.cancelAnimationFrame(selectionFrameRef.current);
+      selectionFrameRef.current = null;
+    }
   }, []);
 
   // --- MOTEUR DE VIRTUALISATION (Optimisation DevOps / Lead Data) ---
@@ -682,9 +711,9 @@ const EventExplorer = ({
                 {isEventLimitExceeded ? 'Shield on' : 'Events'}
               </button>
               <div
-                className={`verge-label-mono flex items-center gap-2 rounded-[4px] border px-3 py-2 text-[9px] font-black uppercase transition-all ${selectionBounds ? 'border-[#5200ff]/60 bg-[#5200ff]/10 text-[#b9a7ff]' : 'border-white/5 bg-black/10 text-[#444]'}`}
+                className={`verge-label-mono flex items-center gap-2 rounded-[4px] border px-3 py-2 text-[9px] font-black uppercase transition-all ${selectionBox.isDrawing || selectionBounds ? 'border-[#5200ff]/60 bg-[#5200ff]/10 text-[#b9a7ff]' : 'border-white/5 bg-black/10 text-[#444]'}`}
               >
-                <Square size={13} className={selectionBounds ? "text-[#b9a7ff]" : "text-[#333]"} />
+                <Square size={13} className={selectionBox.isDrawing || selectionBounds ? "text-[#b9a7ff]" : "text-[#333]"} />
                 Sélecteur {selectionBounds ? 'Actif' : 'Prêt'}
               </div>
               {selectionBounds && (
@@ -763,18 +792,17 @@ const EventExplorer = ({
                 projectPoint={projectPoint}
               />
             )}
-            {selectionBounds && (
+            {visualSelectionBounds && (
               <rect
-                x={selectionBounds.x}
-                y={selectionBounds.y}
-                width={selectionBounds.width}
-                height={selectionBounds.height}
+                x={visualSelectionBounds.x}
+                y={visualSelectionBounds.y}
+                width={visualSelectionBounds.width}
+                height={visualSelectionBounds.height}
                 fill="rgba(82, 0, 255, 0.2)"
                 stroke="#5200ff"
                 strokeWidth="0.45"
                 strokeDasharray="1.4 0.8"
                 pointerEvents="none"
-                className="transition-all duration-75"
               />
             )}
           </TacticalPitch>

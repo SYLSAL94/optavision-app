@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const BuildUpLayer = ({ displayData, focusedEventId, getEndCoordinates, setHoveredEvent, setMousePos, selectedSequence, setFocusedEvent, setFocusedEventId, projectPoint }) => {
+export const BuildUpLayer = React.memo(({ displayData, focusedEventId, getEndCoordinates, setHoveredEvent, setMousePos, selectedSequence, setFocusedEvent, setFocusedEventId, projectPoint }) => {
   // Rendu Conditionnel Strict : Désactivation si aucune séquence n'est sélectionnée
   if (!selectedSequence || !displayData || displayData.length === 0) return null;
 
@@ -145,4 +145,4 @@ export const BuildUpLayer = ({ displayData, focusedEventId, getEndCoordinates, s
       })}
     </g>
   );
-};
+});

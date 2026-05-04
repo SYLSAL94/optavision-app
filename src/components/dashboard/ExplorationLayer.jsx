@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const ExplorationLayer = ({ displayData, focusedEventId, getEndCoordinates, setHoveredEvent, setMousePos, setFocusedEvent, setFocusedEventId, projectPoint }) => {
+export const ExplorationLayer = React.memo(({ displayData, focusedEventId, getEndCoordinates, setHoveredEvent, setMousePos, setFocusedEvent, setFocusedEventId, projectPoint }) => {
   const isMassFetching = displayData.length > 150;
 
   return displayData.slice(0, 1000).map((event, i) => {
@@ -82,4 +82,4 @@ export const ExplorationLayer = ({ displayData, focusedEventId, getEndCoordinate
       </g>
     );
   });
-};
+});
