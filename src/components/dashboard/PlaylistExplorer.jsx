@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Database, Film, ListMusic, Loader2, Map, PlayCircle, RefreshCcw, Save, Scissors, Search, Trash2 } from 'lucide-react';
+import { Database, Film, ListMusic, Loader2, Map, PlayCircle, RefreshCcw, Save, Scissors, Search, Shuffle, Trash2 } from 'lucide-react';
 import { TacticalPitch } from './TacticalPitch';
 import { usePitchProjection } from '../../hooks/usePitchProjection';
 import { API_BASE_URL, OPTAVISION_API_URL } from '../../config';
@@ -44,11 +44,39 @@ const getItemPlayer = (item) => (
 );
 
 const getItemClock = (item) => {
+  if (Array.isArray(item?.events) && item.events.length > 0) {
+    const start = formatMatchClock(item.events[0]);
+    const end = formatMatchClock(item.events[item.events.length - 1]);
+    return start === end ? start : `${start} - ${end}`;
+  }
   if (item?.start_time && item?.end_time) return `${item.start_time} - ${item.end_time}`;
-  const minute = item?.minute ?? item?.min;
-  const sec = item?.sec ?? item?.second;
-  if (minute === null || minute === undefined) return '--';
-  return `${minute}'${sec ? String(sec).padStart(2, '0') : ''}`;
+  return formatMatchClock(item);
+};
+
+const formatMatchClock = (event = {}) => {
+  const periodId = Number(event.period_id ?? event.periodId ?? event.period);
+  const minute = event.minute ?? event.min;
+  const second = Number(event.sec ?? event.second ?? 0);
+  const numericMinute = Number(minute);
+  const safeSecond = Number.isFinite(second) ? Math.max(0, Math.floor(second)) : 0;
+  const secondsLabel = safeSecond > 0 ? `:${String(safeSecond).padStart(2, '0')}` : '';
+
+  if (!Number.isFinite(numericMinute)) {
+    const cumulative = Number(event.cumulative_mins);
+    return Number.isFinite(cumulative) ? `${cumulative.toFixed(1)}'` : '--';
+  }
+
+  const minuteLabel = Math.floor(numericMinute);
+  const stoppage = (base, label) => {
+    const added = minuteLabel - base;
+    return added > 0 ? `${label} ${base}+${added}${secondsLabel}` : `${label} ${minuteLabel}${secondsLabel}`;
+  };
+
+  if (periodId === 1) return minuteLabel >= 45 ? stoppage(45, 'H1') : `H1 ${minuteLabel}${secondsLabel}`;
+  if (periodId === 2) return minuteLabel >= 90 ? stoppage(90, 'H2') : `H2 ${minuteLabel}${secondsLabel}`;
+  if (periodId === 3) return minuteLabel >= 105 ? stoppage(105, 'ET1') : `ET1 ${minuteLabel}${secondsLabel}`;
+  if (periodId === 4) return minuteLabel >= 120 ? stoppage(120, 'ET2') : `ET2 ${minuteLabel}${secondsLabel}`;
+  return `P${Number.isFinite(periodId) ? periodId : '?'} ${minuteLabel}${secondsLabel}`;
 };
 
 const formatDate = (value) => {
@@ -64,12 +92,15 @@ const parseClockSeconds = (value) => {
   return match ? Number(match[1]) * 60 + Number(match[2]) : null;
 };
 
-const formatSecondsClock = (seconds) => {
+const formatSecondsClock = (seconds, periodId = null) => {
   const numeric = Number(seconds);
   if (!Number.isFinite(numeric)) return '--';
   const safeSeconds = Math.max(0, Math.round(numeric));
   const minute = Math.floor(safeSeconds / 60);
   const second = safeSeconds % 60;
+  if (periodId !== null && periodId !== undefined) {
+    return formatMatchClock({ period_id: periodId, minute, sec: second });
+  }
   return `${minute}'${String(second).padStart(2, '0')}`;
 };
 
@@ -81,9 +112,26 @@ const formatMetric = (value, digits = 2, suffix = '') => {
 const getItemMatch = (item) => (
   item?.match_name
   || item?.matchName
-  || item?.match_id
-  || 'Match inconnu'
+  || item?.description
+  || 'Match non renseigne'
 );
+
+const formatWeek = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  return raw.toLowerCase().includes('week') ? raw : `Week ${raw}`;
+};
+
+const getItemContextParts = (item) => {
+  const date = formatDate(item?.match_date || item?.date_time || item?.date);
+  return [
+    date !== '--' ? date : null,
+    item?.competition,
+    item?.phase || item?.stage,
+    formatWeek(item?.week),
+  ].filter(Boolean);
+};
 
 const getMetricValue = (item, keys) => {
   const metrics = parseAdvancedMetrics(item);
@@ -127,6 +175,14 @@ const getItemDetails = (item) => {
 
 const getVideoEventId = (event) => event?.opta_id || event?.event_id || event?.id || null;
 
+const getPlaylistItemKey = (item) => String(item?.playlist_item_id || item?.id || item?.opta_id || '');
+
+const getStartCoordinates = (item) => {
+  const x = toNumber(item?.x);
+  const y = toNumber(item?.y);
+  return x !== null && y !== null ? { x, y } : null;
+};
+
 const getItemVideoPayload = (item, trim) => {
   if (!item) return null;
   const isSequence = Array.isArray(item.events) && item.events.length > 0;
@@ -168,6 +224,37 @@ const itemColor = (item) => {
   if (label.includes('shot') || label.includes('goal') || label.includes('tir')) return '#ff4d4d';
   if (label.includes('carry')) return '#8be9fd';
   return '#3cffd0';
+};
+
+const orderPlaylistEntriesForMix = (entries, mode) => {
+  if (mode !== 'advanced' || entries.length <= 2) return entries;
+
+  const pool = entries.slice(1);
+  const ordered = [entries[0]];
+  while (pool.length > 0) {
+    const last = ordered[ordered.length - 1];
+    const anchor = last.end || last.start;
+    let bestIndex = 0;
+    let bestScore = -Infinity;
+
+    pool.forEach((entry, index) => {
+      let score = 0;
+      if (entry.player && entry.player !== last.player) score += 4;
+      if (entry.type && entry.type !== last.type) score += 3;
+      if (anchor && entry.start) {
+        const distance = Math.hypot(anchor.x - entry.start.x, anchor.y - entry.start.y);
+        score += Math.max(0, 4 - distance / 18);
+      }
+      score -= index * 0.01;
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = index;
+      }
+    });
+
+    ordered.push(pool.splice(bestIndex, 1)[0]);
+  }
+  return ordered;
 };
 
 const PlaylistSpatialLayer = ({ items, selectedItem, onSelect, projectPoint }) => (
@@ -247,6 +334,8 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
   const [localVideoUrl, setLocalVideoUrl] = useState(null);
   const [localVideoLoading, setLocalVideoLoading] = useState(false);
   const [localVideoError, setLocalVideoError] = useState(null);
+  const [mixMode, setMixMode] = useState('standard');
+  const [mixLoading, setMixLoading] = useState(false);
   const [error, setError] = useState(null);
   const { projectPoint } = usePitchProjection('horizontal');
 
@@ -350,19 +439,69 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
     [selectedItem, trimAfter, trimBefore]
   );
 
+  const playlistMixEntries = useMemo(() => {
+    const selectedKey = getPlaylistItemKey(selectedItem);
+    return items.map((item) => {
+      const isSelected = selectedKey && getPlaylistItemKey(item) === selectedKey;
+      const before = isSelected ? trimBefore : Number(item?.trim_before_seconds ?? DEFAULT_TRIM_BEFORE);
+      const after = isSelected ? trimAfter : Number(item?.trim_after_seconds ?? DEFAULT_TRIM_AFTER);
+      const payload = getItemVideoPayload(item, { before, after });
+      if (!payload) return null;
+      return {
+        key: getPlaylistItemKey(item),
+        type: String(getItemLabel(item)).toLowerCase(),
+        player: getItemPlayer(item),
+        start: getStartCoordinates(item),
+        end: getEndCoordinates(item),
+        matchId: payload.match_id,
+        clip: {
+          match_id: payload.match_id,
+          event_id: payload.event_id,
+          event_ids: payload.event_ids,
+          sequence_id: payload.sequence_id,
+          sequence_start_seconds: payload.sequence_start_seconds,
+          sequence_end_seconds: payload.sequence_end_seconds,
+          trim_before_seconds: payload.before_buffer,
+          trim_after_seconds: payload.after_buffer,
+        },
+      };
+    }).filter(Boolean);
+  }, [items, selectedItem, trimAfter, trimBefore]);
+
+  const orderedPlaylistMixEntries = useMemo(
+    () => orderPlaylistEntriesForMix(playlistMixEntries, mixMode),
+    [mixMode, playlistMixEntries]
+  );
+
+  const playlistMixMatchIds = useMemo(
+    () => [...new Set(orderedPlaylistMixEntries.map((entry) => entry.matchId).filter(Boolean))],
+    [orderedPlaylistMixEntries]
+  );
+
+  const canGeneratePlaylistMix = orderedPlaylistMixEntries.length > 0
+    && orderedPlaylistMixEntries.every((entry) => entry.matchId);
+
   const previewStart = selectedItem?.item_kind === 'sequence'
     ? toNumber(selectedItem?.start_seconds ?? selectedItem?.sequence_start_seconds)
     : (Number(selectedItem?.minute ?? selectedItem?.min ?? 0) * 60 + Number(selectedItem?.sec ?? selectedItem?.second ?? 0));
   const previewEnd = selectedItem?.item_kind === 'sequence'
     ? toNumber(selectedItem?.end_seconds ?? selectedItem?.sequence_end_seconds)
     : previewStart;
+  const selectedPeriodId = selectedItem?.period_id ?? selectedItem?.period ?? selectedItem?.events?.[0]?.period_id ?? selectedItem?.events?.[0]?.period;
   const finalPreviewStart = Number.isFinite(previewStart) ? Math.max(0, previewStart - Number(trimBefore || 0)) : null;
   const finalPreviewEnd = Number.isFinite(previewEnd) ? previewEnd + Number(trimAfter || 0) : null;
 
   const handleGenerateLocalVideo = async (item = selectedItem, event) => {
     event?.stopPropagation();
     const itemId = item?.playlist_item_id || item?.id;
-    const payload = getItemVideoPayload(item, { before: trimBefore, after: trimAfter });
+    const isCurrentSelection = getPlaylistItemKey(item) === getPlaylistItemKey(selectedItem);
+    const itemTrim = isCurrentSelection
+      ? { before: trimBefore, after: trimAfter }
+      : {
+        before: Number(item?.trim_before_seconds ?? DEFAULT_TRIM_BEFORE),
+        after: Number(item?.trim_after_seconds ?? DEFAULT_TRIM_AFTER),
+      };
+    const payload = getItemVideoPayload(item, itemTrim);
     if (!payload) {
       setLocalVideoError('Clip invalide: match_id/event_id manquant.');
       setActiveSurface('video');
@@ -474,6 +613,44 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
     }
   };
 
+  const handleGeneratePlaylistMix = async () => {
+    if (!canGeneratePlaylistMix) {
+      setLocalVideoError('Aucun clip valide dans la playlist ou match_id manquant.');
+      setActiveSurface('video');
+      return;
+    }
+
+    setActiveSurface('video');
+    setMixLoading(true);
+    setLocalVideoLoading(true);
+    setLocalVideoUrl(null);
+    setLocalVideoError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/optavision/playlist-mix`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          match_id: playlistMixMatchIds[0] || null,
+          playlist_id: selectedPlaylistId,
+          clips: orderedPlaylistMixEntries.map((entry) => entry.clip),
+          mix_mode: mixMode,
+          min_clip_gap: 0.5,
+        })
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(json.detail || 'Erreur generation mixage playlist');
+
+      const videoUrl = json.video_url || (json.job_id ? await pollVideoJob(json.job_id) : null);
+      if (!videoUrl) throw new Error('Aucune URL video retournee pour le mixage.');
+      setLocalVideoUrl(videoUrl);
+    } catch (err) {
+      setLocalVideoError(err.message || 'Erreur mixage playlist');
+    } finally {
+      setMixLoading(false);
+      setLocalVideoLoading(false);
+    }
+  };
+
   return (
     <div className="h-full w-full overflow-hidden bg-[#050505] p-6 lg:p-8">
       <div className="mx-auto grid h-full w-full max-w-[1800px] grid-cols-1 gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
@@ -521,6 +698,50 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="rounded-[3px] border border-[#ffd03c]/20 bg-[#ffd03c]/[0.04] p-3">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <div className="verge-label-mono text-[8px] font-black uppercase tracking-[0.22em] text-[#ffd03c]">
+                    Export playlist
+                  </div>
+                  <div className="mt-1 verge-label-mono text-[7px] font-black uppercase tracking-[0.16em] text-[#777]">
+                    {orderedPlaylistMixEntries.length} clips - {playlistMixMatchIds.length || 0} matchs
+                  </div>
+                </div>
+                {mixLoading && <Loader2 size={14} className="shrink-0 animate-spin text-[#ffd03c]" />}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  ['standard', 'Standard'],
+                  ['advanced', 'Avance'],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setMixMode(value)}
+                    className={`h-9 rounded-[2px] border px-2 verge-label-mono text-[7px] font-black uppercase tracking-[0.14em] transition-all ${mixMode === value ? 'border-[#ffd03c]/60 bg-[#ffd03c] text-black' : 'border-white/10 bg-black/30 text-[#949494] hover:border-[#ffd03c]/40 hover:text-[#ffd03c]'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={handleGeneratePlaylistMix}
+                disabled={!canGeneratePlaylistMix || localVideoLoading || mixLoading}
+                className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-[3px] border border-[#ffd03c]/40 bg-[#ffd03c] px-3 verge-label-mono text-[8px] font-black uppercase tracking-[0.16em] text-black transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+                title="Genere toute la playlist avec les rognages individuels"
+              >
+                {mixLoading ? <Loader2 size={14} className="animate-spin" /> : <Shuffle size={14} />}
+                Mixer playlist
+              </button>
+              {playlistMixMatchIds.length > 1 && (
+                <div className="mt-2 rounded-[2px] border border-[#ffd03c]/20 bg-black/25 px-3 py-2 verge-label-mono text-[7px] font-black uppercase tracking-[0.12em] text-[#ffd03c]">
+                  Multi-match actif
+                </div>
+              )}
             </div>
 
             <div className="relative">
@@ -584,6 +805,7 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
                   const selected = String(selectedItem?.playlist_item_id || selectedItem?.id) === String(item.playlist_item_id || item.id);
                   const currentId = item.playlist_item_id || item.id;
                   const details = getItemDetails(item);
+                  const contextParts = getItemContextParts(item);
                   const color = itemColor(item);
                   return (
                     <button
@@ -609,6 +831,11 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
                             <div className="mt-0.5 truncate verge-label-mono text-[7px] font-black uppercase tracking-[0.12em] text-[#666]">
                               {getItemMatch(item)}
                             </div>
+                            {contextParts.length > 0 && (
+                              <div className="mt-0.5 truncate verge-label-mono text-[7px] font-black uppercase tracking-[0.1em] text-[#555]" title={contextParts.join(' / ')}>
+                                {contextParts.join(' / ')}
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -700,7 +927,9 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
                 {localVideoLoading ? (
                   <div className="flex h-full flex-col items-center justify-center text-[#3cffd0]">
                     <Loader2 size={34} className="animate-spin" />
-                    <div className="mt-5 verge-label-mono text-[9px] font-black uppercase tracking-[0.25em]">Generation du clip rogne</div>
+                    <div className="mt-5 verge-label-mono text-[9px] font-black uppercase tracking-[0.25em]">
+                      {mixLoading ? 'Generation du mixage playlist' : 'Generation du clip rogne'}
+                    </div>
                   </div>
                 ) : localVideoUrl ? (
                   <video
@@ -729,7 +958,7 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
                     <div>
                       <div className="verge-label-mono text-[9px] font-black uppercase tracking-[0.25em] text-white">Rognage temporel</div>
                       <div className="mt-1 verge-label-mono text-[8px] font-black uppercase tracking-[0.18em] text-[#949494]">
-                        Fenetre: {formatSecondsClock(finalPreviewStart)} - {formatSecondsClock(finalPreviewEnd)}
+                        Fenetre: {formatSecondsClock(finalPreviewStart, selectedPeriodId)} - {formatSecondsClock(finalPreviewEnd, selectedPeriodId)}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 rounded-[2px] border border-white/10 bg-black/30 px-3 py-2 text-[#3cffd0]">
@@ -771,6 +1000,11 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
                     <div className="truncate verge-label-mono text-[8px] font-black uppercase tracking-[0.18em] text-[#949494]">{getItemPlayer(selectedItem)}</div>
                     <div className="mt-1 truncate verge-label-mono text-[10px] font-black uppercase tracking-[0.14em] text-white">{selectedItem ? getItemLabel(selectedItem) : 'Aucun clip'}</div>
                     <div className="mt-1 truncate verge-label-mono text-[8px] font-black uppercase tracking-[0.14em] text-[#666]">{selectedItem ? getItemClock(selectedItem) : '--'}</div>
+                    {selectedItem && getItemContextParts(selectedItem).length > 0 && (
+                      <div className="mt-1 truncate verge-label-mono text-[7px] font-black uppercase tracking-[0.12em] text-[#666]" title={getItemContextParts(selectedItem).join(' / ')}>
+                        {getItemContextParts(selectedItem).join(' / ')}
+                      </div>
+                    )}
                     <div className={`mt-2 verge-label-mono text-[7px] font-black uppercase tracking-[0.16em] ${hasSavedTrim ? 'text-[#3cffd0]' : 'text-[#666]'}`}>
                       {hasSavedTrim ? 'Rognage sauvegarde' : 'Rognage par defaut'}
                     </div>
@@ -787,7 +1021,7 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
                   <button
                     type="button"
                     onClick={() => handleGenerateLocalVideo(selectedItem)}
-                    disabled={!selectedVideoPayload || localVideoLoading}
+                    disabled={!selectedVideoPayload || localVideoLoading || mixLoading}
                     className="flex h-11 items-center justify-center gap-2 rounded-[3px] border border-[#3cffd0]/40 bg-[#3cffd0] px-4 verge-label-mono text-[9px] font-black uppercase tracking-[0.2em] text-black transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {localVideoLoading ? <Loader2 size={14} className="animate-spin" /> : <PlayCircle size={15} />}
