@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { ChevronLeft, ChevronRight, Info, Target, PlayCircle, Loader2, Download, Database } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Info, Target, PlayCircle, Loader2, Download, Database, ListPlus } from 'lucide-react';
 import GoalFrameSVG from './GoalFrameSVG';
 
 import { TacticalPitch } from './TacticalPitch';
@@ -141,7 +141,7 @@ const ShotMapLayer = ({ shots, focusedShot, onShotFocus, projectPoint }) => {
   );
 };
 
-const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, isVideoLoading = false }) => {
+const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, onAddToPlaylist, isVideoLoading = false }) => {
   const [focusedShot, setFocusedShot] = useState(null);
   const [generatingEventId, setGeneratingEventId] = useState(null);
   const { projectPoint } = usePitchProjection('vertical');
@@ -343,21 +343,33 @@ const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, isVideoLoadi
                     </div>
                   )}
                 </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleFocusedShotVideo();
-                  }}
-                  disabled={generatingEventId !== null || isVideoLoading}
-                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-[2px] border border-[#3cffd0]/40 bg-black/50 py-2 text-[8px] font-black uppercase tracking-[0.2em] text-[#3cffd0] hover:bg-[#3cffd0] hover:text-black transition-all disabled:opacity-50 disabled:cursor-wait"
-                >
-                  {generatingEventId !== null || isVideoLoading ? (
-                    <Loader2 size={12} className="animate-spin text-[#3cffd0]" />
-                  ) : (
-                    <PlayCircle size={12} />
-                  )}
-                  <span>{generatingEventId !== null || isVideoLoading ? 'Extraction...' : 'Visualiser'}</span>
-                </button>
+                <div className="mt-4 grid grid-cols-[auto_minmax(0,1fr)] gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onAddToPlaylist?.(focusedShot);
+                    }}
+                    className="flex items-center justify-center rounded-[2px] border border-white/10 bg-black/50 px-3 text-[#949494] transition-all hover:border-[#3cffd0]/50 hover:text-[#3cffd0]"
+                    title="Ajouter a une playlist"
+                  >
+                    <ListPlus size={13} />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleFocusedShotVideo();
+                    }}
+                    disabled={generatingEventId !== null || isVideoLoading}
+                    className="flex w-full items-center justify-center gap-2 rounded-[2px] border border-[#3cffd0]/40 bg-black/50 py-2 text-[8px] font-black uppercase tracking-[0.2em] text-[#3cffd0] hover:bg-[#3cffd0] hover:text-black transition-all disabled:opacity-50 disabled:cursor-wait"
+                  >
+                    {generatingEventId !== null || isVideoLoading ? (
+                      <Loader2 size={12} className="animate-spin text-[#3cffd0]" />
+                    ) : (
+                      <PlayCircle size={12} />
+                    )}
+                    <span>{generatingEventId !== null || isVideoLoading ? 'Extraction...' : 'Visualiser'}</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -433,6 +445,16 @@ const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, isVideoLoadi
                     </div>
                   </div>
 
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onAddToPlaylist?.(s);
+                    }}
+                    className="p-2 text-slate-400 transition-all transform hover:scale-110 hover:text-[#3cffd0]"
+                    title="Ajouter a une playlist"
+                  >
+                    <ListPlus size={18} />
+                  </button>
                   <button
                     onClick={async (e) => {
                       e.stopPropagation();

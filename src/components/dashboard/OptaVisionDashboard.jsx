@@ -23,7 +23,8 @@ import {
   Network,
   Map,
   Radar,
-  UsersRound
+  UsersRound,
+  ListMusic
 } from 'lucide-react';
 import ExplorationFilterPanel from './ExplorationFilterPanel';
 import BuildUpFilterPanel from './BuildUpFilterPanel';
@@ -41,6 +42,8 @@ import TerritoryExplorer from './TerritoryExplorer';
 import PlayerRadarExplorer from './PlayerRadarExplorer';
 import PlayerBeeswarmExplorer from './PlayerBeeswarmExplorer';
 import FormationViewerExplorer from './FormationViewerExplorer';
+import PlaylistExplorer from './PlaylistExplorer';
+import AddToPlaylistModal from './AddToPlaylistModal';
 import GlobalVideoPlayer from './GlobalVideoPlayer';
 import SettingsModal from '../layout/SettingsModal';
 import { API_BASE_URL, OPTAVISION_API_URL } from '../../config';
@@ -237,6 +240,8 @@ const OptaVisionDashboard = ({ user }) => {
   const [videoQueue, setVideoQueue] = useState([]);
   const [videoQueueIndex, setVideoQueueIndex] = useState(-1);
   const [videoPlayerTitle, setVideoPlayerTitle] = useState(DEFAULT_VIDEO_TITLE);
+  const [playlistCandidate, setPlaylistCandidate] = useState(null);
+  const [isPlaylistModalOpen, setIsPlaylistModalOpen] = useState(false);
   const [view, setView] = useState('DASHBOARD');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -482,6 +487,12 @@ const OptaVisionDashboard = ({ user }) => {
     setVideoPlayerTitle(DEFAULT_VIDEO_TITLE);
   };
 
+  const handleAddToPlaylist = (item) => {
+    if (!item) return;
+    setPlaylistCandidate(item);
+    setIsPlaylistModalOpen(true);
+  };
+
   const fetchBuildup = async (filters) => {
     setLoading(true);
     setError(null);
@@ -596,6 +607,7 @@ const OptaVisionDashboard = ({ user }) => {
     if (activeTool === 'playerradar') return;
     if (activeTool === 'playerbeeswarm') return;
     if (activeTool === 'formationviewer') return;
+    if (activeTool === 'playlists') return;
     if (activeTool === 'sequences') {
       Promise.resolve().then(() => fetchBuildup(explorationFilters));
       return;
@@ -852,6 +864,15 @@ const OptaVisionDashboard = ({ user }) => {
                           onClick={() => setActiveTool('formationviewer')}
                         />
                       )}
+                      {activeTab === 'exploration' && (
+                        <TileSkeleton
+                          title="Playlist"
+                          desc="Creation, ajout et visualisation spatiale des clips analyste."
+                          icon={<ListMusic />}
+                          color="text-[#3cffd0]"
+                          onClick={() => setActiveTool('playlists')}
+                        />
+                      )}
                       {activeTab === 'ranking' && (
                         <TileSkeleton
                           title="Ranking Performance"
@@ -906,6 +927,7 @@ const OptaVisionDashboard = ({ user }) => {
                             playersList={playersList}
                             onPlayVideo={handlePlaySingleVideo}
                             onPlayPlaylist={handlePlayPlaylist}
+                            onAddToPlaylist={handleAddToPlaylist}
                             isVideoLoading={isVideoLoading}
                           />
                         </div>
@@ -918,6 +940,7 @@ const OptaVisionDashboard = ({ user }) => {
                           teamsList={teamsList}
                           advancedMetricsList={advancedMetricsList}
                           onPlayVideo={handlePlaySingleVideo}
+                          onAddToPlaylist={handleAddToPlaylist}
                           isVideoLoading={isVideoLoading}
                         />
                       ) : activeTool === 'shots' ? (
@@ -925,6 +948,7 @@ const OptaVisionDashboard = ({ user }) => {
                           data={eventsData}
                           loading={loading}
                           onPlayVideo={handlePlaySingleVideo}
+                          onAddToPlaylist={handleAddToPlaylist}
                           isVideoLoading={isVideoLoading}
                         />
                       ) : activeTool === 'chainboard' ? (
@@ -965,6 +989,11 @@ const OptaVisionDashboard = ({ user }) => {
                         <FormationViewerExplorer
                           filters={explorationFilters}
                         />
+                      ) : activeTool === 'playlists' ? (
+                        <PlaylistExplorer
+                          onPlayVideo={handlePlaySingleVideo}
+                          isVideoLoading={isVideoLoading}
+                        />
                       ) : activeTool === 'ranking' ? (
                         <RankingExplorer
                           filters={explorationFilters}
@@ -983,6 +1012,7 @@ const OptaVisionDashboard = ({ user }) => {
                           teamsList={teamsList}
                           playersList={playersList}
                           onPlayVideo={handlePlaySingleVideo}
+                          onAddToPlaylist={handleAddToPlaylist}
                         />
                       ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center bg-[#131313] text-white/20">
@@ -1099,7 +1129,7 @@ const OptaVisionDashboard = ({ user }) => {
             </AnimatePresence>
 
             <AnimatePresence>
-              {activeTool && activeTool !== 'ranking' && (
+              {activeTool && activeTool !== 'ranking' && activeTool !== 'playlists' && (
                 <motion.button
                   initial={{ opacity: 0, y: 50 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -1126,6 +1156,12 @@ const OptaVisionDashboard = ({ user }) => {
         </AnimatePresence>
 
       </div>
+
+      <AddToPlaylistModal
+        isOpen={isPlaylistModalOpen}
+        item={playlistCandidate}
+        onClose={() => setIsPlaylistModalOpen(false)}
+      />
 
       <GlobalVideoPlayer 
         url={globalVideoUrl} 

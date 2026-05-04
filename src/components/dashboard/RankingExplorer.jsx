@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Activity, ChevronLeft, ChevronRight, Database, Eye, Filter, Loader2, Map, Play, PlayCircle, RotateCcw, SlidersHorizontal, Trophy, X } from 'lucide-react';
+import { Activity, ChevronLeft, ChevronRight, Database, Eye, Filter, ListPlus, Loader2, Map, Play, PlayCircle, RotateCcw, SlidersHorizontal, Trophy, X } from 'lucide-react';
 import ExplorationFilterPanel from './ExplorationFilterPanel';
 import { TacticalPitch } from './TacticalPitch';
 import { usePitchProjection } from '../../hooks/usePitchProjection';
@@ -54,7 +54,8 @@ const RankingExplorer = ({
   advancedMetricsList = [],
   teamsList = [],
   playersList = [],
-  onPlayVideo
+  onPlayVideo,
+  onAddToPlaylist
 }) => {
   const [ranking, setRanking] = useState([]);
   const [page, setPage] = useState(1);
@@ -456,6 +457,16 @@ const RankingExplorer = ({
                             </div>
                           </div>
                         </div>
+                        <button
+                          onClick={(evt) => {
+                            evt.stopPropagation();
+                            onAddToPlaylist?.(e);
+                          }}
+                          className="text-slate-400 hover:text-[#3cffd0] transition-all duration-300 transform hover:scale-110 shrink-0"
+                          title="Ajouter a une playlist"
+                        >
+                          <ListPlus size={16} />
+                        </button>
                         <button
                           onClick={async (evt) => {
                             evt.stopPropagation();

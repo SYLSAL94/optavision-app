@@ -15,7 +15,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  PlayCircle
+  PlayCircle,
+  ListPlus
 } from 'lucide-react';
 
 import { API_BASE_URL } from '../../config';
@@ -120,6 +121,7 @@ const EventExplorer = ({
   eventsData = [],
   onPlayVideo,
   onPlayPlaylist,
+  onAddToPlaylist,
   isVideoLoading = false
 }) => {
   const [generatingEventId, setGeneratingEventId] = useState(null);
@@ -603,18 +605,31 @@ const EventExplorer = ({
                     </div>
                   </div>
                 </div>
-                <button
-                  onClick={async (evt) => {
-                    evt.stopPropagation();
-                    const eventId = e.opta_id || e.id;
-                    setGeneratingEventId(eventId);
-                    try { await onPlayVideo?.(e); } finally { setGeneratingEventId(null); }
-                  }}
-                  disabled={generatingEventId === (e.opta_id || e.id)}
-                  className="text-slate-400 hover:text-[#3cffd0] transition-all transform hover:scale-110 disabled:opacity-30"
-                >
-                  {generatingEventId === (e.opta_id || e.id) ? <Loader2 size={14} className="animate-spin text-[#3cffd0]" /> : <PlayCircle size={20} />}
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={(evt) => {
+                      evt.stopPropagation();
+                      onAddToPlaylist?.(e);
+                    }}
+                    className="text-slate-400 hover:text-[#3cffd0] transition-all transform hover:scale-110"
+                    title="Ajouter a une playlist"
+                  >
+                    <ListPlus size={18} />
+                  </button>
+                  <button
+                    onClick={async (evt) => {
+                      evt.stopPropagation();
+                      const eventId = e.opta_id || e.id;
+                      setGeneratingEventId(eventId);
+                      try { await onPlayVideo?.(e); } finally { setGeneratingEventId(null); }
+                    }}
+                    disabled={generatingEventId === (e.opta_id || e.id)}
+                    className="text-slate-400 hover:text-[#3cffd0] transition-all transform hover:scale-110 disabled:opacity-30"
+                    title="Lancer la video"
+                  >
+                    {generatingEventId === (e.opta_id || e.id) ? <Loader2 size={14} className="animate-spin text-[#3cffd0]" /> : <PlayCircle size={20} />}
+                  </button>
+                </div>
               </div>
             );
           })

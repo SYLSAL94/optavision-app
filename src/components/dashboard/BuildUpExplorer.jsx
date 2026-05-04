@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Activity, Clock, Hash, Zap, TrendingUp, Loader2, PlayCircle } from 'lucide-react';
+import { Activity, Clock, Hash, Zap, TrendingUp, Loader2, PlayCircle, ListPlus } from 'lucide-react';
 import EventExplorer from './EventExplorer';
 import { OPTAVISION_API_URL } from '../../config';
 
-const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], teamsList = [], advancedMetricsList = [], matchIds, onPlayVideo, isVideoLoading = false }) => {
+const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], teamsList = [], advancedMetricsList = [], matchIds, onPlayVideo, onAddToPlaylist, isVideoLoading = false }) => {
   const [selectedSequence, setSelectedSequence] = useState(null);
   const [sequenceEvents, setSequenceEvents] = useState([]);
   const [sequenceLoading, setSequenceLoading] = useState(false);
@@ -180,6 +180,22 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], teamsLi
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
+                          onAddToPlaylist?.({
+                            ...seq,
+                            item_kind: 'sequence',
+                            sub_sequence_id: seq.sub_sequence_id,
+                            type_action: 'Sequence Build-Up'
+                          });
+                        }}
+                        className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-black text-[#949494] transition-all hover:border-[#3cffd0] hover:text-[#3cffd0]"
+                        title="Ajouter a une playlist"
+                      >
+                        <ListPlus size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
                           handleSequenceVideo(seq);
                         }}
                         disabled={loadingSequenceId !== null}
@@ -271,6 +287,7 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], teamsLi
               playersList={playersList} 
               advancedMetricsList={advancedMetricsList} 
               onPlayVideo={onPlayVideo}
+              onAddToPlaylist={onAddToPlaylist}
               isVideoLoading={isVideoLoading}
             />
          </div>
