@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Database, Film, ListMusic, Loader2, Map, PlayCircle, RefreshCcw, Save, Scissors, Search, Shuffle, Trash2 } from 'lucide-react';
 import { TacticalPitch } from './TacticalPitch';
 import { usePitchProjection } from '../../hooks/usePitchProjection';
@@ -8,6 +8,7 @@ import { pollVideoJob } from '../../utils/videoJobs';
 const DEFAULT_TRIM_BEFORE = 5;
 const DEFAULT_TRIM_AFTER = 8;
 const DEFAULT_VIDEO_CONFIG = { before_buffer: 3, after_buffer: 5, min_clip_gap: 0.5 };
+const PLAYBAR_TRIM_RANGE = 60;
 
 const readVideoConfig = () => {
   try {
@@ -30,6 +31,8 @@ const toNumber = (value) => {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
 };
+
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 const getEndCoordinates = (item) => {
   const metrics = parseAdvancedMetrics(item);
@@ -404,6 +407,162 @@ const PlaylistSpatialLayer = ({ items, selectedItem, onSelect, projectPoint }) =
     })}
   </g>
 );
+
+const TrimPlaybar = ({
+  disabled = false,
+  periodId,
+  rawStart,
+  rawEnd,
+  trimBefore,
+  trimAfter,
+  onTrimBeforeChange,
+  onTrimAfterChange,
+}) => {
+  const trackRef = useRef(null);
+  const start = Number(rawStart);
+  const end = Number(rawEnd);
+  const hasWindow = Number.isFinite(start) && Number.isFinite(end);
+  const baseStart = hasWindow ? start : 0;
+  const baseEnd = hasWindow ? Math.max(end, start) : 0;
+  const before = clamp(Number(trimBefore || 0), 0, PLAYBAR_TRIM_RANGE);
+  const after = clamp(Number(trimAfter || 0), 0, PLAYBAR_TRIM_RANGE);
+  const timelineStart = Math.max(0, baseStart - PLAYBAR_TRIM_RANGE);
+  const timelineEnd = baseEnd + PLAYBAR_TRIM_RANGE;
+  const total = Math.max(1, timelineEnd - timelineStart);
+  const clipStart = Math.max(timelineStart, baseStart - before);
+  const clipEnd = Math.min(timelineEnd, baseEnd + after);
+  const pct = (seconds) => clamp(((seconds - timelineStart) / total) * 100, 0, 100);
+  const leftPct = pct(clipStart);
+  const actionStartPct = pct(baseStart);
+  const actionEndPct = pct(baseEnd);
+  const rightPct = pct(clipEnd);
+
+  const startDrag = (side) => (event) => {
+    if (disabled || !hasWindow || !trackRef.current) return;
+    event.preventDefault();
+    const rect = trackRef.current.getBoundingClientRect();
+
+    const updateFromClientX = (clientX) => {
+      const ratio = clamp((clientX - rect.left) / Math.max(1, rect.width), 0, 1);
+      const seconds = timelineStart + ratio * total;
+      if (side === 'left') {
+        onTrimBeforeChange(clamp(Math.round(baseStart - seconds), 0, PLAYBAR_TRIM_RANGE));
+      } else {
+        onTrimAfterChange(clamp(Math.round(seconds - baseEnd), 0, PLAYBAR_TRIM_RANGE));
+      }
+    };
+
+    const handleMove = (moveEvent) => updateFromClientX(moveEvent.clientX);
+    const handleUp = () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+    };
+
+    updateFromClientX(event.clientX);
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+  };
+
+  if (!hasWindow) {
+    return (
+      <div className="rounded-[3px] border border-white/10 bg-black/25 px-4 py-5 text-center verge-label-mono text-[8px] font-black uppercase tracking-[0.18em] text-[#666]">
+        Rognage indisponible pour cet item
+      </div>
+    );
+  }
+
+  return (
+    <div className={`space-y-4 ${disabled ? 'pointer-events-none opacity-45' : ''}`}>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="verge-label-mono text-[8px] font-black uppercase tracking-[0.22em] text-[#949494]">
+            Playbar de rognage
+          </div>
+          <div className="mt-1 verge-label-mono text-[8px] font-black uppercase tracking-[0.16em] text-[#3cffd0]">
+            {formatSecondsClock(clipStart, periodId)} - {formatSecondsClock(clipEnd, periodId)}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="flex items-center gap-2 rounded-[2px] border border-white/10 bg-black/30 px-2 py-1">
+            <span className="verge-label-mono text-[7px] font-black uppercase tracking-[0.16em] text-[#666]">Avant</span>
+            <input
+              type="number"
+              min="0"
+              max={PLAYBAR_TRIM_RANGE}
+              value={trimBefore}
+              onChange={(event) => onTrimBeforeChange(clamp(Number(event.target.value) || 0, 0, PLAYBAR_TRIM_RANGE))}
+              className="h-7 w-12 bg-transparent text-right verge-label-mono text-[9px] font-black text-white outline-none"
+            />
+          </label>
+          <label className="flex items-center gap-2 rounded-[2px] border border-white/10 bg-black/30 px-2 py-1">
+            <span className="verge-label-mono text-[7px] font-black uppercase tracking-[0.16em] text-[#666]">Apres</span>
+            <input
+              type="number"
+              min="0"
+              max={PLAYBAR_TRIM_RANGE}
+              value={trimAfter}
+              onChange={(event) => onTrimAfterChange(clamp(Number(event.target.value) || 0, 0, PLAYBAR_TRIM_RANGE))}
+              className="h-7 w-12 bg-transparent text-right verge-label-mono text-[9px] font-black text-white outline-none"
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="relative pb-8 pt-10">
+        <div ref={trackRef} className="relative h-9 select-none rounded-[3px] border border-white/10 bg-[#40505a]/55">
+          <div className="absolute inset-y-0 left-0 bg-[#40505a]" style={{ right: `${100 - leftPct}%` }} />
+          <div className="absolute inset-y-0 bg-[#56fff0]/70" style={{ left: `${leftPct}%`, right: `${100 - actionStartPct}%` }} />
+          <div className="absolute inset-y-0 bg-[#0b7ea8]" style={{ left: `${actionStartPct}%`, right: `${100 - actionEndPct}%` }} />
+          <div className="absolute inset-y-0 bg-[#56fff0]/70" style={{ left: `${actionEndPct}%`, right: `${100 - rightPct}%` }} />
+          <div className="absolute inset-y-0 right-0 bg-[#40505a]" style={{ left: `${rightPct}%` }} />
+
+          <button
+            type="button"
+            onPointerDown={startDrag('left')}
+            className="absolute top-1/2 z-20 flex -translate-x-1/2 -translate-y-1/2 cursor-ew-resize flex-col items-center outline-none"
+            style={{ left: `${leftPct}%` }}
+            title="Glisser pour ajuster le debut du clip"
+          >
+            <span className="absolute bottom-[calc(100%+8px)] whitespace-nowrap rounded-[2px] border border-white/10 bg-black/80 px-2 py-1 verge-label-mono text-[7px] font-black uppercase tracking-[0.08em] text-white">
+              -{Math.round(before)}s ({formatSecondsClock(clipStart, periodId)})
+            </span>
+            <span className="flex h-10 w-10 items-center justify-center rounded-[3px] border border-black/50 bg-[#151515] text-[#3cffd0] shadow-xl">‹</span>
+          </button>
+
+          <div
+            className="absolute top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center"
+            style={{ left: `${actionStartPct}%` }}
+          >
+            <span className="h-12 w-1 rounded-full bg-white shadow-[0_0_20px_rgba(255,255,255,0.5)]" />
+            <span className="absolute top-[calc(100%+8px)] whitespace-nowrap rounded-[2px] border border-white/10 bg-black/80 px-2 py-1 verge-label-mono text-[7px] font-black uppercase tracking-[0.08em] text-white">
+              0s ({formatSecondsClock(baseStart, periodId)})
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onPointerDown={startDrag('right')}
+            className="absolute top-1/2 z-30 flex -translate-x-1/2 -translate-y-1/2 cursor-ew-resize flex-col items-center outline-none"
+            style={{ left: `${rightPct}%` }}
+            title="Glisser pour ajuster la fin du clip"
+          >
+            <span className="absolute bottom-[calc(100%+8px)] whitespace-nowrap rounded-[2px] border border-white/10 bg-black/80 px-2 py-1 verge-label-mono text-[7px] font-black uppercase tracking-[0.08em] text-white">
+              +{Math.round(after)}s ({formatSecondsClock(clipEnd, periodId)})
+            </span>
+            <span className="flex h-10 w-10 items-center justify-center rounded-[3px] border border-black/50 bg-[#151515] text-[#3cffd0] shadow-xl">›</span>
+          </button>
+        </div>
+
+        <span className="absolute left-0 bottom-0 verge-label-mono text-[8px] font-black uppercase tracking-[0.1em] text-white">
+          -{PLAYBAR_TRIM_RANGE}s ({formatSecondsClock(timelineStart, periodId)})
+        </span>
+        <span className="absolute right-0 bottom-0 verge-label-mono text-[8px] font-black uppercase tracking-[0.1em] text-white">
+          +{PLAYBAR_TRIM_RANGE}s ({formatSecondsClock(timelineEnd, periodId)})
+        </span>
+      </div>
+    </div>
+  );
+};
 
 const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
   const [playlists, setPlaylists] = useState([]);
@@ -1136,32 +1295,16 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
                     </div>
                   </div>
 
-                  {[
-                    ['Avant action', trimBefore, setTrimBefore, `-${trimBefore}s`],
-                    ['Apres action', trimAfter, setTrimAfter, `+${trimAfter}s`],
-                  ].map(([label, value, setter, display]) => (
-                    <div key={label} className="grid grid-cols-[110px_minmax(0,1fr)_54px] items-center gap-3">
-                      <label className="verge-label-mono text-[8px] font-black uppercase tracking-[0.18em] text-[#949494]">{label}</label>
-                      <input
-                        type="range"
-                        min="0"
-                        max="30"
-                        step="1"
-                        value={value}
-                        onChange={(event) => setter(Number(event.target.value))}
-                        className="accent-[#3cffd0]"
-                      />
-                      <input
-                        type="number"
-                        min="0"
-                        max="60"
-                        value={value}
-                        onChange={(event) => setter(Math.max(0, Number(event.target.value) || 0))}
-                        className="h-8 rounded-[2px] border border-white/10 bg-black/40 px-2 text-right verge-label-mono text-[9px] font-black text-white outline-none focus:border-[#3cffd0]/60"
-                        title={display}
-                      />
-                    </div>
-                  ))}
+                  <TrimPlaybar
+                    disabled={!selectedItem}
+                    periodId={selectedPeriodId}
+                    rawStart={previewStart}
+                    rawEnd={previewEnd}
+                    trimBefore={trimBefore}
+                    trimAfter={trimAfter}
+                    onTrimBeforeChange={setTrimBefore}
+                    onTrimAfterChange={setTrimAfter}
+                  />
                 </div>
 
                 <div className="flex flex-col justify-between gap-3">
