@@ -48,6 +48,170 @@ import { appendExplorationFilterParams } from './optaFilterParams';
 import { pollVideoJob } from '../../utils/videoJobs';
 
 const DEFAULT_VIDEO_TITLE = "OptaVision Elite Video Feed";
+const DEFAULT_VIDEO_CONFIG = { before_buffer: 3, after_buffer: 5, min_clip_gap: 0.5 };
+
+const readVideoConfig = () => {
+  try {
+    const savedConfig = localStorage.getItem('optavision_video_config');
+    return savedConfig ? { ...DEFAULT_VIDEO_CONFIG, ...JSON.parse(savedConfig) } : DEFAULT_VIDEO_CONFIG;
+  } catch {
+    return DEFAULT_VIDEO_CONFIG;
+  }
+};
+
+const getVideoEventId = (event) => event?.opta_id || event?.event_id || event?.id || null;
+
+const parseClockSeconds = (value) => {
+  if (!value) return null;
+  const match = String(value).match(/(\d+)'(\d+)/);
+  return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+};
+
+const getEventSeconds = (event) => {
+  const directSeconds = Number(
+    event?.seconds ??
+    event?.event_seconds ??
+    event?.cumulative_seconds ??
+    event?.video_seconds
+  );
+  if (Number.isFinite(directSeconds)) return directSeconds;
+
+  const clockSeconds = parseClockSeconds(event?.clock || event?.time || event?.start_time);
+  if (Number.isFinite(clockSeconds)) return clockSeconds;
+
+  const minute = Number(event?.minute ?? event?.min ?? 0);
+  const second = Number(event?.second ?? event?.sec ?? 0);
+  return Number.isFinite(minute) && Number.isFinite(second) ? minute * 60 + second : null;
+};
+
+const formatClipClock = (seconds) => {
+  if (!Number.isFinite(seconds)) return null;
+  const safeSeconds = Math.max(0, Math.round(seconds));
+  const minute = Math.floor(safeSeconds / 60);
+  const second = safeSeconds % 60;
+  return `${minute}'${String(second).padStart(2, '0')}`;
+};
+
+const getQueueItemParts = (item) => (
+  Array.isArray(item?.events) && item.events.length > 0
+    ? item.events.filter(Boolean)
+    : [item].filter(Boolean)
+);
+
+const getQueueItemMatchId = (item, parts) => (
+  item?.match_id ||
+  item?.matchId ||
+  parts?.[0]?.match_id ||
+  parts?.[0]?.matchId ||
+  null
+);
+
+const getQueueItemWindow = (item, parts, videoCfg) => {
+  const numericStart = Number(item?.start_seconds ?? item?.sequence_start_seconds);
+  const numericEnd = Number(item?.end_seconds ?? item?.sequence_end_seconds);
+  if (Number.isFinite(numericStart) && Number.isFinite(numericEnd)) {
+    return {
+      start: Math.max(0, numericStart),
+      end: Math.max(numericStart, numericEnd),
+    };
+  }
+
+  const eventSeconds = getEventSeconds(item) ?? getEventSeconds(parts?.[0]);
+  if (!Number.isFinite(eventSeconds)) return { start: null, end: null };
+  const beforeBuffer = Number(videoCfg.before_buffer ?? DEFAULT_VIDEO_CONFIG.before_buffer);
+  const afterBuffer = Number(videoCfg.after_buffer ?? DEFAULT_VIDEO_CONFIG.after_buffer);
+  return {
+    start: Math.max(0, eventSeconds - beforeBuffer),
+    end: eventSeconds + afterBuffer,
+  };
+};
+
+const normalizeRafaleQueue = (events = [], videoCfg = DEFAULT_VIDEO_CONFIG) => {
+  const rawItems = Array.isArray(events) ? events.filter(Boolean) : [];
+  const seenKeys = new Set();
+  const groups = [];
+  const minGap = Number(videoCfg.min_clip_gap ?? DEFAULT_VIDEO_CONFIG.min_clip_gap);
+
+  rawItems.forEach((item, index) => {
+    const parts = getQueueItemParts(item);
+    const matchId = getQueueItemMatchId(item, parts);
+    const ids = parts.map(getVideoEventId).filter(Boolean).map(String);
+    const primaryKey = `${matchId || 'match'}:${ids.join('|') || getVideoEventId(item) || index}`;
+    if (seenKeys.has(primaryKey)) return;
+    seenKeys.add(primaryKey);
+
+    const window = getQueueItemWindow(item, parts, videoCfg);
+    const nextItem = {
+      source: item,
+      parts,
+      ids,
+      matchId,
+      start: window.start,
+      end: window.end,
+      index,
+    };
+
+    const lastGroup = groups[groups.length - 1];
+    const canMerge = Boolean(
+      lastGroup &&
+      matchId &&
+      lastGroup.matchId === matchId &&
+      Number.isFinite(lastGroup.end) &&
+      Number.isFinite(nextItem.start) &&
+      nextItem.start <= lastGroup.end + minGap
+    );
+
+    if (canMerge) {
+      lastGroup.items.push(nextItem);
+      lastGroup.parts.push(...parts);
+      lastGroup.ids.push(...ids);
+      lastGroup.end = Math.max(lastGroup.end, nextItem.end);
+      lastGroup.start = Math.min(lastGroup.start, nextItem.start);
+      return;
+    }
+
+    groups.push({
+      matchId,
+      start: nextItem.start,
+      end: nextItem.end,
+      items: [nextItem],
+      parts: [...parts],
+      ids: [...ids],
+    });
+  });
+
+  return groups.map((group, groupIndex) => {
+    if (group.items.length === 1) return group.items[0].source;
+
+    const uniqueParts = [];
+    const partKeys = new Set();
+    group.parts.forEach((part, partIndex) => {
+      const key = `${getQueueItemMatchId(part, [part]) || group.matchId || 'match'}:${getVideoEventId(part) || partIndex}`;
+      if (partKeys.has(key)) return;
+      partKeys.add(key);
+      uniqueParts.push(part);
+    });
+
+    const firstPart = uniqueParts[0] || group.items[0].source;
+    const firstId = getVideoEventId(firstPart) || groupIndex;
+    return {
+      ...firstPart,
+      id: `rafale-merge-${group.matchId || 'match'}-${Math.round((group.start || 0) * 10)}-${Math.round((group.end || 0) * 10)}-${firstId}`,
+      sub_sequence_id: `rafale-merge-${group.matchId || 'match'}-${Math.round((group.start || 0) * 10)}-${Math.round((group.end || 0) * 10)}-${firstId}`,
+      match_id: group.matchId || firstPart?.match_id || firstPart?.matchId,
+      start_seconds: group.start,
+      end_seconds: group.end,
+      sequence_start_seconds: group.start,
+      sequence_end_seconds: group.end,
+      start_time: formatClipClock(group.start),
+      end_time: formatClipClock(group.end),
+      type_name: 'Rafale merge',
+      rafale_merged: true,
+      rafale_merge_count: uniqueParts.length,
+      events: uniqueParts,
+    };
+  });
+};
 
 /**
  * OptaVisionDashboard - Squelette UI/UX Premium (Style The Verge)
@@ -236,8 +400,7 @@ const OptaVisionDashboard = ({ user }) => {
     setIsVideoLoading(true);
     try {
       // Récupération de la config globale (buffers FFmpeg)
-      const savedConfig = localStorage.getItem('optavision_video_config');
-      const videoCfg = savedConfig ? JSON.parse(savedConfig) : { before_buffer: 3, after_buffer: 5, min_clip_gap: 0.5 };
+      const videoCfg = readVideoConfig();
 
       const requestPayload = {
         match_id: matchId,
@@ -282,8 +445,13 @@ const OptaVisionDashboard = ({ user }) => {
   };
 
   const handlePlayPlaylist = async (events = []) => {
-    const nextQueue = Array.isArray(events) ? events.filter(Boolean) : [];
+    const rawQueue = Array.isArray(events) ? events.filter(Boolean) : [];
+    const nextQueue = normalizeRafaleQueue(rawQueue, readVideoConfig());
     if (nextQueue.length === 0) return null;
+
+    if (nextQueue.length !== rawQueue.length) {
+      console.info(`Rafale merge-aware: ${rawQueue.length} actions regroupees en ${nextQueue.length} clips.`);
+    }
 
     setVideoQueue(nextQueue);
     setVideoQueueIndex(0);
