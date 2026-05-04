@@ -47,6 +47,31 @@ const formatSignedMetric = (value, digits = 3) => {
   return `${numeric >= 0 ? '+' : ''}${numeric.toFixed(digits)}`;
 };
 
+const formatMatchClock = (event = {}) => {
+  const periodId = Number(event.period_id ?? event.periodId ?? event.period);
+  const minute = Number(event.minute ?? event.min ?? 0);
+  const second = Number(event.sec ?? event.second ?? 0);
+  const safeSecond = Number.isFinite(second) ? Math.max(0, Math.floor(second)) : 0;
+  const secondsLabel = safeSecond > 0 ? `:${String(safeSecond).padStart(2, '0')}` : '';
+
+  if (!Number.isFinite(minute)) {
+    const cumulative = Number(event.cumulative_mins);
+    return Number.isFinite(cumulative) ? `${cumulative.toFixed(1)}'` : "--";
+  }
+
+  const minuteLabel = Math.floor(minute);
+  const formatStoppage = (base, label) => {
+    const added = minuteLabel - base;
+    return added > 0 ? `${label} ${base}+${added}${secondsLabel}` : `${label} ${minuteLabel}${secondsLabel}`;
+  };
+
+  if (periodId === 1) return formatStoppage(45, '1H');
+  if (periodId === 2) return minuteLabel >= 45 ? formatStoppage(45, '2H') : `2H ${minuteLabel}${secondsLabel}`;
+  if (periodId === 3) return minuteLabel >= 105 ? formatStoppage(105, 'ET1') : `ET1 ${minuteLabel}${secondsLabel}`;
+  if (periodId === 4) return minuteLabel >= 120 ? formatStoppage(120, 'ET2') : `ET2 ${minuteLabel}${secondsLabel}`;
+  return `P${Number.isFinite(periodId) ? periodId : '?'} ${minuteLabel}${secondsLabel}`;
+};
+
 const DUEL_EVENT_KEYS = new Set(['takeon', 'tackle', 'aerial', 'challenge', 'interception', 'ballrecovery', 'foul', 'blockedpass', 'dispossessed']);
 const DUEL_EVENT_IDS = new Set(['4', '50', '74']);
 const FORCED_DUEL_LOSS_KEYS = new Set(['blockedpass', 'dispossessed']);
@@ -557,7 +582,7 @@ const EventExplorer = ({
               >
                 <div className="flex items-center gap-4 min-w-0 flex-1">
                   <span className="verge-label-mono text-[9px] text-[#3cffd0] font-black w-14 shrink-0">
-                    {(e.cumulative_mins ?? 0).toFixed(1)}'
+                    {formatMatchClock(e)}
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
