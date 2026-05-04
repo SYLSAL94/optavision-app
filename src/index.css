@@ -13,6 +13,7 @@
   --color-hazard-white: #ffffff;
   --color-secondary-text: #949494;
   --color-muted-text: #e9e9e9;
+  --color-absolute-black: #000000;
 
   --font-display: "Oswald", "Impact", "Helvetica Neue", sans-serif;
   --font-sans: "Inter", "Helvetica Neue", "Arial", sans-serif;
@@ -120,5 +121,26 @@ h1, h2, h3, .verge-display {
   border-radius: 10px;
 }
 .scrollbar-verge::-webkit-scrollbar-thumb:hover {
+  background: var(--secondary-text);
+}
+
+.styled-scrollbar::-webkit-scrollbar,
+.styled-scrollbar-verge::-webkit-scrollbar {
+  width: 6px;
+}
+
+.styled-scrollbar::-webkit-scrollbar-track,
+.styled-scrollbar-verge::-webkit-scrollbar-track {
+  background: var(--canvas-black);
+}
+
+.styled-scrollbar::-webkit-scrollbar-thumb,
+.styled-scrollbar-verge::-webkit-scrollbar-thumb {
+  background: var(--surface-slate);
+  border-radius: 10px;
+}
+
+.styled-scrollbar::-webkit-scrollbar-thumb:hover,
+.styled-scrollbar-verge::-webkit-scrollbar-thumb:hover {
   background: var(--secondary-text);
 }
