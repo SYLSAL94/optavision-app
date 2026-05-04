@@ -73,6 +73,13 @@ const formatMatchClock = (event = {}) => {
   return `P${Number.isFinite(periodId) ? periodId : '?'} ${minuteLabel}${secondsLabel}`;
 };
 
+const getEventSelectionKey = (event = {}, index = 0) => String(
+  event.opta_id
+  || event.event_id
+  || event.id
+  || `${event.match_id || event.matchId || 'match'}-${event.period_id || event.period || 'p'}-${event.minute ?? event.min ?? 0}-${event.sec ?? 0}-${index}`
+);
+
 const getEventEndPoint = (event) => {
   const metrics = parseAdvancedMetrics(event);
   const x = Number(metrics.end_x ?? metrics.endX ?? event?.end_x ?? event?.endX);
@@ -281,6 +288,7 @@ const EventExplorer = ({
   const pendingSelectionPointRef = useRef(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isMixMenuOpen, setIsMixMenuOpen] = useState(false);
+  const [playlistSelection, setPlaylistSelection] = useState({});
 
   // --- MOTEUR GÉOMÉTRIQUE UNIFIÉ ---
   const { projectPoint, getPitchViewBox, getPitchSvgPoint } = usePitchProjection(orientation);
@@ -361,6 +369,47 @@ const EventExplorer = ({
   ), [isSequenceMode, data, spatialDisplayData]);
   const videoActionCount = liveEventRows.length;
   const isVideoActionDisabled = loading || videoActionCount === 0;
+  const selectedPlaylistEvents = useMemo(() => (
+    liveEventRows.filter((event, index) => playlistSelection[getEventSelectionKey(event, index)])
+  ), [liveEventRows, playlistSelection]);
+  const selectedPlaylistCount = selectedPlaylistEvents.length;
+  const areAllPlaylistRowsSelected = liveEventRows.length > 0 && selectedPlaylistCount === liveEventRows.length;
+
+  const togglePlaylistEvent = useCallback((event, index, checked) => {
+    const key = getEventSelectionKey(event, index);
+    setPlaylistSelection((current) => {
+      const next = { ...current };
+      if (checked) next[key] = true;
+      else delete next[key];
+      return next;
+    });
+  }, []);
+
+  const toggleAllPlaylistEvents = useCallback(() => {
+    setPlaylistSelection((current) => {
+      const next = { ...current };
+      if (areAllPlaylistRowsSelected) {
+        liveEventRows.forEach((event, index) => {
+          delete next[getEventSelectionKey(event, index)];
+        });
+      } else {
+        liveEventRows.forEach((event, index) => {
+          next[getEventSelectionKey(event, index)] = true;
+        });
+      }
+      return next;
+    });
+  }, [areAllPlaylistRowsSelected, liveEventRows]);
+
+  const handleAddSelectedToPlaylist = useCallback(() => {
+    if (selectedPlaylistEvents.length === 0) return;
+    onAddToPlaylist?.({
+      item_kind: 'event_batch',
+      type_action: 'Lot Flux Live Analyst',
+      batch_label: 'Flux Live Analyst',
+      events: selectedPlaylistEvents,
+    });
+  }, [onAddToPlaylist, selectedPlaylistEvents]);
 
   const handlePitchMouseMove = useCallback((event) => {
     if (selectionBox.isDrawing) {
@@ -595,6 +644,7 @@ const EventExplorer = ({
 
   React.useEffect(() => {
     setSelectionBox({ ...EMPTY_SELECTION_BOX });
+    setPlaylistSelection({});
   }, [matchIds]);
 
   React.useEffect(() => () => {
@@ -634,6 +684,25 @@ const EventExplorer = ({
           <span className="verge-label-mono text-[10px] text-white font-black uppercase tracking-[0.2em]">Flux Live Analyst (Virtualized)</span>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={loading || liveEventRows.length === 0}
+            onClick={toggleAllPlaylistEvents}
+            className={`px-3 py-1.5 rounded-[2px] verge-label-mono text-[8px] font-black uppercase flex items-center gap-2 transition-all border border-white/10 ${loading || liveEventRows.length === 0 ? 'bg-black/20 text-white/25 cursor-not-allowed' : areAllPlaylistRowsSelected ? 'bg-[#3cffd0]/15 text-[#3cffd0] hover:bg-[#3cffd0]/25' : 'bg-black/40 text-[#949494] hover:bg-white/10 hover:text-white'}`}
+            title={areAllPlaylistRowsSelected ? 'Retirer tous les events de la selection playlist' : 'Selectionner tous les events du flux filtre'}
+          >
+            {areAllPlaylistRowsSelected ? 'Vider' : 'Tout selectionner'}
+          </button>
+          <button
+            type="button"
+            disabled={selectedPlaylistCount === 0}
+            onClick={handleAddSelectedToPlaylist}
+            className={`px-3 py-1.5 rounded-[2px] verge-label-mono text-[8px] font-black uppercase flex items-center gap-2 transition-all border border-[#3cffd0]/20 ${selectedPlaylistCount === 0 ? 'bg-black/20 text-white/25 cursor-not-allowed' : 'bg-[#3cffd0]/10 text-[#3cffd0] hover:bg-[#3cffd0] hover:text-black'}`}
+            title="Ajouter les events coches a une playlist"
+          >
+            <ListPlus size={11} />
+            Ajouter playlist ({selectedPlaylistCount})
+          </button>
           <button
             type="button"
             disabled={isVideoActionDisabled || generatingEventId === 'batch'}
@@ -715,6 +784,8 @@ const EventExplorer = ({
             const typeLabel = parsedMetrics?.type_name || e.type_name || e.type_id;
             const typeKey = String(typeLabel || '').replace(/\s+/g, '').toLowerCase();
             const typeId = String(parsedMetrics?.type_id ?? e.type_id ?? '');
+            const selectionKey = getEventSelectionKey(e, index);
+            const isPlaylistSelected = Boolean(playlistSelection[selectionKey]);
             
             const getPlayerName = (id) => id ? (globalPlayerMap[String(id)] || String(id)) : null;
             const receiverName = getPlayerName(parsedMetrics?.receiver || e.receiver_id || e.receiver);
@@ -743,6 +814,21 @@ const EventExplorer = ({
                 className={`flex items-center justify-between py-3 border-b border-white/[0.03] hover:bg-[#3cffd0]/5 transition-colors px-5 group cursor-pointer ${(e.opta_id ?? e.id) === activeFocusedEventId ? 'bg-[#3cffd0]/10 border-l-2 border-l-[#3cffd0]' : ''}`}
               >
                 <div className="flex items-center gap-4 min-w-0 flex-1">
+                  <label
+                    className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center"
+                    onClick={(evt) => evt.stopPropagation()}
+                    title="Cocher pour ajout groupe a une playlist"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isPlaylistSelected}
+                      onChange={(evt) => togglePlaylistEvent(e, index, evt.target.checked)}
+                      className="sr-only"
+                    />
+                    <span className={`flex h-4 w-4 items-center justify-center rounded-[2px] border transition-all ${isPlaylistSelected ? 'border-[#3cffd0] bg-[#3cffd0] shadow-[0_0_14px_rgba(60,255,208,0.28)]' : 'border-white/15 bg-black/35 group-hover:border-[#3cffd0]/60'}`}>
+                      {isPlaylistSelected && <span className="h-1.5 w-1.5 rounded-full bg-black" />}
+                    </span>
+                  </label>
                   <span className="verge-label-mono text-[9px] text-[#3cffd0] font-black w-14 shrink-0">
                     {formatMatchClock(e)}
                   </span>

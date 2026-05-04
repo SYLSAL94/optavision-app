@@ -28,6 +28,18 @@ const getPlaylistPayload = (item) => {
   };
 };
 
+const getPlaylistPayloads = (item) => {
+  if (item?.item_kind === 'event_batch') {
+    const events = Array.isArray(item?.events) ? item.events : [];
+    return events.map(getPlaylistPayload);
+  }
+  return [getPlaylistPayload(item)];
+};
+
+const isValidPlaylistPayload = (payload) => (
+  payload?.match_id && (payload?.opta_id || payload?.sub_sequence_id)
+);
+
 const AddToPlaylistModal = ({ isOpen, item, onClose, onAdded }) => {
   const [playlists, setPlaylists] = useState([]);
   const [name, setName] = useState('');
@@ -36,8 +48,11 @@ const AddToPlaylistModal = ({ isOpen, item, onClose, onAdded }) => {
   const [error, setError] = useState(null);
   const [successId, setSuccessId] = useState(null);
 
-  const payload = useMemo(() => getPlaylistPayload(item), [item]);
-  const itemLabel = item?.playerName || item?.type_name || item?.type_action || item?.type || 'Action';
+  const payloads = useMemo(() => getPlaylistPayloads(item), [item]);
+  const isBatch = item?.item_kind === 'event_batch';
+  const itemLabel = isBatch
+    ? `${payloads.length} events selectionnes`
+    : (item?.playerName || item?.type_name || item?.type_action || item?.type || 'Action');
 
   const fetchPlaylists = async () => {
     setLoading(true);
@@ -62,8 +77,20 @@ const AddToPlaylistModal = ({ isOpen, item, onClose, onAdded }) => {
     fetchPlaylists();
   }, [isOpen]);
 
+  const postPayload = async (playlistId, payload) => {
+    const response = await fetch(`${OPTAVISION_API_URL}/api/optavision/playlists/${playlistId}/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const json = await response.json();
+    if (!response.ok) throw new Error(json.detail || 'PLAYLIST_ITEM_ADD_FAILED');
+    return json;
+  };
+
   const addItem = async (playlistId) => {
-    if (!payload.match_id || (!payload.opta_id && !payload.sub_sequence_id)) {
+    const validPayloads = payloads.filter(isValidPlaylistPayload);
+    if (validPayloads.length === 0) {
       setError('Item invalide: match_id et opta_id/sub_sequence_id requis.');
       return;
     }
@@ -71,16 +98,28 @@ const AddToPlaylistModal = ({ isOpen, item, onClose, onAdded }) => {
     setSubmittingId(playlistId);
     setError(null);
     try {
-      const response = await fetch(`${OPTAVISION_API_URL}/api/optavision/playlists/${playlistId}/items`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.detail || 'PLAYLIST_ITEM_ADD_FAILED');
+      const added = [];
+      const failed = [];
+      const chunkSize = 6;
+      for (let start = 0; start < validPayloads.length; start += chunkSize) {
+        const chunk = validPayloads.slice(start, start + chunkSize);
+        const results = await Promise.allSettled(chunk.map((payload) => postPayload(playlistId, payload)));
+        results.forEach((result) => {
+          if (result.status === 'fulfilled') added.push(result.value);
+          else failed.push(result.reason);
+        });
+      }
+
+      if (added.length === 0) {
+        throw new Error(failed[0]?.message || 'PLAYLIST_ITEM_ADD_FAILED');
+      }
+
       setSuccessId(playlistId);
-      onAdded?.(json);
+      onAdded?.({ playlist_id: playlistId, added_count: added.length, failed_count: failed.length, items: added });
       await fetchPlaylists();
+      if (failed.length > 0) {
+        setError(`${added.length} ajoutes, ${failed.length} ignores.`);
+      }
     } catch (err) {
       setError(err.message || 'Erreur ajout playlist');
     } finally {

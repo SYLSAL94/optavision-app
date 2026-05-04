@@ -1025,9 +1025,9 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
   };
 
   return (
-    <div className="h-full w-full overflow-hidden bg-[#050505] p-6 lg:p-8">
-      <div className="mx-auto grid h-full w-full max-w-[1800px] grid-cols-1 gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
-        <aside className="flex min-h-0 flex-col overflow-hidden rounded-[4px] border border-white/10 bg-[#1a1a1a] shadow-2xl">
+    <div className="h-[100dvh] max-h-[100dvh] min-h-0 w-full overflow-hidden bg-[#050505] p-4 lg:p-6">
+      <div className="mx-auto grid h-full min-h-0 w-full max-w-[1800px] grid-cols-1 grid-rows-[minmax(320px,44dvh)_minmax(0,1fr)] gap-5 xl:grid-cols-[420px_minmax(0,1fr)] xl:grid-rows-1">
+        <aside className="flex h-full min-h-0 max-h-full flex-col overflow-hidden rounded-[4px] border border-white/10 bg-[#1a1a1a] shadow-2xl">
           <div className="flex items-center justify-between border-b border-white/10 bg-[#2d2d2d] px-6 py-5">
             <div className="flex items-center gap-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-[4px] bg-[#3cffd0] text-black">
@@ -1171,7 +1171,7 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
             )}
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
               <div className="min-w-0">
                 <div className="truncate verge-label-mono text-[10px] font-black uppercase tracking-[0.2em] text-white">
@@ -1198,7 +1198,7 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
               </div>
             </div>
 
-            <div className="relative min-h-0 flex-1 overflow-y-auto styled-scrollbar-verge">
+            <div className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain styled-scrollbar-verge">
               {loadingItems ? (
                 <div className="flex h-full items-center justify-center text-[#3cffd0]">
                   <Loader2 size={26} className="animate-spin" />
@@ -1307,7 +1307,7 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
           </div>
         </aside>
 
-        <section className="relative min-h-0 overflow-hidden rounded-[4px] border border-white/10 bg-[#101010] shadow-2xl">
+        <section className="relative h-full min-h-0 max-h-full overflow-hidden rounded-[4px] border border-white/10 bg-[#101010] shadow-2xl">
           <div className="absolute left-6 top-6 z-30 flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-3 rounded-[3px] border border-white/10 bg-black/55 px-4 py-3 backdrop-blur-xl">
               <div className="h-2 w-2 rounded-full bg-[#3cffd0]" />
