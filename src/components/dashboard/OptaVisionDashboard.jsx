@@ -39,6 +39,7 @@ import PassSonarExplorer from './PassSonarExplorer';
 import PassFlowExplorer from './PassFlowExplorer';
 import TerritoryExplorer from './TerritoryExplorer';
 import PlayerRadarExplorer from './PlayerRadarExplorer';
+import PlayerBeeswarmExplorer from './PlayerBeeswarmExplorer';
 import FormationViewerExplorer from './FormationViewerExplorer';
 import GlobalVideoPlayer from './GlobalVideoPlayer';
 import SettingsModal from '../layout/SettingsModal';
@@ -67,7 +68,7 @@ const OptaVisionDashboard = ({ user }) => {
   const [teamsList, setTeamsList] = useState([]);
   const [playersList, setPlayersList] = useState([]);
   const [activeTab, setActiveTab] = useState('exploration');
-  const [activeTool, setActiveTool] = useState(null); // 'events', 'chainboard', 'passmap', 'passsonar', 'passflow', 'territory', 'playerradar', 'formationviewer', 'sequences', 'shots'
+  const [activeTool, setActiveTool] = useState(null); // 'events', 'chainboard', 'passmap', 'passsonar', 'passflow', 'territory', 'playerradar', 'playerbeeswarm', 'formationviewer', 'sequences', 'shots'
   const [globalVideoUrl, setGlobalVideoUrl] = useState(null);
   const [videoQueue, setVideoQueue] = useState([]);
   const [videoQueueIndex, setVideoQueueIndex] = useState(-1);
@@ -425,6 +426,7 @@ const OptaVisionDashboard = ({ user }) => {
     if (activeTool === 'passflow') return;
     if (activeTool === 'territory') return;
     if (activeTool === 'playerradar') return;
+    if (activeTool === 'playerbeeswarm') return;
     if (activeTool === 'formationviewer') return;
     if (activeTool === 'sequences') {
       Promise.resolve().then(() => fetchBuildup(explorationFilters));
@@ -666,6 +668,15 @@ const OptaVisionDashboard = ({ user }) => {
                       )}
                       {activeTab === 'exploration' && (
                         <TileSkeleton
+                          title="Beeswarm Player Comparison"
+                          desc="Comparaison API-first des joueurs par metrique, rang, percentile et dispersion."
+                          icon={<Activity />}
+                          color="text-[#8be9fd]"
+                          onClick={() => setActiveTool('playerbeeswarm')}
+                        />
+                      )}
+                      {activeTab === 'exploration' && (
+                        <TileSkeleton
                           title="Formation Viewer"
                           desc="Affichage API-first des structures, postes et changements tactiques."
                           icon={<UsersRound />}
@@ -776,6 +787,10 @@ const OptaVisionDashboard = ({ user }) => {
                         />
                       ) : activeTool === 'playerradar' ? (
                         <PlayerRadarExplorer
+                          filters={explorationFilters}
+                        />
+                      ) : activeTool === 'playerbeeswarm' ? (
+                        <PlayerBeeswarmExplorer
                           filters={explorationFilters}
                         />
                       ) : activeTool === 'formationviewer' ? (
