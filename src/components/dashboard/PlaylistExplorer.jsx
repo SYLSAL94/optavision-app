@@ -9,6 +9,7 @@ const DEFAULT_TRIM_BEFORE = 5;
 const DEFAULT_TRIM_AFTER = 8;
 const DEFAULT_VIDEO_CONFIG = { before_buffer: 3, after_buffer: 5, min_clip_gap: 0.5 };
 const PLAYBAR_TRIM_RANGE = 60;
+const MIN_TRIM_CLIP_DURATION = 1;
 
 const readVideoConfig = () => {
   try {
@@ -34,6 +35,12 @@ const toNumber = (value) => {
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
+const formatSignedSeconds = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return '--';
+  return `${numeric >= 0 ? '+' : '-'}${Math.abs(Math.round(numeric))}s`;
+};
+
 const getEndCoordinates = (item) => {
   const metrics = parseAdvancedMetrics(item);
   const x = toNumber(item?.end_x ?? metrics.end_x ?? metrics.endX);
@@ -47,6 +54,21 @@ const getItemLabel = (item) => (
   || item?.type
   || (item?.item_kind === 'sequence' ? 'Sequence' : 'Action')
 );
+
+const looksLikeTechnicalId = (value) => /^[a-z0-9]{12,}$/i.test(String(value || '').trim());
+
+const getCompactItemLabel = (item) => {
+  if (item?.item_kind !== 'sequence') return getItemLabel(item);
+  const readable = [
+    item?.silo,
+    item?.seq_silo,
+    item?.sequence_type,
+    item?.type_name,
+    item?.type_action,
+  ].find((value) => value && !looksLikeTechnicalId(value));
+  if (!readable) return 'Sequence';
+  return String(readable).toLowerCase().includes('sequence') ? readable : `Sequence ${readable}`;
+};
 
 const getItemPlayer = (item) => (
   item?.playerName
@@ -180,7 +202,7 @@ const getItemDetails = (item) => {
     details.push(['End', `${end.x.toFixed(1)}, ${end.y.toFixed(1)}`]);
   }
   if (item?.trim_before_seconds !== null && item?.trim_before_seconds !== undefined) {
-    details.push(['Trim', `-${Number(item.trim_before_seconds).toFixed(0)}s/+${Number(item.trim_after_seconds ?? 0).toFixed(0)}s`]);
+    details.push(['Trim', `${formatSignedSeconds(-Number(item.trim_before_seconds || 0))}/${formatSignedSeconds(Number(item.trim_after_seconds ?? 0))}`]);
   }
 
   return details.filter(([, value]) => value !== null && value !== undefined && value !== '');
@@ -409,6 +431,7 @@ const PlaylistSpatialLayer = ({ items, selectedItem, onSelect, projectPoint }) =
 );
 
 const TrimPlaybar = ({
+  mode = 'detailed',
   disabled = false,
   periodId,
   rawStart,
@@ -424,18 +447,34 @@ const TrimPlaybar = ({
   const hasWindow = Number.isFinite(start) && Number.isFinite(end);
   const baseStart = hasWindow ? start : 0;
   const baseEnd = hasWindow ? Math.max(end, start) : 0;
-  const before = clamp(Number(trimBefore || 0), 0, PLAYBAR_TRIM_RANGE);
-  const after = clamp(Number(trimAfter || 0), 0, PLAYBAR_TRIM_RANGE);
+  const before = clamp(Number(trimBefore || 0), -PLAYBAR_TRIM_RANGE, PLAYBAR_TRIM_RANGE);
+  const after = clamp(Number(trimAfter || 0), -PLAYBAR_TRIM_RANGE, PLAYBAR_TRIM_RANGE);
   const timelineStart = Math.max(0, baseStart - PLAYBAR_TRIM_RANGE);
   const timelineEnd = baseEnd + PLAYBAR_TRIM_RANGE;
   const total = Math.max(1, timelineEnd - timelineStart);
-  const clipStart = Math.max(timelineStart, baseStart - before);
-  const clipEnd = Math.min(timelineEnd, baseEnd + after);
+  const rawClipStart = baseStart - before;
+  const rawClipEnd = baseEnd + after;
+  const clipStart = clamp(rawClipStart, timelineStart, timelineEnd - MIN_TRIM_CLIP_DURATION);
+  const clipEnd = Math.max(
+    clipStart + MIN_TRIM_CLIP_DURATION,
+    clamp(rawClipEnd, timelineStart + MIN_TRIM_CLIP_DURATION, timelineEnd)
+  );
   const pct = (seconds) => clamp(((seconds - timelineStart) / total) * 100, 0, 100);
   const leftPct = pct(clipStart);
   const actionStartPct = pct(baseStart);
   const actionEndPct = pct(baseEnd);
   const rightPct = pct(clipEnd);
+  const isCompact = mode === 'compact';
+
+  const setBeforeFromClipStart = (seconds) => {
+    const bounded = clamp(seconds, timelineStart, clipEnd - MIN_TRIM_CLIP_DURATION);
+    onTrimBeforeChange(Math.round(baseStart - bounded));
+  };
+
+  const setAfterFromClipEnd = (seconds) => {
+    const bounded = clamp(seconds, clipStart + MIN_TRIM_CLIP_DURATION, timelineEnd);
+    onTrimAfterChange(Math.round(bounded - baseEnd));
+  };
 
   const startDrag = (side) => (event) => {
     if (disabled || !hasWindow || !trackRef.current) return;
@@ -446,9 +485,9 @@ const TrimPlaybar = ({
       const ratio = clamp((clientX - rect.left) / Math.max(1, rect.width), 0, 1);
       const seconds = timelineStart + ratio * total;
       if (side === 'left') {
-        onTrimBeforeChange(clamp(Math.round(baseStart - seconds), 0, PLAYBAR_TRIM_RANGE));
+        setBeforeFromClipStart(seconds);
       } else {
-        onTrimAfterChange(clamp(Math.round(seconds - baseEnd), 0, PLAYBAR_TRIM_RANGE));
+        setAfterFromClipEnd(seconds);
       }
     };
 
@@ -472,7 +511,8 @@ const TrimPlaybar = ({
   }
 
   return (
-    <div className={`space-y-4 ${disabled ? 'pointer-events-none opacity-45' : ''}`}>
+    <div className={`${isCompact ? 'space-y-2' : 'space-y-4'} ${disabled ? 'pointer-events-none opacity-45' : ''}`}>
+      {!isCompact && (
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="verge-label-mono text-[8px] font-black uppercase tracking-[0.22em] text-[#949494]">
@@ -487,10 +527,10 @@ const TrimPlaybar = ({
             <span className="verge-label-mono text-[7px] font-black uppercase tracking-[0.16em] text-[#666]">Avant</span>
             <input
               type="number"
-              min="0"
+              min={-PLAYBAR_TRIM_RANGE}
               max={PLAYBAR_TRIM_RANGE}
               value={trimBefore}
-              onChange={(event) => onTrimBeforeChange(clamp(Number(event.target.value) || 0, 0, PLAYBAR_TRIM_RANGE))}
+              onChange={(event) => setBeforeFromClipStart(baseStart - (Number(event.target.value) || 0))}
               className="h-7 w-12 bg-transparent text-right verge-label-mono text-[9px] font-black text-white outline-none"
             />
           </label>
@@ -498,33 +538,48 @@ const TrimPlaybar = ({
             <span className="verge-label-mono text-[7px] font-black uppercase tracking-[0.16em] text-[#666]">Apres</span>
             <input
               type="number"
-              min="0"
+              min={-PLAYBAR_TRIM_RANGE}
               max={PLAYBAR_TRIM_RANGE}
               value={trimAfter}
-              onChange={(event) => onTrimAfterChange(clamp(Number(event.target.value) || 0, 0, PLAYBAR_TRIM_RANGE))}
+              onChange={(event) => setAfterFromClipEnd(baseEnd + (Number(event.target.value) || 0))}
               className="h-7 w-12 bg-transparent text-right verge-label-mono text-[9px] font-black text-white outline-none"
             />
           </label>
         </div>
       </div>
+      )}
 
-      <div className="relative pb-8 pt-10">
-        <div ref={trackRef} className="relative h-9 select-none rounded-[3px] border border-white/10 bg-[#40505a]/55">
-          <div className="absolute inset-y-0 left-0 bg-[#40505a]" style={{ right: `${100 - leftPct}%` }} />
-          <div className="absolute inset-y-0 bg-[#56fff0]/70" style={{ left: `${leftPct}%`, right: `${100 - actionStartPct}%` }} />
-          <div className="absolute inset-y-0 bg-[#0b7ea8]" style={{ left: `${actionStartPct}%`, right: `${100 - actionEndPct}%` }} />
-          <div className="absolute inset-y-0 bg-[#56fff0]/70" style={{ left: `${actionEndPct}%`, right: `${100 - rightPct}%` }} />
-          <div className="absolute inset-y-0 right-0 bg-[#40505a]" style={{ left: `${rightPct}%` }} />
+      {isCompact && (
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="truncate verge-label-mono text-[8px] font-black uppercase tracking-[0.18em] text-white">
+              {formatSecondsClock(clipStart, periodId)} - {formatSecondsClock(clipEnd, periodId)}
+            </div>
+            <div className="mt-0.5 verge-label-mono text-[7px] font-black uppercase tracking-[0.14em] text-[#666]">
+              Avant {trimBefore}s / Apres {trimAfter}s
+            </div>
+          </div>
+          <div className="shrink-0 rounded-[2px] border border-white/10 bg-black/30 px-2 py-1 verge-label-mono text-[7px] font-black uppercase tracking-[0.12em] text-[#3cffd0]">
+            {Math.max(0, Math.round(clipEnd - clipStart))}s
+          </div>
+        </div>
+      )}
+
+      <div className={`relative ${isCompact ? 'pb-1 pt-4' : 'pb-8 pt-10'}`}>
+        <div ref={trackRef} className={`relative select-none rounded-[3px] border border-white/10 bg-[#40505a]/55 ${isCompact ? 'h-6' : 'h-9'}`}>
+          <div className="absolute inset-0 bg-[#40505a]" />
+          <div className="absolute inset-y-0 bg-[#0b7ea8]/70" style={{ left: `${actionStartPct}%`, right: `${100 - actionEndPct}%` }} />
+          <div className="absolute inset-y-0 bg-[#56fff0]/75 shadow-[0_0_18px_rgba(86,255,240,0.25)]" style={{ left: `${leftPct}%`, right: `${100 - rightPct}%` }} />
 
           <button
             type="button"
             onPointerDown={startDrag('left')}
-            className="absolute top-1/2 z-20 flex -translate-x-1/2 -translate-y-1/2 cursor-ew-resize flex-col items-center outline-none"
+            className={`absolute top-1/2 z-20 flex -translate-x-1/2 -translate-y-1/2 cursor-ew-resize flex-col items-center outline-none ${isCompact ? 'scale-75' : ''}`}
             style={{ left: `${leftPct}%` }}
             title="Glisser pour ajuster le debut du clip"
           >
-            <span className="absolute bottom-[calc(100%+8px)] whitespace-nowrap rounded-[2px] border border-white/10 bg-black/80 px-2 py-1 verge-label-mono text-[7px] font-black uppercase tracking-[0.08em] text-white">
-              -{Math.round(before)}s ({formatSecondsClock(clipStart, periodId)})
+            <span className={`absolute bottom-[calc(100%+8px)] whitespace-nowrap rounded-[2px] border border-white/10 bg-black/80 px-2 py-1 verge-label-mono text-[7px] font-black uppercase tracking-[0.08em] text-white ${isCompact ? 'hidden' : ''}`}>
+              {formatSignedSeconds(clipStart - baseStart)} ({formatSecondsClock(clipStart, periodId)})
             </span>
             <span className="flex h-10 w-10 items-center justify-center rounded-[3px] border border-black/50 bg-[#151515] text-[#3cffd0] shadow-xl">‹</span>
           </button>
@@ -533,8 +588,8 @@ const TrimPlaybar = ({
             className="absolute top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center"
             style={{ left: `${actionStartPct}%` }}
           >
-            <span className="h-12 w-1 rounded-full bg-white shadow-[0_0_20px_rgba(255,255,255,0.5)]" />
-            <span className="absolute top-[calc(100%+8px)] whitespace-nowrap rounded-[2px] border border-white/10 bg-black/80 px-2 py-1 verge-label-mono text-[7px] font-black uppercase tracking-[0.08em] text-white">
+            <span className={`${isCompact ? 'h-8' : 'h-12'} w-1 rounded-full bg-white shadow-[0_0_20px_rgba(255,255,255,0.5)]`} />
+            <span className={`absolute top-[calc(100%+8px)] whitespace-nowrap rounded-[2px] border border-white/10 bg-black/80 px-2 py-1 verge-label-mono text-[7px] font-black uppercase tracking-[0.08em] text-white ${isCompact ? 'hidden' : ''}`}>
               0s ({formatSecondsClock(baseStart, periodId)})
             </span>
           </div>
@@ -542,23 +597,27 @@ const TrimPlaybar = ({
           <button
             type="button"
             onPointerDown={startDrag('right')}
-            className="absolute top-1/2 z-30 flex -translate-x-1/2 -translate-y-1/2 cursor-ew-resize flex-col items-center outline-none"
+            className={`absolute top-1/2 z-30 flex -translate-x-1/2 -translate-y-1/2 cursor-ew-resize flex-col items-center outline-none ${isCompact ? 'scale-75' : ''}`}
             style={{ left: `${rightPct}%` }}
             title="Glisser pour ajuster la fin du clip"
           >
-            <span className="absolute bottom-[calc(100%+8px)] whitespace-nowrap rounded-[2px] border border-white/10 bg-black/80 px-2 py-1 verge-label-mono text-[7px] font-black uppercase tracking-[0.08em] text-white">
-              +{Math.round(after)}s ({formatSecondsClock(clipEnd, periodId)})
+            <span className={`absolute bottom-[calc(100%+8px)] whitespace-nowrap rounded-[2px] border border-white/10 bg-black/80 px-2 py-1 verge-label-mono text-[7px] font-black uppercase tracking-[0.08em] text-white ${isCompact ? 'hidden' : ''}`}>
+              {formatSignedSeconds(clipEnd - baseEnd)} ({formatSecondsClock(clipEnd, periodId)})
             </span>
             <span className="flex h-10 w-10 items-center justify-center rounded-[3px] border border-black/50 bg-[#151515] text-[#3cffd0] shadow-xl">›</span>
           </button>
         </div>
 
-        <span className="absolute left-0 bottom-0 verge-label-mono text-[8px] font-black uppercase tracking-[0.1em] text-white">
-          -{PLAYBAR_TRIM_RANGE}s ({formatSecondsClock(timelineStart, periodId)})
-        </span>
-        <span className="absolute right-0 bottom-0 verge-label-mono text-[8px] font-black uppercase tracking-[0.1em] text-white">
-          +{PLAYBAR_TRIM_RANGE}s ({formatSecondsClock(timelineEnd, periodId)})
-        </span>
+        {!isCompact && (
+          <>
+            <span className="absolute left-0 bottom-0 verge-label-mono text-[8px] font-black uppercase tracking-[0.1em] text-white">
+              -{PLAYBAR_TRIM_RANGE}s ({formatSecondsClock(timelineStart, periodId)})
+            </span>
+            <span className="absolute right-0 bottom-0 verge-label-mono text-[8px] font-black uppercase tracking-[0.1em] text-white">
+              +{PLAYBAR_TRIM_RANGE}s ({formatSecondsClock(timelineEnd, periodId)})
+            </span>
+          </>
+        )}
       </div>
     </div>
   );
@@ -575,6 +634,7 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
   const [playingItemId, setPlayingItemId] = useState(null);
   const [deletingItemId, setDeletingItemId] = useState(null);
   const [activeSurface, setActiveSurface] = useState('map');
+  const [displayMode, setDisplayMode] = useState('detailed');
   const [trimBefore, setTrimBefore] = useState(DEFAULT_TRIM_BEFORE);
   const [trimAfter, setTrimAfter] = useState(DEFAULT_TRIM_AFTER);
   const [savingTrim, setSavingTrim] = useState(false);
@@ -1112,7 +1172,7 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col">
-            <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+            <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
               <div className="min-w-0">
                 <div className="truncate verge-label-mono text-[10px] font-black uppercase tracking-[0.2em] text-white">
                   {selectedPlaylist?.name || 'Selection'}
@@ -1120,6 +1180,21 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
                 <div className="mt-1 verge-label-mono text-[8px] font-black uppercase tracking-[0.18em] text-[#949494]">
                   {items.length} clips hydrates - {items.filter((item) => item.item_kind === 'sequence').length} sequences
                 </div>
+              </div>
+              <div className="flex shrink-0 rounded-[3px] border border-white/10 bg-black/30 p-1">
+                {[
+                  ['compact', 'Compact'],
+                  ['detailed', 'Detail'],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setDisplayMode(value)}
+                    className={`rounded-[2px] px-2.5 py-1.5 verge-label-mono text-[7px] font-black uppercase tracking-[0.14em] transition-all ${displayMode === value ? 'bg-[#3cffd0] text-black' : 'text-[#949494] hover:bg-white/10 hover:text-white'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -1135,57 +1210,85 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
                   const details = getItemDetails(item);
                   const contextParts = getItemContextParts(item);
                   const color = itemColor(item);
+                  const compact = displayMode === 'compact';
+                  const compactDetails = item?.item_kind === 'sequence'
+                    ? details.filter(([label]) => label === 'Score').slice(0, 1)
+                    : details.filter(([label]) => label !== 'Dist.').slice(0, 2);
                   return (
                     <button
                       key={currentId || index}
                       type="button"
                       onClick={() => setSelectedItem(item)}
-                      className={`group flex w-full items-start justify-between gap-3 border-b border-white/[0.04] px-4 py-3 text-left transition-all ${selected ? 'bg-[#3cffd0]/10 border-l-2 border-l-[#3cffd0]' : 'hover:bg-[#3cffd0]/5'}`}
+                      className={`group flex w-full justify-between gap-3 border-b border-white/[0.04] px-4 text-left transition-all ${compact ? 'items-center py-2' : 'items-start py-3'} ${selected ? 'bg-[#3cffd0]/10 border-l-2 border-l-[#3cffd0]' : 'hover:bg-[#3cffd0]/5'}`}
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-start gap-2">
-                          <span
-                            className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full"
-                            style={{ backgroundColor: color, boxShadow: `0 0 16px ${color}66` }}
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="shrink-0 verge-label-mono text-[8px] font-black text-[#3cffd0]">{getItemClock(item)}</span>
-                              <span className="truncate verge-label-mono text-[9px] font-black uppercase tracking-[0.12em] text-white">{getItemLabel(item)}</span>
-                            </div>
-                            <div className="mt-0.5 truncate verge-label-mono text-[8px] font-black uppercase tracking-[0.12em] text-[#949494]">
-                              {getItemPlayer(item)}
-                            </div>
-                            <div className="mt-0.5 truncate verge-label-mono text-[7px] font-black uppercase tracking-[0.12em] text-[#666]">
-                              {getItemMatch(item)}
-                            </div>
-                            {contextParts.length > 0 && (
-                              <div className="mt-0.5 truncate verge-label-mono text-[7px] font-black uppercase tracking-[0.1em] text-[#555]" title={contextParts.join(' / ')}>
-                                {contextParts.join(' / ')}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {details.slice(0, 4).map(([label, value]) => (
-                            <span key={`${currentId}-${label}`} className="rounded-[2px] border border-white/10 bg-black/25 px-2 py-1 verge-label-mono text-[7px] font-black uppercase tracking-[0.1em] text-[#949494]">
-                              <span className="text-[#555]">{label}</span>
-                              <span className="ml-1 text-white">{value}</span>
+                        {compact ? (
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span
+                              className="h-1.5 w-1.5 shrink-0 rounded-full"
+                              style={{ backgroundColor: color, boxShadow: `0 0 16px ${color}66` }}
+                            />
+                            <span className="shrink-0 verge-label-mono text-[8px] font-black text-[#3cffd0]">{getItemClock(item)}</span>
+                            <span className="min-w-0 flex-1 truncate verge-label-mono text-[8px] font-black uppercase tracking-[0.12em] text-white">
+                              {getCompactItemLabel(item)}
                             </span>
-                          ))}
-                        </div>
+                            <span className="hidden shrink-0 truncate verge-label-mono text-[7px] font-black uppercase tracking-[0.1em] text-[#949494] lg:block lg:max-w-[90px]">
+                              {getItemPlayer(item)}
+                            </span>
+                            {compactDetails.map(([label, value]) => (
+                              <span key={`${currentId}-compact-${label}`} className="hidden shrink-0 rounded-[2px] border border-white/10 bg-black/25 px-1.5 py-0.5 verge-label-mono text-[6px] font-black uppercase tracking-[0.08em] text-[#949494] sm:inline-flex">
+                                <span className="text-[#555]">{label}</span>
+                                <span className="ml-1 text-white">{value}</span>
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-start gap-2">
+                              <span
+                                className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full"
+                                style={{ backgroundColor: color, boxShadow: `0 0 16px ${color}66` }}
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="shrink-0 verge-label-mono text-[8px] font-black text-[#3cffd0]">{getItemClock(item)}</span>
+                                  <span className="truncate verge-label-mono text-[9px] font-black uppercase tracking-[0.12em] text-white">{getItemLabel(item)}</span>
+                                </div>
+                                <div className="mt-0.5 truncate verge-label-mono text-[8px] font-black uppercase tracking-[0.12em] text-[#949494]">
+                                  {getItemPlayer(item)}
+                                </div>
+                                <div className="mt-0.5 truncate verge-label-mono text-[7px] font-black uppercase tracking-[0.12em] text-[#666]">
+                                  {getItemMatch(item)}
+                                </div>
+                                {contextParts.length > 0 && (
+                                  <div className="mt-0.5 truncate verge-label-mono text-[7px] font-black uppercase tracking-[0.1em] text-[#555]" title={contextParts.join(' / ')}>
+                                    {contextParts.join(' / ')}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {details.slice(0, 4).map(([label, value]) => (
+                                <span key={`${currentId}-${label}`} className="rounded-[2px] border border-white/10 bg-black/25 px-2 py-1 verge-label-mono text-[7px] font-black uppercase tracking-[0.1em] text-[#949494]">
+                                  <span className="text-[#555]">{label}</span>
+                                  <span className="ml-1 text-white">{value}</span>
+                                </span>
+                              ))}
+                            </div>
+                          </>
+                        )}
                       </div>
-                      <div className="flex shrink-0 flex-col gap-1.5">
+                      <div className={`flex shrink-0 ${compact ? 'flex-row gap-1' : 'flex-col gap-1.5'}`}>
                         <span
                           onClick={(event) => handlePlay(item, event)}
-                          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-black/30 text-[#949494] transition-all hover:border-[#3cffd0] hover:text-[#3cffd0]"
+                          className={`flex items-center justify-center rounded-full border border-white/10 bg-black/30 text-[#949494] transition-all hover:border-[#3cffd0] hover:text-[#3cffd0] ${compact ? 'h-7 w-7' : 'h-8 w-8'}`}
                           title="Lancer la video"
                         >
                           {playingItemId === currentId || isVideoLoading ? <Loader2 size={13} className="animate-spin" /> : <PlayCircle size={16} />}
                         </span>
                         <span
                           onClick={(event) => handleDeleteItem(item, event)}
-                          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-black/30 text-[#666] transition-all hover:border-[#ff4d4d]/60 hover:text-[#ff4d4d]"
+                          className={`flex items-center justify-center rounded-full border border-white/10 bg-black/30 text-[#666] transition-all hover:border-[#ff4d4d]/60 hover:text-[#ff4d4d] ${compact ? 'h-7 w-7' : 'h-8 w-8'}`}
                           title="Retirer de la playlist"
                         >
                           {deletingItemId === currentId ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={14} />}
@@ -1296,6 +1399,7 @@ const PlaylistExplorer = ({ onPlayVideo, isVideoLoading = false }) => {
                   </div>
 
                   <TrimPlaybar
+                    mode={displayMode}
                     disabled={!selectedItem}
                     periodId={selectedPeriodId}
                     rawStart={previewStart}
