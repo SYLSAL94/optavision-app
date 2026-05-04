@@ -28,7 +28,7 @@ const DEFAULT_FILTERS = {
   startDate: '',
   endDate: '',
   start_min: 0,
-  end_min: 95,
+  end_min: 130,
   player_id: []
 };
 
@@ -458,7 +458,7 @@ const ShotMapFilterPanel = ({
                 <input
                   type="number"
                   value={pendingFilters.end_min}
-                  onChange={(e) => updateFilters({ end_min: parseInt(e.target.value, 10) || 95 })}
+                  onChange={(e) => updateFilters({ end_min: parseInt(e.target.value, 10) || 130 })}
                   className="w-full bg-[#131313] border border-white/10 p-4 verge-label-mono text-white text-xs outline-none"
                 />
               </FilterGroup>

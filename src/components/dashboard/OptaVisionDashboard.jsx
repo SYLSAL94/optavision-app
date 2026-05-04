@@ -247,7 +247,7 @@ const OptaVisionDashboard = ({ user }) => {
     teams: [],
     min_xt: 0.0,
     start_min: 0,
-    end_min: 95,
+    end_min: 130,
     outcome: null,
     period_id: [],
     location: [],
@@ -295,7 +295,7 @@ const OptaVisionDashboard = ({ user }) => {
     startDate: '',
     endDate: '',
     start_min: 0,
-    end_min: 95,
+    end_min: 130,
     player_id: []
   });
 

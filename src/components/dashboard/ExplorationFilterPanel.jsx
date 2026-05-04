@@ -16,6 +16,32 @@ import DualRangeSlider from '../ui/DualRangeSlider';
 
 const DISTANCE_RANGE_MIN = 0;
 const DISTANCE_RANGE_MAX = 80;
+const TIME_RANGE_MIN = 0;
+const TIME_RANGE_MAX = 130;
+const TIME_PRESETS = [
+  { label: 'Tout', hint: '0-130', start: 0, end: 130, periods: [] },
+  { label: '1H', hint: '0-45', start: 0, end: 45, periods: [1] },
+  { label: '1H 45+', hint: 'arrets', start: 45, end: 70, periods: [1] },
+  { label: '2H', hint: '45-90', start: 45, end: 90, periods: [2] },
+  { label: '2H 90+', hint: 'arrets', start: 90, end: 130, periods: [2] },
+  { label: 'ET1', hint: '90-105', start: 90, end: 105, periods: [3] },
+  { label: 'ET2', hint: '105-120', start: 105, end: 120, periods: [4] },
+  { label: 'Fin match', hint: '75-130', start: 75, end: 130, periods: [] },
+];
+const PERIOD_OPTIONS = [
+  { id: 1, label: '1H' },
+  { id: 2, label: '2H' },
+  { id: 3, label: 'ET1' },
+  { id: 4, label: 'ET2' },
+];
+
+const periodLabelFromId = (periodId) => (
+  PERIOD_OPTIONS.find(option => option.id === Number(periodId))?.label || `P${periodId}`
+);
+
+const periodIdFromLabel = (label) => (
+  PERIOD_OPTIONS.find(option => option.label === label)?.id
+);
 
 /**
  * ExplorationFilterPanel - Version Dynamique (Auto-Discovery)
@@ -89,6 +115,45 @@ const ExplorationFilterPanel = ({
   ) || (
     pendingFilters.carry_distance_max !== null && pendingFilters.carry_distance_max !== undefined
   );
+  const timeStart = Number.isFinite(Number(pendingFilters.start_min)) ? Number(pendingFilters.start_min) : TIME_RANGE_MIN;
+  const timeEnd = Number.isFinite(Number(pendingFilters.end_min)) ? Number(pendingFilters.end_min) : TIME_RANGE_MAX;
+  const selectedPeriods = (pendingFilters.period_id || []).map(Number).filter(Number.isFinite);
+  const timeRangeActive = timeStart > TIME_RANGE_MIN || timeEnd < TIME_RANGE_MAX || selectedPeriods.length > 0;
+
+  const updateTimeRange = (nextStart, nextEnd) => {
+    setPendingFilters({
+      ...pendingFilters,
+      start_min: Math.min(nextStart, nextEnd),
+      end_min: Math.max(nextStart, nextEnd)
+    });
+  };
+
+  const applyTimePreset = (preset) => {
+    setPendingFilters({
+      ...pendingFilters,
+      start_min: preset.start,
+      end_min: preset.end,
+      period_id: preset.periods
+    });
+  };
+
+  const togglePeriod = (periodId) => {
+    const current = pendingFilters.period_id || [];
+    const exists = current.includes(periodId);
+    setPendingFilters({
+      ...pendingFilters,
+      period_id: exists ? current.filter(id => id !== periodId) : [...current, periodId]
+    });
+  };
+
+  const resetTimeWindow = () => {
+    setPendingFilters({
+      ...pendingFilters,
+      start_min: TIME_RANGE_MIN,
+      end_min: TIME_RANGE_MAX,
+      period_id: []
+    });
+  };
 
   const resetFilters = () => {
     const initial = {
@@ -98,7 +163,7 @@ const ExplorationFilterPanel = ({
       teams: [],
       min_xt: 0.0,
       start_min: 0,
-      end_min: 95,
+      end_min: TIME_RANGE_MAX,
       outcome: null,
       period_id: [],
       location: [],
@@ -598,6 +663,7 @@ const ExplorationFilterPanel = ({
           icon={<RotateCcw size={18} />}
           isOpen={openSection === 'time'}
           onToggle={() => setOpenSection(openSection === 'time' ? null : 'time')}
+          badge={timeRangeActive ? 1 : 0}
         >
           <div className="space-y-8">
             <div className="grid grid-cols-2 gap-4">
@@ -621,24 +687,108 @@ const ExplorationFilterPanel = ({
 
             <div className="h-px bg-white/5 my-4" />
 
+            <div className="space-y-5 rounded-[2px] border border-white/10 bg-[#0b0b0b] p-5">
+              <div>
+                <div className="verge-label-mono text-[10px] text-white uppercase tracking-widest font-black">
+                  Temps de jeu officiel
+                </div>
+                <div className="verge-label-mono text-[8px] text-[#949494] uppercase tracking-widest mt-2 leading-relaxed">
+                  Filtre par minute Opta et par periode pour eviter les collisions entre 1H 45+ et 2H.
+                </div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-2">
+                {PERIOD_OPTIONS.map(period => {
+                  const isActive = selectedPeriods.includes(period.id);
+                  return (
+                    <button
+                      key={period.id}
+                      type="button"
+                      onClick={() => togglePeriod(period.id)}
+                      className={`min-h-10 border rounded-[2px] verge-label-mono text-[9px] font-black uppercase tracking-widest transition-all ${
+                        isActive
+                          ? 'bg-[#3cffd0] border-[#3cffd0] text-black'
+                          : 'bg-[#131313] border-white/10 text-[#949494] hover:border-white/30 hover:text-white'
+                      }`}
+                    >
+                      {period.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">
+                Presets de match
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {TIME_PRESETS.map(preset => {
+                  const isActive = timeStart === preset.start
+                    && timeEnd === preset.end
+                    && selectedPeriods.length === preset.periods.length
+                    && preset.periods.every(period => selectedPeriods.includes(period));
+                  return (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => applyTimePreset(preset)}
+                      className={`min-h-[52px] border rounded-[2px] px-3 py-2 text-left transition-all ${
+                        isActive
+                          ? 'bg-[#3cffd0] border-[#3cffd0] text-black'
+                          : 'bg-[#131313] border-white/10 text-[#d7d7d7] hover:border-white/30'
+                      }`}
+                    >
+                      <div className="verge-label-mono text-[9px] uppercase font-black truncate">{preset.label}</div>
+                      <div className="verge-label-mono text-[7px] uppercase mt-1 opacity-60 truncate">{preset.hint}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <DualRangeSlider
+              label={`Minute de match (${timeStart}' - ${timeEnd}')`}
+              min={TIME_RANGE_MIN}
+              max={TIME_RANGE_MAX}
+              step={1}
+              unit="'"
+              currentMin={timeStart}
+              currentMax={timeEnd}
+              onChange={updateTimeRange}
+            />
+
             <div className="grid grid-cols-2 gap-4">
               <FilterGroup label="Minute Début">
                  <input 
                    type="number" 
-                   value={pendingFilters.start_min}
-                   onChange={(e) => updateNumericFilter('start_min', parseInt(e.target.value))}
+                   min={TIME_RANGE_MIN}
+                   max={TIME_RANGE_MAX}
+                   value={timeStart}
+                   onChange={(e) => updateTimeRange(parseInt(e.target.value, 10) || TIME_RANGE_MIN, timeEnd)}
                    className="w-full bg-[#131313] border border-white/10 p-4 verge-label-mono text-white text-xs outline-none"
                  />
               </FilterGroup>
               <FilterGroup label="Minute Fin">
                  <input 
                    type="number" 
-                   value={pendingFilters.end_min}
-                   onChange={(e) => updateNumericFilter('end_min', parseInt(e.target.value))}
+                   min={TIME_RANGE_MIN}
+                   max={TIME_RANGE_MAX}
+                   value={timeEnd}
+                   onChange={(e) => updateTimeRange(timeStart, parseInt(e.target.value, 10) || TIME_RANGE_MAX)}
                    className="w-full bg-[#131313] border border-white/10 p-4 verge-label-mono text-white text-xs outline-none"
                  />
               </FilterGroup>
             </div>
+            {timeRangeActive && (
+              <button
+                type="button"
+                onClick={resetTimeWindow}
+                className="verge-label-mono text-[9px] text-[#949494] hover:text-white uppercase font-black transition-colors"
+              >
+                Reinitialiser chronologie
+              </button>
+            )}
           </div>
         </AccordionSection>
 

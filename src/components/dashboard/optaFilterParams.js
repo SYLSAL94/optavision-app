@@ -11,7 +11,7 @@ export const appendExplorationFilterParams = (params, requestFilters = {}) => {
   if (requestFilters.teams?.length > 0) params.append('team_ids', requestFilters.teams.join(','));
   if (requestFilters.min_xt > 0) params.append('min_xt', requestFilters.min_xt.toString());
   if (requestFilters.start_min > 0) params.append('start_min', requestFilters.start_min.toString());
-  if (requestFilters.end_min < 95) params.append('end_min', requestFilters.end_min.toString());
+  if (requestFilters.end_min < 130) params.append('end_min', requestFilters.end_min.toString());
   if (requestFilters.outcome !== null && requestFilters.outcome !== undefined) params.append('outcome', requestFilters.outcome.toString());
   if (requestFilters.period_id?.length > 0) params.append('period_id', requestFilters.period_id.join(','));
   if (requestFilters.location?.length > 0) params.append('location', requestFilters.location.join(','));
