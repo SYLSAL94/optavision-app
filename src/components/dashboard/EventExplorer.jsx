@@ -42,6 +42,16 @@ const parseAdvancedMetrics = (event) => {
   return parsed && typeof parsed === 'object' ? parsed : {};
 };
 
+const normalizeDisplayValue = (value) => {
+  if (value === null || value === undefined) return null;
+  const strValue = String(value).trim();
+  return strValue && strValue !== 'N/A' ? strValue : null;
+};
+
+const resolveServerPlayerName = (serverName, fallbackId) => (
+  normalizeDisplayValue(serverName) || normalizeDisplayValue(fallbackId)
+);
+
 const formatSignedMetric = (value, digits = 3) => {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return null;
@@ -797,9 +807,16 @@ const EventExplorer = ({
             const selectionKey = getEventSelectionKey(e, index);
             const isPlaylistSelected = Boolean(playlistSelection[selectionKey]);
             
-            const getPlayerName = (id) => id ? (globalPlayerMap[String(id)] || String(id)) : null;
-            const receiverName = getPlayerName(parsedMetrics?.receiver || e.receiver_id || e.receiver);
-            const opponentName = getPlayerName(parsedMetrics?.opponent_id);
+            const receiverId = parsedMetrics?.receiver ?? e.receiver_id ?? e.receiver;
+            const receiverName = resolveServerPlayerName(
+              parsedMetrics?.receiver_name ?? e.receiver_name ?? e.receiverName,
+              receiverId
+            );
+            const opponentId = parsedMetrics?.opponent_id ?? e.opponent_id;
+            const opponentName = resolveServerPlayerName(
+              parsedMetrics?.opponent_name ?? e.opponent_name,
+              opponentId
+            );
             const xTLabel = formatSignedMetric(parsedMetrics?.xT_credit ?? e.xT_credit ?? parsedMetrics?.xT);
             
             const isProgressive = parsedMetrics?.is_progressive === true || parsedMetrics?.is_progressive === 'true';
@@ -853,6 +870,7 @@ const EventExplorer = ({
                     <div className="mt-1 flex items-center gap-2 overflow-hidden">
                       {isPassLike && receiverName && <span className="verge-label-mono text-[8px] text-[#949494] truncate">Vers: <span className="text-white/80">{receiverName}</span></span>}
                       {isPassLike && xTLabel && <span className="verge-label-mono text-[8px] text-[#3cffd0] font-black">xTc {xTLabel}</span>}
+                      {isDuelLike && opponentName && <span className="verge-label-mono text-[8px] text-[#949494] truncate">Contre : <span className="text-white/80">{opponentName}</span></span>}
                       {isDuelLike && (parsedMetrics?.duel_won || duelLost) && (
                         <span className={`verge-label-mono text-[7px] px-1.5 py-0.5 rounded-[2px] text-black font-black uppercase ${duelWon ? 'bg-[#3cffd0]' : 'bg-[#ff4d4d]'}`}>
                           {duelWon ? 'Gagné' : 'Perdu'}
@@ -1107,7 +1125,6 @@ const EventExplorer = ({
             hoveredEvent={hoveredEvent} 
             focusedEvent={focusedEvent}
             mousePos={mousePos} 
-            globalPlayerMap={globalPlayerMap} 
             onPlayVideo={handlePlayFocusedVideo}
             isVideoLoading={isVideoLoading}
           />

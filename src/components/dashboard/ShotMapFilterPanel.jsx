@@ -11,6 +11,9 @@ import {
 import AccordionSection from './AccordionSection';
 import MultiSelectWithChips from '../ui/MultiSelectWithChips';
 import AsyncMultiSelect from './AsyncMultiSelect';
+import { OPTAVISION_API_URL } from '../../config';
+
+const TEAM_SEARCH_ENDPOINT = `${OPTAVISION_API_URL}/api/optavision/teams`;
 
 const DEFAULT_FILTERS = {
   outcomes: [],
@@ -30,6 +33,8 @@ const DEFAULT_FILTERS = {
   endDate: '',
   start_min: 0,
   end_min: 130,
+  localTeam: 'ALL',
+  localOpponent: 'ALL',
   player_id: []
 };
 
@@ -138,6 +143,13 @@ const ShotMapFilterPanel = ({
         ? values.filter(item => item !== value)
         : [...values, value]
     });
+  };
+
+  const selectedTeamId = (value) => (value && value !== 'ALL' ? [value] : []);
+
+  const updateSingleTeamFilter = (key, selectedIds) => {
+    const nextId = selectedIds.length > 0 ? selectedIds[selectedIds.length - 1] : 'ALL';
+    updateFilters({ [key]: nextId });
   };
 
   const resetFilters = () => {
@@ -270,6 +282,34 @@ const ShotMapFilterPanel = ({
               }}
               placeholder="Selectionner des matchs..."
             />
+
+            <div className="h-px bg-white/5 my-4" />
+
+            <div className="grid grid-cols-2 gap-4">
+              <AsyncMultiSelect
+                label="Equipe Focus"
+                selectedIds={selectedTeamId(pendingFilters.localTeam)}
+                onChange={(selectedIds) => updateSingleTeamFilter('localTeam', selectedIds)}
+                endpoint={TEAM_SEARCH_ENDPOINT}
+                cacheNamespace="teams"
+                fallbackLabel="Equipe"
+                emptyLabel="Aucune equipe trouvee"
+                maxSelected={1}
+                placeholder="Saisir 3 caracteres..."
+              />
+
+              <AsyncMultiSelect
+                label="Opposition"
+                selectedIds={selectedTeamId(pendingFilters.localOpponent)}
+                onChange={(selectedIds) => updateSingleTeamFilter('localOpponent', selectedIds)}
+                endpoint={TEAM_SEARCH_ENDPOINT}
+                cacheNamespace="teams"
+                fallbackLabel="Equipe"
+                emptyLabel="Aucune equipe trouvee"
+                maxSelected={1}
+                placeholder="Saisir 3 caracteres..."
+              />
+            </div>
 
             <div className="h-px bg-white/5 my-4" />
 

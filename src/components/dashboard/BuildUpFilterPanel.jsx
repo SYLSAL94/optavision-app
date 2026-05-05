@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { 
   TrendingUp, 
   RotateCcw, 
@@ -15,6 +15,9 @@ import {
 import AccordionSection from './AccordionSection';
 import MultiSelectWithChips from '../ui/MultiSelectWithChips';
 import AsyncMultiSelect from './AsyncMultiSelect';
+import { OPTAVISION_API_URL } from '../../config';
+
+const TEAM_SEARCH_ENDPOINT = `${OPTAVISION_API_URL}/api/optavision/teams`;
 
 /**
  * BuildUpFilterPanel - Squelette du panneau de filtrage latéral pour les séquences
@@ -28,7 +31,6 @@ const BuildUpFilterPanel = ({
   countriesList = [],
   phasesList = [],
   stadiumsList = [],
-  teamsList = [],
   filters,
   onApply, 
   onClose 
@@ -49,20 +51,19 @@ const BuildUpFilterPanel = ({
     excluded_player_id: filters?.excluded_player_id || []
   });
 
-  // Règle d'Or : Mapping des noms explicites
-  const teamMap = React.useMemo(() => {
-    const map = {};
-    if (teamsList) teamsList.forEach(t => { map[t.id] = t.name; });
-    return map;
-  }, [teamsList]);
-
-
   const toggleSection = (id) => {
     setOpenSection(openSection === id ? null : id);
   };
 
   const updateFilter = (key, value) => {
     setPendingFilters(prev => ({ ...prev, [key]: value }));
+  };
+
+  const selectedTeamId = (value) => (value && value !== 'ALL' ? [value] : []);
+
+  const updateSingleTeamFilter = (key, selectedIds) => {
+    const nextId = selectedIds.length > 0 ? selectedIds[selectedIds.length - 1] : 'ALL';
+    updateFilter(key, nextId);
   };
 
   return (
@@ -149,32 +150,28 @@ const BuildUpFilterPanel = ({
             />
             <div className="h-px bg-white/5 my-4" />
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-3">
-                <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Équipe Focus</label>
-                <select 
-                  value={pendingFilters.localTeam || 'ALL'} 
-                  onChange={(e) => setPendingFilters({ ...pendingFilters, localTeam: e.target.value })}
-                  className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white focus:border-[#5200ff] outline-none transition-all cursor-pointer rounded-[2px]"
-                >
-                  <option value="ALL">TOUTES ÉQUIPES</option>
-                  {teamsList.map(team => (
-                    <option key={team.id} value={team.id}>{teamMap[team.id]?.toUpperCase() || team.id}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-3">
-                <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Opposition</label>
-                <select 
-                  value={pendingFilters.localOpponent || 'ALL'} 
-                  onChange={(e) => setPendingFilters({ ...pendingFilters, localOpponent: e.target.value })}
-                  className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white focus:border-[#ff4d4d] outline-none transition-all cursor-pointer rounded-[2px]"
-                >
-                  <option value="ALL">SANS FILTRE</option>
-                  {teamsList.map(team => (
-                    <option key={team.id} value={team.id}>VS {teamMap[team.id]?.toUpperCase() || team.id}</option>
-                  ))}
-                </select>
-              </div>
+              <AsyncMultiSelect
+                label="Equipe Focus"
+                selectedIds={selectedTeamId(pendingFilters.localTeam)}
+                onChange={(selectedIds) => updateSingleTeamFilter('localTeam', selectedIds)}
+                endpoint={TEAM_SEARCH_ENDPOINT}
+                cacheNamespace="teams"
+                fallbackLabel="Equipe"
+                emptyLabel="Aucune equipe trouvee"
+                maxSelected={1}
+                placeholder="Saisir 3 caracteres..."
+              />
+              <AsyncMultiSelect
+                label="Opposition"
+                selectedIds={selectedTeamId(pendingFilters.localOpponent)}
+                onChange={(selectedIds) => updateSingleTeamFilter('localOpponent', selectedIds)}
+                endpoint={TEAM_SEARCH_ENDPOINT}
+                cacheNamespace="teams"
+                fallbackLabel="Equipe"
+                emptyLabel="Aucune equipe trouvee"
+                maxSelected={1}
+                placeholder="Saisir 3 caracteres..."
+              />
             </div>
           </div>
         </AccordionSection>

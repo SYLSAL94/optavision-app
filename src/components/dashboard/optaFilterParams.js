@@ -8,7 +8,9 @@ export const appendExplorationFilterParams = (params, requestFilters = {}) => {
   if (requestFilters.player_id?.length > 0) params.append('player_id', requestFilters.player_id.join(','));
   if (requestFilters.receiver_id?.length > 0) params.append('receiver_id', requestFilters.receiver_id.join(','));
   if (requestFilters.opponent_id?.length > 0) params.append('opponent_id', requestFilters.opponent_id.join(','));
-  if (requestFilters.teams?.length > 0) params.append('team_ids', requestFilters.teams.join(','));
+  const teamIds = [...(requestFilters.teams || [])];
+  if (requestFilters.localTeam && requestFilters.localTeam !== 'ALL') teamIds.push(requestFilters.localTeam);
+  if (teamIds.length > 0) params.append('team_ids', [...new Set(teamIds)].join(','));
   if (requestFilters.min_xt > 0) params.append('min_xt', requestFilters.min_xt.toString());
   if (requestFilters.start_min > 0) params.append('start_min', requestFilters.start_min.toString());
   if (requestFilters.end_min < 130) params.append('end_min', requestFilters.end_min.toString());

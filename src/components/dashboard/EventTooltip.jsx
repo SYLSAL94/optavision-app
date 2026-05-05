@@ -16,7 +16,7 @@ const DUEL_EVENT_IDS = new Set(['4', '50', '74']);
 const FORCED_DUEL_LOSS_KEYS = new Set(['blockedpass', 'dispossessed']);
 const FORCED_DUEL_LOSS_IDS = new Set(['50', '74']);
 
-export const EventTooltip = ({ hoveredEvent, focusedEvent, mousePos, globalPlayerMap, onPlayVideo, isVideoLoading = false }) => {
+export const EventTooltip = ({ hoveredEvent, focusedEvent, mousePos, onPlayVideo, isVideoLoading = false }) => {
   const activeEvent = focusedEvent || hoveredEvent;
   const isFocused = Boolean(focusedEvent);
   if (!activeEvent) return null;
@@ -30,15 +30,23 @@ export const EventTooltip = ({ hoveredEvent, focusedEvent, mousePos, globalPlaye
   const typeKey = typeStr.replace(/\s+/g, '').toLowerCase();
   const typeId = String(parsed?.type_id ?? activeEvent.type_id ?? '');
   
-  const getPlayerName = (id) => {
-    if (!id) return null;
-    const strId = String(id);
-    return globalPlayerMap[strId] || strId;
+  const normalizeDisplayValue = (value) => {
+    if (value === null || value === undefined) return null;
+    const strValue = String(value).trim();
+    return strValue && strValue !== 'N/A' ? strValue : null;
   };
 
-  const opponentName = getPlayerName(parsed?.opponent_id);
-  const receiverId = parsed?.receiver || activeEvent.receiver || activeEvent.receiverName;
-  const receiverNameTooltip = getPlayerName(receiverId);
+  const resolveServerPlayerName = (serverName, fallbackId) => (
+    normalizeDisplayValue(serverName) || normalizeDisplayValue(fallbackId)
+  );
+
+  const opponentId = parsed?.opponent_id ?? activeEvent.opponent_id;
+  const opponentName = resolveServerPlayerName(parsed?.opponent_name ?? activeEvent.opponent_name, opponentId);
+  const receiverId = parsed?.receiver ?? activeEvent.receiver_id ?? activeEvent.receiver;
+  const receiverNameTooltip = resolveServerPlayerName(
+    parsed?.receiver_name ?? activeEvent.receiver_name ?? activeEvent.receiverName,
+    receiverId
+  );
   
   const isProgressive = parsed?.is_progressive;
   const rawDuelWon = parsed?.duel_won === true || parsed?.duel_won === 'true';

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { 
   Activity, 
   Zap, 
@@ -14,11 +14,13 @@ import MultiSelectWithChips from '../ui/MultiSelectWithChips';
 import AsyncMultiSelect from './AsyncMultiSelect';
 import TacticalPositionPicker from './TacticalPositionPicker';
 import DualRangeSlider from '../ui/DualRangeSlider';
+import { OPTAVISION_API_URL } from '../../config';
 
 const DISTANCE_RANGE_MIN = 0;
 const DISTANCE_RANGE_MAX = 80;
 const TIME_RANGE_MIN = 0;
 const TIME_RANGE_MAX = 130;
+const TEAM_SEARCH_ENDPOINT = `${OPTAVISION_API_URL}/api/optavision/teams`;
 const TIME_PRESETS = [
   { label: 'Tout', hint: '0-130', start: 0, end: 130, periods: [] },
   { label: '1H', hint: '0-45', start: 0, end: 45, periods: [1] },
@@ -60,21 +62,12 @@ const ExplorationFilterPanel = ({
   phasesList = [],
   stadiumsList = [],
   advancedMetricsList = [],
-  teamsList = [], 
   filters, 
   onFilterChange, 
   onClose 
 }) => {
   const [openSection, setOpenSection] = useState('primary');
 
-  // Règle d'Or : Mapping des noms explicites (Résolution des IDs en labels lisibles)
-  const teamMap = useMemo(() => {
-    const map = {};
-    teamsList.forEach(t => { map[t.id] = t.name; });
-    return map;
-  }, [teamsList]);
-
-  
   // BOUCLIER ANTI-SPAM : État local pour les modifications en cours
   const [pendingFilters, setPendingFilters] = useState({ ...filters });
 
@@ -99,6 +92,13 @@ const ExplorationFilterPanel = ({
       [key]: uniqueValues,
       [oppositeKey]: (prev[oppositeKey] || []).filter(position => !uniqueValues.includes(position))
     }));
+  };
+
+  const selectedTeamId = (value) => (value && value !== 'ALL' ? [value] : []);
+
+  const updateSingleTeamFilter = (key, selectedIds) => {
+    const nextId = selectedIds.length > 0 ? selectedIds[selectedIds.length - 1] : 'ALL';
+    setPendingFilters({ ...pendingFilters, [key]: nextId });
   };
 
   const passDistanceMin = pendingFilters.pass_distance_min ?? DISTANCE_RANGE_MIN;
@@ -333,33 +333,29 @@ const ExplorationFilterPanel = ({
 
             <div className="h-px bg-white/5 my-4" />
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-3">
-                <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Équipe (Focus)</label>
-                <select 
-                  value={pendingFilters.localTeam || 'ALL'} 
-                  onChange={(e) => setPendingFilters({ ...pendingFilters, localTeam: e.target.value })}
-                  className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white focus:border-[#3cffd0] outline-none transition-all cursor-pointer rounded-[2px]"
-                >
-                  <option value="ALL">TOUTES ÉQUIPES</option>
-                  {teamsList.map(team => (
-                    <option key={team.id} value={team.id}>{teamMap[team.id]?.toUpperCase() || team.id}</option>
-                  ))}
-                </select>
-              </div>
+              <AsyncMultiSelect
+                label="Equipe (Focus)"
+                selectedIds={selectedTeamId(pendingFilters.localTeam)}
+                onChange={(selectedIds) => updateSingleTeamFilter('localTeam', selectedIds)}
+                endpoint={TEAM_SEARCH_ENDPOINT}
+                cacheNamespace="teams"
+                fallbackLabel="Equipe"
+                emptyLabel="Aucune equipe trouvee"
+                maxSelected={1}
+                placeholder="Saisir 3 caracteres..."
+              />
 
-              <div className="space-y-3">
-                <label className="verge-label-mono text-[9px] text-[#949494] uppercase tracking-widest block font-black">Opposition</label>
-                <select 
-                  value={pendingFilters.localOpponent || 'ALL'} 
-                  onChange={(e) => setPendingFilters({ ...pendingFilters, localOpponent: e.target.value })}
-                  className="w-full bg-[#131313] border border-white/10 p-3 verge-label-mono text-[10px] text-white focus:border-[#ff4d4d] outline-none transition-all cursor-pointer rounded-[2px]"
-                >
-                  <option value="ALL">SANS FILTRE</option>
-                  {teamsList.map(team => (
-                    <option key={team.id} value={team.id}>VS {teamMap[team.id]?.toUpperCase() || team.id}</option>
-                  ))}
-                </select>
-              </div>
+              <AsyncMultiSelect
+                label="Opposition"
+                selectedIds={selectedTeamId(pendingFilters.localOpponent)}
+                onChange={(selectedIds) => updateSingleTeamFilter('localOpponent', selectedIds)}
+                endpoint={TEAM_SEARCH_ENDPOINT}
+                cacheNamespace="teams"
+                fallbackLabel="Equipe"
+                emptyLabel="Aucune equipe trouvee"
+                maxSelected={1}
+                placeholder="Saisir 3 caracteres..."
+              />
             </div>
           </div>
         </AccordionSection>

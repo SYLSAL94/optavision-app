@@ -5,24 +5,26 @@ import { OPTAVISION_API_URL } from '../../config';
 
 const DEFAULT_MIN_CHARS = 3;
 const DEFAULT_DEBOUNCE_MS = 300;
-const playerOptionCache = new Map();
+const asyncOptionCache = new Map();
 
 const normalizeId = (value) => (
   value === null || value === undefined ? '' : String(value)
 );
 
 const normalizeOption = (rawOption) => {
-  const id = normalizeId(rawOption?.id ?? rawOption?.player_id);
+  const id = normalizeId(rawOption?.id ?? rawOption?.player_id ?? rawOption?.team_id);
   if (!id) return null;
   return {
     id,
-    name: rawOption?.name || rawOption?.playerName || id
+    name: rawOption?.name || rawOption?.playerName || rawOption?.teamName || id
   };
 };
 
-const rememberOptions = (options) => {
+const getOptionCacheKey = (scope, id) => `${scope}:${id}`;
+
+const rememberOptions = (options, scope) => {
   options.forEach((option) => {
-    if (option?.id) playerOptionCache.set(option.id, option);
+    if (option?.id) asyncOptionCache.set(getOptionCacheKey(scope, option.id), option);
   });
 };
 
@@ -32,8 +34,12 @@ const AsyncMultiSelect = ({
   onChange,
   placeholder = 'Saisir 3 caracteres...',
   endpoint = `${OPTAVISION_API_URL}/api/optavision/players`,
+  cacheNamespace,
+  fallbackLabel = 'Joueur',
+  emptyLabel = 'Aucun joueur trouve',
   minChars = DEFAULT_MIN_CHARS,
-  debounceMs = DEFAULT_DEBOUNCE_MS
+  debounceMs = DEFAULT_DEBOUNCE_MS,
+  maxSelected = null
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [dropdownRect, setDropdownRect] = useState(null);
@@ -53,9 +59,10 @@ const AsyncMultiSelect = ({
   ), [selectedIds]);
 
   const selectedIdSet = useMemo(() => new Set(selectedIdList), [selectedIdList]);
+  const cacheScope = cacheNamespace || endpoint;
 
   const selectedOptions = selectedIdList.map((id) => (
-    playerOptionCache.get(id) || { id, name: `Joueur ${id}` }
+    asyncOptionCache.get(getOptionCacheKey(cacheScope, id)) || { id, name: `${fallbackLabel} ${id}` }
   ));
 
   useEffect(() => {
@@ -93,14 +100,14 @@ const AsyncMultiSelect = ({
           `${endpoint}${separator}q=${encodeURIComponent(trimmedQuery)}`,
           { signal: controller.signal }
         );
-        if (!response.ok) throw new Error(`PLAYERS_SEARCH_FAILURE: ${response.status}`);
+        if (!response.ok) throw new Error(`ASYNC_SEARCH_FAILURE: ${response.status}`);
 
         const payload = await response.json();
         const nextOptions = (Array.isArray(payload) ? payload : [])
           .map(normalizeOption)
           .filter(Boolean);
 
-        rememberOptions(nextOptions);
+        rememberOptions(nextOptions, cacheScope);
         setOptions(nextOptions);
         setOptionsQuery(trimmedQuery);
         setCacheVersion((version) => version + 1);
@@ -119,10 +126,10 @@ const AsyncMultiSelect = ({
       window.clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [query, isOpen, endpoint, minChars, debounceMs]);
+  }, [query, isOpen, endpoint, minChars, debounceMs, cacheScope]);
 
   const emitChange = (nextOptions) => {
-    rememberOptions(nextOptions);
+    rememberOptions(nextOptions, cacheScope);
     setCacheVersion((version) => version + 1);
     onChange?.(nextOptions.map((option) => option.id), nextOptions);
   };
@@ -133,7 +140,8 @@ const AsyncMultiSelect = ({
     if (selectedIdSet.has(option.id)) {
       emitChange(selectedOptions.filter((selected) => selected.id !== option.id));
     } else {
-      emitChange([...selectedOptions, option]);
+      const nextOptions = maxSelected === 1 ? [option] : [...selectedOptions, option];
+      emitChange(nextOptions);
     }
 
     setQuery('');
@@ -156,7 +164,7 @@ const AsyncMultiSelect = ({
     }
     if (loading || !hasFreshOptions) return 'Recherche...';
     if (error) return error;
-    return 'Aucun joueur trouve';
+    return emptyLabel;
   };
 
   return (

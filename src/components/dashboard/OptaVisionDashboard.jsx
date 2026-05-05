@@ -728,9 +728,6 @@ const OptaVisionDashboard = ({ user }) => {
           : [];
         setTeamsList(teamObjects);
 
-        if (meta.matches?.length > 0 && explorationFilters.matches.length === 0) {
-          setExplorationFilters(prev => ({ ...prev, matches: [meta.matches[0].id] }));
-        }
       } catch (err) {
         console.error("META_FETCH_ERROR:", err);
       }
@@ -739,6 +736,8 @@ const OptaVisionDashboard = ({ user }) => {
   }, []);
 
   useEffect(() => {
+    if (!activeTool) return;
+
     // On charge les événements de base même en mode séquences pour le cache spatial (Zero-Download)
     if (activeTool === 'ranking') return;
     if (activeTool === 'chainboard') return;
