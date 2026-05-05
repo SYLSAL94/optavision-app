@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { ChevronLeft, ChevronRight, Info, Target, PlayCircle, Loader2, Download, Database, ListPlus } from 'lucide-react';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import { Info, PlayCircle, Loader2, Download, Database, ListPlus } from 'lucide-react';
+import { computeShotMap, ShotMapStaticSvg, shotMapRecipes } from '@withqwerty/campos-react';
 import GoalFrameSVG from './GoalFrameSVG';
 
 import { TacticalPitch } from './TacticalPitch';
 import { usePitchProjection, PITCH_DIMENSIONS as GLOBAL_DIMENSIONS } from '../../hooks/usePitchProjection';
-import { EventMapMarker } from './EventMapMarker';
 
 const normalizeShotToAttackingGoal = (event) => {
   const x = Number(event?.x);
@@ -15,7 +15,7 @@ const normalizeShotToAttackingGoal = (event) => {
   return { x, y };
 };
 
-export const calculateShotDistance = (event) => {
+const calculateShotDistance = (event) => {
   const normalized = normalizeShotToAttackingGoal(event);
   if (!normalized) return null;
   const { x, y } = normalized;
@@ -98,7 +98,242 @@ const formatMetric = (value, digits = 2) => {
   return Number.isFinite(numeric) ? numeric.toFixed(digits) : '-';
 };
 
-const ShotMapLayer = ({ shots, focusedShot, onShotFocus, projectPoint }) => {
+const CAMPOS_SHOTMAP_CONFIG = {
+  ...shotMapRecipes.statsbomb.props,
+  colorScale: 'turbo',
+  crop: 'half',
+  attackingDirection: 'up',
+  side: 'attack',
+};
+
+const CAMPOS_PITCH_EXPORT_STYLE = {
+  pitchPreset: 'dark',
+  pitchColors: {
+    fill: '#101010',
+    lines: '#3a3a3a',
+    markings: '#333333',
+  },
+};
+
+const toFiniteNumber = (value, fallback = null) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const toCamposPeriod = (value) => {
+  const period = toFiniteNumber(value, 1);
+  if (period >= 1 && period <= 5) return period;
+  return 1;
+};
+
+const deriveCamposOutcome = (shot, metrics) => {
+  const typeId = Number(shot?.type_id);
+  const status = String(shot?.shot_status || metrics?.shot_status || shot?.type_name || shot?.type || '').trim().toLowerCase();
+  if (shot?.isGoal === true || typeId === 16 || status.includes('goal')) return 'goal';
+  if (typeId === 15 || status.includes('saved') || status.includes('arret')) return 'saved';
+  if (status.includes('blocked') || status.includes('bloque')) return 'blocked';
+  if (typeId === 14 || status.includes('post') || status.includes('woodwork') || status.includes('poteau')) return 'hit-woodwork';
+  if (typeId === 13 || status.includes('missed') || status.includes('off target') || status.includes('manque')) return 'off-target';
+  return 'other';
+};
+
+const deriveCamposBodyPart = (bodyPartName, metrics) => {
+  const raw = String(bodyPartName || '').toLowerCase();
+  if (raw.includes('head') || raw.includes('tete') || raw.includes('tÃªte') || hasMetricFlag(metrics, 'is_shot_head')) return 'head';
+  if (raw.includes('left') || raw.includes('gauche') || hasMetricFlag(metrics, 'is_shot_left_footed')) return 'left-foot';
+  if (raw.includes('right') || raw.includes('droit') || hasMetricFlag(metrics, 'is_shot_right_footed')) return 'right-foot';
+  return 'other';
+};
+
+const deriveCamposContext = (metrics) => {
+  if (hasMetricFlag(metrics, 'is_shot_penalty')) return 'penalty';
+  if (hasMetricFlag(metrics, 'is_shot_direct_free_kick') || hasMetricFlag(metrics, 'is_shot_free_kick')) return 'direct-free-kick';
+  if (hasMetricFlag(metrics, 'is_shot_from_corner')) return 'from-corner';
+  if (hasMetricFlag(metrics, 'is_shot_fast_break')) return 'fast-break';
+  if (hasMetricFlag(metrics, 'is_shot_set_piece')) return 'set-piece';
+  return 'regular-play';
+};
+
+const toCamposShot = (shot) => {
+  const normalized = normalizeShotToAttackingGoal(shot);
+  if (!normalized) return null;
+
+  const metrics = parseAdvancedMetrics(shot);
+  const shotId = String(shot.opta_id ?? shot.id ?? `${shot.match_id || 'match'}-${shot.min ?? shot.minute ?? 0}-${shot.x}-${shot.y}`);
+  const xg = toFiniteNumber(shot.xG ?? shot.xg, null);
+  const xgot = toFiniteNumber(shot.xGOT ?? shot.xgot ?? shot.psxg, null);
+  const goalMouthY = toFiniteNumber(firstMetric(shot, metrics, ['goal_mouth_y', 'goalMouthY']), null);
+  const goalMouthZ = toFiniteNumber(firstMetric(shot, metrics, ['goal_mouth_z', 'goalMouthZ']), null);
+
+  return {
+    kind: 'shot',
+    id: shotId,
+    matchId: String(shot.match_id ?? shot.matchId ?? 'unknown-match'),
+    teamId: String(shot.team_id ?? shot.teamId ?? 'unknown-team'),
+    playerId: shot.player_id ?? shot.playerId ?? null,
+    playerName: shot.playerName || shot.player_name || null,
+    minute: toFiniteNumber(shot.minute ?? shot.min, 0),
+    addedMinute: toFiniteNumber(shot.addedMinute ?? shot.added_minute, null),
+    second: toFiniteNumber(shot.second ?? shot.sec, 0),
+    period: toCamposPeriod(shot.period ?? shot.period_id),
+    x: normalized.x,
+    y: normalized.y,
+    xg,
+    xgot,
+    outcome: deriveCamposOutcome(shot, metrics),
+    bodyPart: deriveCamposBodyPart(shot.body_part_name || shot.bodyPart, metrics),
+    isOwnGoal: String(shot.type_name || shot.type || '').toLowerCase().includes('own goal'),
+    isPenalty: hasMetricFlag(metrics, 'is_shot_penalty'),
+    context: deriveCamposContext(metrics),
+    provider: 'opta',
+    providerEventId: shotId,
+    ...(goalMouthY !== null ? { goalMouthY } : {}),
+    ...(goalMouthZ !== null ? { goalMouthZ } : {}),
+    sourceMeta: {
+      optaId: shot.opta_id ?? shot.id ?? null,
+      status: shot.shot_status ?? metrics.shot_status ?? null,
+    },
+  };
+};
+
+const polygonPoints = (cx, cy, r, sides, rotation = -Math.PI / 2) => (
+  Array.from({ length: sides }).map((_, index) => {
+    const angle = rotation + (index / sides) * Math.PI * 2;
+    return `${cx + Math.cos(angle) * r},${cy + Math.sin(angle) * r}`;
+  }).join(' ')
+);
+
+const CamposShotGlyph = ({ cx, cy, marker, isFocused, isDimmed, title, onClick }) => {
+  const radius = (marker?.visualSize || 1) * (isFocused ? 1.28 : 1);
+  const fill = marker?.fill || '#ff4d4d';
+  const stroke = isFocused ? '#ffffff' : (marker?.stroke || '#ffffff');
+  const fillOpacity = isDimmed ? 0.25 : (marker?.fillOpacity ?? 0.9);
+  const strokeWidth = isFocused ? 0.48 : (marker?.outlineKey === 'goal' ? 0.36 : 0.24);
+  const shape = marker?.shapeKey || 'circle';
+  const commonProps = {
+    fill,
+    fillOpacity,
+    stroke,
+    strokeWidth,
+    className: 'transition-all duration-300',
+  };
+
+  const glyph = (() => {
+    if (shape === 'square') {
+      return (
+        <rect
+          x={cx - radius}
+          y={cy - radius}
+          width={radius * 2}
+          height={radius * 2}
+          rx={radius * 0.18}
+          {...commonProps}
+        />
+      );
+    }
+    if (shape === 'triangle') {
+      return <polygon points={polygonPoints(cx, cy, radius * 1.25, 3)} {...commonProps} />;
+    }
+    if (shape === 'diamond') {
+      return <polygon points={polygonPoints(cx, cy, radius * 1.2, 4, 0)} {...commonProps} />;
+    }
+    if (shape === 'hexagon') {
+      return <polygon points={polygonPoints(cx, cy, radius * 1.12, 6)} {...commonProps} />;
+    }
+    return <circle cx={cx} cy={cy} r={radius} {...commonProps} />;
+  })();
+
+  return (
+    <g
+      className="cursor-pointer pointer-events-auto"
+      opacity={isDimmed ? 0.55 : 1}
+      style={{ filter: isFocused ? 'drop-shadow(0 0 4px rgba(255,255,255,0.65))' : 'none' }}
+      onClick={onClick}
+    >
+      {title && <title>{title}</title>}
+      {marker?.outlineKey === 'goal' && (
+        <circle
+          cx={cx}
+          cy={cy}
+          r={radius + 0.9}
+          fill="transparent"
+          stroke="#3cffd0"
+          strokeWidth="0.18"
+          strokeOpacity={isFocused ? 0.85 : 0.55}
+          className="pointer-events-none"
+        />
+      )}
+      {glyph}
+    </g>
+  );
+};
+
+const LegendShapeSwatch = ({ shapeKey, color = '#949494' }) => {
+  const cx = 7;
+  const cy = 7;
+  const r = 4.2;
+  if (shapeKey === 'square') return <svg width="14" height="14"><rect x="3" y="3" width="8" height="8" rx="1" fill={color} /></svg>;
+  if (shapeKey === 'triangle') return <svg width="14" height="14"><polygon points={polygonPoints(cx, cy, r, 3)} fill={color} /></svg>;
+  if (shapeKey === 'diamond') return <svg width="14" height="14"><polygon points={polygonPoints(cx, cy, r, 4, 0)} fill={color} /></svg>;
+  if (shapeKey === 'hexagon') return <svg width="14" height="14"><polygon points={polygonPoints(cx, cy, r, 6)} fill={color} /></svg>;
+  return <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: color }} />;
+};
+
+const CamposShotLegend = ({ model, sizeModel }) => {
+  if (!model) return null;
+  const headerItems = model.headerStats?.items || [];
+  const scaleBar = model.scaleBar;
+  const sizeScale = sizeModel?.sizeScale;
+  const legendGroups = model.legend?.groups || [];
+
+  return (
+    <div className="px-6 py-3 border-b border-white/5 bg-black/10 flex flex-wrap items-center gap-x-6 gap-y-3 z-10">
+      {headerItems.map(item => (
+        <div key={item.label} className="flex items-center gap-2">
+          <span className="verge-label-mono text-[7px] text-[#666] uppercase tracking-[0.22em]">{item.label}</span>
+          <span className="verge-label-mono text-[10px] text-white font-black tabular-nums">{item.value}</span>
+        </div>
+      ))}
+
+      {scaleBar && (
+        <div className="flex items-center gap-2 min-w-[170px]">
+          <span className="verge-label-mono text-[7px] text-[#666] uppercase tracking-[0.22em]">{scaleBar.label}</span>
+          <div
+            className="h-2 flex-1 rounded-full border border-white/10"
+            style={{ background: `linear-gradient(90deg, ${scaleBar.stops.map(stop => `${stop.color} ${stop.offset * 100}%`).join(', ')})` }}
+          />
+          <span className="verge-label-mono text-[7px] text-[#949494]">{scaleBar.domain[1]}</span>
+        </div>
+      )}
+
+      {sizeScale && (
+        <div className="flex items-center gap-2">
+          <span className="verge-label-mono text-[7px] text-[#666] uppercase tracking-[0.22em]">{sizeScale.label} size</span>
+          {sizeScale.samples.slice(0, 4).map(sample => (
+            <span key={sample.xg} className="flex items-center gap-1">
+              <span
+                className="inline-block rounded-full bg-white/30 border border-white/20"
+                style={{ width: `${Math.max(5, sample.size * 4)}px`, height: `${Math.max(5, sample.size * 4)}px` }}
+              />
+              <span className="verge-label-mono text-[7px] text-[#949494]">{Number(sample.xg).toFixed(2)}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {legendGroups.flatMap(group => group.items.map(item => (
+        <div key={`${group.kind}-${item.key}`} className="flex items-center gap-1.5">
+          {group.kind === 'shape'
+            ? <LegendShapeSwatch shapeKey={item.key} color="#949494" />
+            : <span className="inline-block h-2.5 w-2.5 rounded-full border border-white/20" style={{ background: item.color || '#949494' }} />}
+          <span className="verge-label-mono text-[7px] text-[#949494] uppercase tracking-[0.18em]">{item.label}</span>
+        </div>
+      )))}
+    </div>
+  );
+};
+
+const ShotMapLayer = ({ shots, focusedShot, onShotFocus, projectPoint, markerByShotId = new Map() }) => {
   const focusedShotId = focusedShot ? (focusedShot.opta_id ?? focusedShot.id) : null;
   
   const renderShot = (shot, index, isFocused) => {
@@ -107,17 +342,16 @@ const ShotMapLayer = ({ shots, focusedShot, onShotFocus, projectPoint }) => {
     if (!position) return null;
 
     const isDimmed = focusedShotId !== null && !isFocused;
+    const marker = shot.campos_shot ? markerByShotId.get(shot.campos_shot.id) : null;
 
     return (
-      <EventMapMarker
+      <CamposShotGlyph
         key={shot.id || shot.opta_id || index}
-        event={shot}
         cx={position.x}
         cy={position.y}
+        marker={marker}
         isFocused={isFocused}
         isDimmed={isDimmed}
-        className="cursor-pointer"
-        style={{ filter: isFocused ? 'drop-shadow(0 0 4px rgba(255,255,255,0.6))' : 'none' }}
         title={`${shot.playerName || 'Joueur'} - ${shot.type_name || 'Tir'}`}
         onClick={(e) => {
           e.stopPropagation();
@@ -172,7 +406,7 @@ const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, onAddToPlayl
         const bodyPart = deriveBodyPart(shot, metrics);
         const shotTags = deriveShotTags(metrics);
 
-        return {
+        const enrichedShot = {
           ...shot,
           advanced_metrics: metrics,
           xG: xG !== null ? Number(xG) : null,
@@ -184,8 +418,36 @@ const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, onAddToPlayl
           isGoal: isGoalShot({ ...shot, advanced_metrics: metrics, shot_status: shotStatus }),
           shotDistance: calculateShotDistance(shot),
         };
+
+        return {
+          ...enrichedShot,
+          campos_shot: toCamposShot(enrichedShot),
+        };
       });
   }, [data]);
+
+  const camposShots = useMemo(() => shotData.map(shot => shot.campos_shot).filter(Boolean), [shotData]);
+
+  const camposShotMapModel = useMemo(() => computeShotMap({
+    shots: camposShots,
+    ...CAMPOS_SHOTMAP_CONFIG,
+  }), [camposShots]);
+
+  const camposSizeScaleModel = useMemo(() => computeShotMap({
+    shots: camposShots,
+    preset: 'opta',
+    crop: 'half',
+    attackingDirection: 'up',
+    side: 'attack',
+  }), [camposShots]);
+
+  const camposMarkerByShotId = useMemo(() => {
+    const map = new Map();
+    (camposShotMapModel.plot?.markers || []).forEach(marker => {
+      map.set(marker.shotId, marker);
+    });
+    return map;
+  }, [camposShotMapModel]);
 
   // --- MOTEUR DE VIRTUALISATION (Optimisation Shot Map) ---
   const scrollContainerRef = useRef(null);
@@ -209,8 +471,11 @@ const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, onAddToPlayl
   }, [scrollTop, shotData]);
 
   useEffect(() => {
-    setFocusedShot(null);
-    if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0;
+    const frame = window.requestAnimationFrame(() => {
+      setFocusedShot(null);
+      if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0;
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [data]);
 
   const handleFocusedShotVideo = async () => {
@@ -222,6 +487,32 @@ const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, onAddToPlayl
     } finally {
       setGeneratingEventId(null);
     }
+  };
+
+  const handleExportShotMapSvg = async () => {
+    if (camposShots.length === 0) return;
+    const { renderToStaticMarkup } = await import('react-dom/server');
+    const svgMarkup = renderToStaticMarkup(
+      <ShotMapStaticSvg
+        shots={camposShots}
+        {...CAMPOS_SHOTMAP_CONFIG}
+        {...CAMPOS_PITCH_EXPORT_STYLE}
+        showShotTrajectory={false}
+        markers={{
+          strokeWidth: ({ marker }) => (marker.outlineKey === 'goal' ? 0.55 : 0.32),
+          opacity: 0.94,
+        }}
+      />
+    );
+    const blob = new Blob([`<?xml version="1.0" encoding="UTF-8"?>${svgMarkup}`], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `optavision-shotmap-${Date.now()}.svg`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -243,6 +534,13 @@ const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, onAddToPlayl
             </div>
           </div>
           <div className="flex items-center gap-4">
+            <div
+              className="flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-[2px] border border-white/5"
+              title={shotMapRecipes.statsbomb.description}
+            >
+              <Info size={12} className="text-[#3cffd0]" />
+              <span className="verge-label-mono text-[8px] text-[#949494] uppercase font-black">Campos</span>
+            </div>
             <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-[2px] border border-white/5">
               <div className="w-1.5 h-1.5 rounded-full bg-[#3cffd0]" />
               <span className="verge-label-mono text-[8px] text-[#949494] uppercase font-black">Buts</span>
@@ -254,8 +552,19 @@ const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, onAddToPlayl
             <div className="verge-label-mono text-[9px] text-white font-black bg-[#3cffd0]/10 px-3 py-1.5 rounded-[2px] border border-[#3cffd0]/20">
               {shotData.length} FRAPPES
             </div>
+            <button
+              type="button"
+              onClick={handleExportShotMapSvg}
+              disabled={camposShots.length === 0}
+              className="h-8 w-8 rounded-[2px] border border-white/10 bg-black/40 text-[#949494] flex items-center justify-center transition-all hover:border-[#3cffd0]/50 hover:text-[#3cffd0] disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Exporter la ShotMap Campos en SVG"
+            >
+              <Download size={14} />
+            </button>
           </div>
         </div>
+
+        <CamposShotLegend model={camposShotMapModel} sizeModel={camposSizeScaleModel} />
 
         <div className="flex-1 flex flex-col min-h-0 relative z-10 gap-0">
           {/* ZONE 2D TARGET (Intégration Premium) */}
@@ -289,6 +598,7 @@ const ShotMapExplorer = ({ data = [], loading = false, onPlayVideo, onAddToPlayl
                   focusedShot={focusedShot} 
                   onShotFocus={handleToggleShot}
                   projectPoint={projectPoint}
+                  markerByShotId={camposMarkerByShotId}
                 />
               </TacticalPitch>
             </div>
