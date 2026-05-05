@@ -698,7 +698,6 @@ const OptaVisionDashboard = ({ user }) => {
   const [weeksList, setWeeksList] = useState([]);
   const [countriesList, setCountriesList] = useState([]);
   const [phasesList, setPhasesList] = useState([]);
-  const [stadiumsList, setStadiumsList] = useState([]);
   const [advancedMetricsList, setAdvancedMetricsList] = useState([]);
 
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -716,7 +715,6 @@ const OptaVisionDashboard = ({ user }) => {
         setWeeksList(meta.weeks || []);
         setCountriesList(meta.countries || []);
         setPhasesList(meta.phases || []);
-        setStadiumsList(meta.stadiums || []);
         setAdvancedMetricsList(meta.advanced_metrics_keys || []);
         setAvailableNextActionTypes(meta.next_action_types || meta.action_types || []);
         setAvailablePreviousActionTypes(meta.previous_action_types || meta.action_types || []);
@@ -1230,7 +1228,6 @@ const OptaVisionDashboard = ({ user }) => {
                           weeksList={weeksList}
                           countriesList={countriesList}
                           phasesList={phasesList}
-                          stadiumsList={stadiumsList}
                           advancedMetricsList={advancedMetricsList}
                           teamsList={teamsList}
                           playersList={playersList}
@@ -1277,7 +1274,6 @@ const OptaVisionDashboard = ({ user }) => {
                         weeksList={weeksList}
                         countriesList={countriesList}
                         phasesList={phasesList}
-                        stadiumsList={stadiumsList}
                         advancedMetricsList={advancedMetricsList}
                         teamsList={teamsList}
                         filters={explorationFilters}
@@ -1295,7 +1291,6 @@ const OptaVisionDashboard = ({ user }) => {
                         weeksList={weeksList}
                         countriesList={countriesList}
                         phasesList={phasesList}
-                        stadiumsList={stadiumsList}
                         advancedMetricsList={advancedMetricsList}
                         teamsList={teamsList}
                         filters={explorationFilters}
@@ -1310,7 +1305,6 @@ const OptaVisionDashboard = ({ user }) => {
                         weeksList={weeksList}
                         countriesList={countriesList}
                         phasesList={phasesList}
-                        stadiumsList={stadiumsList}
                         teamsList={teamsList}
                         filters={explorationFilters}
                         onApply={(filters) => { 
@@ -1327,7 +1321,6 @@ const OptaVisionDashboard = ({ user }) => {
                         weeksList={weeksList}
                         countriesList={countriesList}
                         phasesList={phasesList}
-                        stadiumsList={stadiumsList}
                         filters={shotFilters}
                         onFilterChange={setShotFilters}
                         onApply={(nextFilters) => {

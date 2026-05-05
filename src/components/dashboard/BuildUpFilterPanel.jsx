@@ -29,7 +29,6 @@ const BuildUpFilterPanel = ({
   weeksList = [],
   countriesList = [],
   phasesList = [],
-  stadiumsList = [],
   filters,
   onApply, 
   onClose 

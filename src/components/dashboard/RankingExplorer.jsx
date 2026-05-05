@@ -37,6 +37,16 @@ const RankBadge = ({ rank }) => {
 };
 
 const RANKING_PAGE_SIZE = 12;
+const PLAYER_EVENTS_PAGE_SIZE = 10;
+const PLAYER_MAP_EVENTS_LIMIT = PLAYER_EVENTS_PAGE_SIZE * 5;
+
+const resolveRankingSortMetric = (nextFilters = {}) => {
+  const explicitSort = nextFilters.sort_by || nextFilters.sortBy || nextFilters.rankingSortBy || nextFilters.selectedAction;
+  if (explicitSort) {
+    return Array.isArray(explicitSort) ? explicitSort[0] : explicitSort;
+  }
+  return null;
+};
 
 const RankingExplorer = ({
   filters,
@@ -49,7 +59,6 @@ const RankingExplorer = ({
   weeksList = [],
   countriesList = [],
   phasesList = [],
-  stadiumsList = [],
   advancedMetricsList = [],
   teamsList = [],
   playersList = [],
@@ -73,7 +82,6 @@ const RankingExplorer = ({
   const [playerEventsLoading, setPlayerEventsLoading] = useState(false);
   const [playerEventsPage, setPlayerEventsPage] = useState(1);
   const [playerEventsTotal, setPlayerEventsTotal] = useState(0);
-  const PLAYER_EVENTS_PAGE_SIZE = 10;
 
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [playerEventsForMap, setPlayerEventsForMap] = useState([]);
@@ -101,6 +109,8 @@ const RankingExplorer = ({
       page: String(nextPage),
       limit: String(RANKING_PAGE_SIZE)
     });
+    const explicitSort = resolveRankingSortMetric(nextFilters);
+    if (explicitSort) params.set('sort_by', explicitSort);
     const url = `${OPTAVISION_API_URL}/api/optavision/ranking?${params.toString()}`;
 
     try {
@@ -161,11 +171,11 @@ const RankingExplorer = ({
     if (!playerId) return;
     setPlayerEventsForMapLoading(true);
     
-    // Pour la map, on veut TOUT (on met une limite haute de 1000 pour couvrir une session d'analyse)
+    // Fenetre spatiale bornee pour eviter l'hydratation massive du module Ranking.
     const drillDownFilters = { ...filters, player_id: [playerId] };
     const params = createExplorationSearchParams(drillDownFilters, {
       page: '1',
-      limit: '1000'
+      limit: String(PLAYER_MAP_EVENTS_LIMIT)
     });
     
     const url = `${OPTAVISION_API_URL}/api/optavision/events?${params.toString()}`;
@@ -658,7 +668,6 @@ const RankingExplorer = ({
                 weeksList={weeksList}
                 countriesList={countriesList}
                 phasesList={phasesList}
-                stadiumsList={stadiumsList}
                 advancedMetricsList={advancedMetricsList}
                 teamsList={teamsList}
                 playersList={playersList}

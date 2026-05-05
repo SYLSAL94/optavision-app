@@ -15,6 +15,7 @@ import { OPTAVISION_API_URL } from '../../config';
 
 const TEAM_SEARCH_ENDPOINT = `${OPTAVISION_API_URL}/api/optavision/teams`;
 const MATCH_SEARCH_ENDPOINT = `${OPTAVISION_API_URL}/api/optavision/matches`;
+const STADIUM_SEARCH_ENDPOINT = `${OPTAVISION_API_URL}/api/optavision/stadiums`;
 
 const DEFAULT_FILTERS = {
   outcomes: [],
@@ -110,7 +111,6 @@ const ShotMapFilterPanel = ({
   weeksList = [],
   countriesList = [],
   phasesList = [],
-  stadiumsList = [],
   filters,
   onFilterChange,
   onApply
@@ -259,12 +259,15 @@ const ShotMapFilterPanel = ({
                 onChange={(vals) => updateFilters({ phase: vals })}
                 placeholder="Selectionner..."
               />
-              <MultiSelectWithChips
+              <AsyncMultiSelect
                 label="Stades"
-                options={stadiumsList}
-                selected={pendingFilters.stadium || []}
-                onChange={(vals) => updateFilters({ stadium: vals })}
-                placeholder="Selectionner..."
+                selectedIds={pendingFilters.stadium || []}
+                onChange={(selectedIds) => updateFilters({ stadium: selectedIds })}
+                endpoint={STADIUM_SEARCH_ENDPOINT}
+                cacheNamespace="stadiums"
+                fallbackLabel="Stade"
+                emptyLabel="Aucun stade trouve"
+                placeholder="Saisir 3 caracteres..."
               />
             </div>
 

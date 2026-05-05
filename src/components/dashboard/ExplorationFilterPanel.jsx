@@ -22,6 +22,7 @@ const TIME_RANGE_MIN = 0;
 const TIME_RANGE_MAX = 130;
 const TEAM_SEARCH_ENDPOINT = `${OPTAVISION_API_URL}/api/optavision/teams`;
 const MATCH_SEARCH_ENDPOINT = `${OPTAVISION_API_URL}/api/optavision/matches`;
+const STADIUM_SEARCH_ENDPOINT = `${OPTAVISION_API_URL}/api/optavision/stadiums`;
 const TIME_PRESETS = [
   { label: 'Tout', hint: '0-130', start: 0, end: 130, periods: [] },
   { label: '1H', hint: '0-45', start: 0, end: 45, periods: [1] },
@@ -60,7 +61,6 @@ const ExplorationFilterPanel = ({
   weeksList = [],
   countriesList = [],
   phasesList = [],
-  stadiumsList = [],
   advancedMetricsList = [],
   filters, 
   onFilterChange, 
@@ -278,12 +278,15 @@ const ExplorationFilterPanel = ({
                 onChange={(vals) => setPendingFilters({ ...pendingFilters, phase: vals })} 
                 placeholder="Sélectionner..." 
               />
-              <MultiSelectWithChips 
-                label="Stades" 
-                options={stadiumsList} 
-                selected={pendingFilters.stadium || []} 
-                onChange={(vals) => setPendingFilters({ ...pendingFilters, stadium: vals })} 
-                placeholder="Sélectionner..." 
+              <AsyncMultiSelect
+                label="Stades"
+                selectedIds={pendingFilters.stadium || []}
+                onChange={(selectedIds) => setPendingFilters({ ...pendingFilters, stadium: selectedIds })}
+                endpoint={STADIUM_SEARCH_ENDPOINT}
+                cacheNamespace="stadiums"
+                fallbackLabel="Stade"
+                emptyLabel="Aucun stade trouve"
+                placeholder="Saisir 3 caracteres..."
               />
             </div>
 
