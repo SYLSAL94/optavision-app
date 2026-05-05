@@ -18,13 +18,12 @@ import AsyncMultiSelect from './AsyncMultiSelect';
 import { OPTAVISION_API_URL } from '../../config';
 
 const TEAM_SEARCH_ENDPOINT = `${OPTAVISION_API_URL}/api/optavision/teams`;
+const MATCH_SEARCH_ENDPOINT = `${OPTAVISION_API_URL}/api/optavision/matches`;
 
 /**
  * BuildUpFilterPanel - Squelette du panneau de filtrage latéral pour les séquences
  */
 const BuildUpFilterPanel = ({ 
-  matchIds, 
-  matchesList = [],
   competitionsList = [],
   seasonsList = [],
   weeksList = [],
@@ -117,15 +116,15 @@ const BuildUpFilterPanel = ({
           badge={(pendingFilters.matches?.length || 0) + (pendingFilters.competition?.length || 0)}
         >
           <div className="space-y-8">
-            <MultiSelectWithChips 
-              label="Sélection Matchs" 
-              options={matchesList.map(m => m.label)} 
-              selected={(pendingFilters.matches || []).map(id => matchesList.find(m => String(m.id) === String(id))?.label).filter(Boolean)} 
-              onChange={(labels) => {
-                const ids = labels.map(label => matchesList.find(m => m.label === label)?.id).filter(Boolean);
-                setPendingFilters({ ...pendingFilters, matches: ids });
-              }} 
-              placeholder="Sélectionner matchs..." 
+            <AsyncMultiSelect
+              label="Selection Matchs"
+              selectedIds={pendingFilters.matches || []}
+              onChange={(selectedIds) => setPendingFilters({ ...pendingFilters, matches: selectedIds })}
+              endpoint={MATCH_SEARCH_ENDPOINT}
+              cacheNamespace="matches"
+              fallbackLabel="Match"
+              emptyLabel="Aucun match trouve"
+              placeholder="Saisir 3 caracteres..."
             />
             <MultiSelectWithChips 
               label="Compétitions" 

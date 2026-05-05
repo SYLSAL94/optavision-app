@@ -14,6 +14,7 @@ import AsyncMultiSelect from './AsyncMultiSelect';
 import { OPTAVISION_API_URL } from '../../config';
 
 const TEAM_SEARCH_ENDPOINT = `${OPTAVISION_API_URL}/api/optavision/teams`;
+const MATCH_SEARCH_ENDPOINT = `${OPTAVISION_API_URL}/api/optavision/matches`;
 
 const DEFAULT_FILTERS = {
   outcomes: [],
@@ -104,7 +105,6 @@ const mergeFilters = (filters) => ({
 });
 
 const ShotMapFilterPanel = ({
-  matchesList = [],
   competitionsList = [],
   seasonsList = [],
   weeksList = [],
@@ -270,17 +270,15 @@ const ShotMapFilterPanel = ({
 
             <div className="h-px bg-white/5 my-4" />
 
-            <MultiSelectWithChips
+            <AsyncMultiSelect
               label="Selection Individuelle (Match)"
-              options={matchesList.map(m => m.label || m.id)}
-              selected={(pendingFilters.matches || []).map(id => matchesList.find(m => m.id === id)?.label || id)}
-              onChange={(vals) => {
-                const selectedIds = vals
-                  .map(val => matchesList.find(m => m.label === val || m.id === val)?.id)
-                  .filter(Boolean);
-                updateFilters({ matches: selectedIds });
-              }}
-              placeholder="Selectionner des matchs..."
+              selectedIds={pendingFilters.matches || []}
+              onChange={(selectedIds) => updateFilters({ matches: selectedIds })}
+              endpoint={MATCH_SEARCH_ENDPOINT}
+              cacheNamespace="matches"
+              fallbackLabel="Match"
+              emptyLabel="Aucun match trouve"
+              placeholder="Saisir 3 caracteres..."
             />
 
             <div className="h-px bg-white/5 my-4" />

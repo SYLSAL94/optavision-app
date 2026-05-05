@@ -12,11 +12,17 @@ const normalizeId = (value) => (
 );
 
 const normalizeOption = (rawOption) => {
-  const id = normalizeId(rawOption?.id ?? rawOption?.player_id ?? rawOption?.team_id);
+  const id = normalizeId(rawOption?.id ?? rawOption?.player_id ?? rawOption?.team_id ?? rawOption?.match_id);
   if (!id) return null;
   return {
     id,
-    name: rawOption?.name || rawOption?.playerName || rawOption?.teamName || id
+    name: rawOption?.name
+      || rawOption?.playerName
+      || rawOption?.teamName
+      || rawOption?.matchName
+      || rawOption?.label
+      || rawOption?.description
+      || id
   };
 };
 

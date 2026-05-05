@@ -21,6 +21,7 @@ const DISTANCE_RANGE_MAX = 80;
 const TIME_RANGE_MIN = 0;
 const TIME_RANGE_MAX = 130;
 const TEAM_SEARCH_ENDPOINT = `${OPTAVISION_API_URL}/api/optavision/teams`;
+const MATCH_SEARCH_ENDPOINT = `${OPTAVISION_API_URL}/api/optavision/matches`;
 const TIME_PRESETS = [
   { label: 'Tout', hint: '0-130', start: 0, end: 130, periods: [] },
   { label: '1H', hint: '0-45', start: 0, end: 45, periods: [1] },
@@ -51,7 +52,6 @@ const periodIdFromLabel = (label) => (
  * Hydrate automatiquement les filtres à partir de la prop eventsData.
  */
 const ExplorationFilterPanel = ({ 
-  matchesList = [], 
   availableActionTypes = [], 
   availableNextActionTypes = [],
   availablePreviousActionTypes = [],
@@ -215,7 +215,7 @@ const ExplorationFilterPanel = ({
               FILTRAGE CONTEXTUEL
             </h3>
             <p className="verge-label-mono text-[9px] text-[#3cffd0] mt-2 uppercase tracking-[0.2em] font-black">
-              {matchesList.length} MATCHS DÉTECTÉS
+              {pendingFilters.matches?.length || 0} MATCHS ACTIFS
             </p>
           </div>
           <button 
@@ -320,15 +320,15 @@ const ExplorationFilterPanel = ({
               </button>
             </div>
 
-            <MultiSelectWithChips 
-              label="Sélection Individuelle (Match)" 
-              options={matchesList.map(m => m.label || m.id)} 
-              selected={(pendingFilters.matches || []).map(id => matchesList.find(m => m.id === id)?.label || id)} 
-              onChange={(vals) => {
-                const selectedIds = vals.map(val => matchesList.find(m => m.label === val || m.id === val)?.id);
-                setPendingFilters({ ...pendingFilters, matches: selectedIds });
-              }} 
-              placeholder="Sélectionner des matchs..." 
+            <AsyncMultiSelect
+              label="Selection Individuelle (Match)"
+              selectedIds={pendingFilters.matches || []}
+              onChange={(selectedIds) => setPendingFilters({ ...pendingFilters, matches: selectedIds })}
+              endpoint={MATCH_SEARCH_ENDPOINT}
+              cacheNamespace="matches"
+              fallbackLabel="Match"
+              emptyLabel="Aucun match trouve"
+              placeholder="Saisir 3 caracteres..."
             />
 
             <div className="h-px bg-white/5 my-4" />

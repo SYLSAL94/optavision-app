@@ -342,7 +342,6 @@ const OptaVisionDashboard = ({ user }) => {
   const [buildupMeta, setBuildupMeta] = useState(DEFAULT_BUILDUP_META);
 
   // Auto-Discovery States
-  const [matchesList, setMatchesList] = useState([]);
   const [teamsList, setTeamsList] = useState([]);
   const playersList = React.useMemo(() => [], []);
   const [activeTab, setActiveTab] = useState('exploration');
@@ -711,7 +710,6 @@ const OptaVisionDashboard = ({ user }) => {
       try {
         const meta = await fetch(`${OPTAVISION_API_URL}/api/optavision/meta/summary`).then(r => r.json());
 
-        setMatchesList(meta.matches || []);
         setAvailableActionTypes(meta.action_types || []);
         setCompetitionsList(meta.competitions || []);
         setSeasonsList(meta.seasons || []);
@@ -1224,7 +1222,6 @@ const OptaVisionDashboard = ({ user }) => {
                         <RankingExplorer
                           filters={explorationFilters}
                           onFiltersChange={setExplorationFilters}
-                          matchesList={matchesList}
                           availableActionTypes={availableActionTypes}
                           availableNextActionTypes={availableNextActionTypes}
                           availablePreviousActionTypes={availablePreviousActionTypes}
@@ -1272,7 +1269,6 @@ const OptaVisionDashboard = ({ user }) => {
                   >
                     {activeTab === 'exploration' && (
                       <ExplorationFilterPanel
-                        matchesList={matchesList}
                         availableActionTypes={availableActionTypes}
                         availableNextActionTypes={availableNextActionTypes}
                         availablePreviousActionTypes={availablePreviousActionTypes}
@@ -1291,7 +1287,6 @@ const OptaVisionDashboard = ({ user }) => {
                     )}
                     {activeTab === 'ranking' && (
                       <ExplorationFilterPanel
-                        matchesList={matchesList}
                         availableActionTypes={availableActionTypes}
                         availableNextActionTypes={availableNextActionTypes}
                         availablePreviousActionTypes={availablePreviousActionTypes}
@@ -1310,8 +1305,6 @@ const OptaVisionDashboard = ({ user }) => {
                     )}
                     {activeTab === 'buildup' && (
                       <BuildUpFilterPanel 
-                        matchIds={explorationFilters.matches} 
-                        matchesList={matchesList}
                         competitionsList={competitionsList}
                         seasonsList={seasonsList}
                         weeksList={weeksList}
@@ -1329,7 +1322,6 @@ const OptaVisionDashboard = ({ user }) => {
                     )}
                     {activeTab === 'shots' && (
                       <ShotMapFilterPanel
-                        matchesList={matchesList}
                         competitionsList={competitionsList}
                         seasonsList={seasonsList}
                         weeksList={weeksList}

@@ -41,7 +41,6 @@ const RANKING_PAGE_SIZE = 12;
 const RankingExplorer = ({
   filters,
   onFiltersChange,
-  matchesList = [],
   availableActionTypes = [],
   availableNextActionTypes = [],
   availablePreviousActionTypes = [],
@@ -651,7 +650,6 @@ const RankingExplorer = ({
                 <X size={16} />
               </button>
               <ExplorationFilterPanel
-                matchesList={matchesList}
                 availableActionTypes={availableActionTypes}
                 availableNextActionTypes={availableNextActionTypes}
                 availablePreviousActionTypes={availablePreviousActionTypes}
