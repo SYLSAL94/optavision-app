@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import AccordionSection from './AccordionSection';
 import MultiSelectWithChips from '../ui/MultiSelectWithChips';
+import AsyncMultiSelect from './AsyncMultiSelect';
 
 const DEFAULT_FILTERS = {
   outcomes: [],
@@ -105,7 +106,6 @@ const ShotMapFilterPanel = ({
   countriesList = [],
   phasesList = [],
   stadiumsList = [],
-  playersList = [],
   filters,
   onFilterChange,
   onApply
@@ -273,17 +273,11 @@ const ShotMapFilterPanel = ({
 
             <div className="h-px bg-white/5 my-4" />
 
-            <MultiSelectWithChips
+            <AsyncMultiSelect
               label="Selection des Joueurs"
-              options={playersList.map(p => p.name)}
-              selected={(pendingFilters.player_id || []).map(id => playersList.find(p => String(p.id) === String(id))?.name).filter(Boolean)}
-              onChange={(selectedNames) => {
-                const selectedIds = selectedNames
-                  .map(name => playersList.find(p => p.name === name)?.id)
-                  .filter(Boolean);
-                updateFilters({ player_id: selectedIds });
-              }}
-              placeholder="Rechercher des joueurs..."
+              selectedIds={pendingFilters.player_id || []}
+              onChange={(selectedIds) => updateFilters({ player_id: selectedIds })}
+              placeholder="Saisir 3 caracteres..."
             />
           </div>
         </AccordionSection>

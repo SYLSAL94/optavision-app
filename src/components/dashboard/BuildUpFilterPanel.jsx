@@ -14,13 +14,13 @@ import {
 } from 'lucide-react';
 import AccordionSection from './AccordionSection';
 import MultiSelectWithChips from '../ui/MultiSelectWithChips';
+import AsyncMultiSelect from './AsyncMultiSelect';
 
 /**
  * BuildUpFilterPanel - Squelette du panneau de filtrage latéral pour les séquences
  */
 const BuildUpFilterPanel = ({ 
   matchIds, 
-  playersList = [], 
   matchesList = [],
   competitionsList = [],
   seasonsList = [],
@@ -45,8 +45,8 @@ const BuildUpFilterPanel = ({
     starts_own: false,
     reaches_opp: false,
     silo: null,
-    involved_player_id: [],
-    excluded_player_id: []
+    involved_player_id: filters?.involved_player_id || [],
+    excluded_player_id: filters?.excluded_player_id || []
   });
 
   // Règle d'Or : Mapping des noms explicites
@@ -56,10 +56,6 @@ const BuildUpFilterPanel = ({
     return map;
   }, [teamsList]);
 
-  // ÉCOSYSTÈME JOUEURS : Mapping Bidirectionnel (UI Strings vs API IDs)
-  const playerNamesList = React.useMemo(() => playersList.map(p => p.name), [playersList]);
-  const playerNameMap = React.useMemo(() => Object.fromEntries(playersList.map(p => [p.name, p.id])), [playersList]);
-  const playerIdMap = React.useMemo(() => Object.fromEntries(playersList.map(p => [p.id, p.name])), [playersList]);
 
   const toggleSection = (id) => {
     setOpenSection(openSection === id ? null : id);
@@ -332,25 +328,17 @@ const BuildUpFilterPanel = ({
           subtitle="RÔLES INDIVIDUELS"
         >
           <div className="space-y-6">
-            <MultiSelectWithChips 
-              label="Joueurs Impliqués" 
-              options={playerNamesList} 
-              selected={(pendingFilters.involved_player_id || []).map(id => playerIdMap[id]).filter(Boolean)} 
-              onChange={(names) => {
-                const ids = names.map(name => playerNameMap[name]).filter(Boolean);
-                updateFilter('involved_player_id', ids);
-              }} 
-              placeholder="Chercher joueur..." 
+            <AsyncMultiSelect
+              label="Joueurs Impliques"
+              selectedIds={pendingFilters.involved_player_id || []}
+              onChange={(selectedIds) => updateFilter('involved_player_id', selectedIds)}
+              placeholder="Saisir 3 caracteres..."
             />
-            <MultiSelectWithChips 
-              label="Joueurs Exclus" 
-              options={playerNamesList} 
-              selected={(pendingFilters.excluded_player_id || []).map(id => playerIdMap[id]).filter(Boolean)} 
-              onChange={(names) => {
-                const ids = names.map(name => playerNameMap[name]).filter(Boolean);
-                updateFilter('excluded_player_id', ids);
-              }} 
-              placeholder="Chercher joueur..." 
+            <AsyncMultiSelect
+              label="Joueurs Exclus"
+              selectedIds={pendingFilters.excluded_player_id || []}
+              onChange={(selectedIds) => updateFilter('excluded_player_id', selectedIds)}
+              placeholder="Saisir 3 caracteres..."
             />
           </div>
         </AccordionSection>

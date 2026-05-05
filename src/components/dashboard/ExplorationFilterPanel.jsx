@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import AccordionSection from './AccordionSection';
 import MultiSelectWithChips from '../ui/MultiSelectWithChips';
+import AsyncMultiSelect from './AsyncMultiSelect';
 import TacticalPositionPicker from './TacticalPositionPicker';
 import DualRangeSlider from '../ui/DualRangeSlider';
 
@@ -60,7 +61,6 @@ const ExplorationFilterPanel = ({
   stadiumsList = [],
   advancedMetricsList = [],
   teamsList = [], 
-  playersList = [], 
   filters, 
   onFilterChange, 
   onClose 
@@ -408,15 +408,11 @@ const ExplorationFilterPanel = ({
               placeholder="Aucune exclusion" 
             />
 
-            <MultiSelectWithChips 
-              label="Sélection des Joueurs" 
-              options={playersList.map(p => p.name)} 
-              selected={(pendingFilters.players || []).map(id => playersList.find(p => p.id === id)?.name).filter(Boolean)} 
-              onChange={(selectedNames) => {
-                const selectedIds = selectedNames.map(name => playersList.find(p => p.name === name)?.id).filter(Boolean);
-                setPendingFilters({ ...pendingFilters, players: selectedIds });
-              }} 
-              placeholder="Rechercher des joueurs..." 
+            <AsyncMultiSelect
+              label="Selection des Joueurs"
+              selectedIds={pendingFilters.players || []}
+              onChange={(selectedIds) => setPendingFilters({ ...pendingFilters, players: selectedIds })}
+              placeholder="Saisir 3 caracteres..."
             />
           </div>
         </AccordionSection>
@@ -431,37 +427,25 @@ const ExplorationFilterPanel = ({
           badge={(pendingFilters.player_id?.length || 0) + (pendingFilters.receiver_id?.length || 0) + (pendingFilters.opponent_id?.length || 0)}
         >
           <div className="space-y-10">
-            <MultiSelectWithChips 
-              label="Joueur Focus / Passeur" 
-              options={playersList.map(p => p.name)} 
-              selected={(pendingFilters.player_id || []).map(id => playersList.find(p => p.id === id)?.name).filter(Boolean)} 
-              onChange={(selectedNames) => {
-                const selectedIds = selectedNames.map(name => playersList.find(p => p.name === name)?.id).filter(Boolean);
-                setPendingFilters({ ...pendingFilters, player_id: selectedIds });
-              }} 
-              placeholder="Rechercher des joueurs..." 
+            <AsyncMultiSelect
+              label="Joueur Focus / Passeur"
+              selectedIds={pendingFilters.player_id || []}
+              onChange={(selectedIds) => setPendingFilters({ ...pendingFilters, player_id: selectedIds })}
+              placeholder="Saisir 3 caracteres..."
             />
 
-            <MultiSelectWithChips 
-              label="Receveur" 
-              options={playersList.map(p => p.name)} 
-              selected={(pendingFilters.receiver_id || []).map(id => playersList.find(p => p.id === id)?.name).filter(Boolean)} 
-              onChange={(selectedNames) => {
-                const selectedIds = selectedNames.map(name => playersList.find(p => p.name === name)?.id).filter(Boolean);
-                setPendingFilters({ ...pendingFilters, receiver_id: selectedIds });
-              }} 
-              placeholder="Rechercher des receveurs..." 
+            <AsyncMultiSelect
+              label="Receveur"
+              selectedIds={pendingFilters.receiver_id || []}
+              onChange={(selectedIds) => setPendingFilters({ ...pendingFilters, receiver_id: selectedIds })}
+              placeholder="Saisir 3 caracteres..."
             />
 
-            <MultiSelectWithChips 
-              label="Adversaire de Duel" 
-              options={playersList.map(p => p.name)} 
-              selected={(pendingFilters.opponent_id || []).map(id => playersList.find(p => p.id === id)?.name).filter(Boolean)} 
-              onChange={(selectedNames) => {
-                const selectedIds = selectedNames.map(name => playersList.find(p => p.name === name)?.id).filter(Boolean);
-                setPendingFilters({ ...pendingFilters, opponent_id: selectedIds });
-              }} 
-              placeholder="Rechercher des adversaires..." 
+            <AsyncMultiSelect
+              label="Adversaire de Duel"
+              selectedIds={pendingFilters.opponent_id || []}
+              onChange={(selectedIds) => setPendingFilters({ ...pendingFilters, opponent_id: selectedIds })}
+              placeholder="Saisir 3 caracteres..."
             />
           </div>
         </AccordionSection>

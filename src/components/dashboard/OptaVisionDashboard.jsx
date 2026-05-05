@@ -334,7 +334,7 @@ const OptaVisionDashboard = ({ user }) => {
   // Auto-Discovery States
   const [matchesList, setMatchesList] = useState([]);
   const [teamsList, setTeamsList] = useState([]);
-  const [playersList, setPlayersList] = useState([]);
+  const playersList = React.useMemo(() => [], []);
   const [activeTab, setActiveTab] = useState('exploration');
   const [activeHubTab, setActiveHubTab] = useState('analysis');
   const showLegacyHub = false;
@@ -683,11 +683,7 @@ const OptaVisionDashboard = ({ user }) => {
   useEffect(() => {
     const fetchMeta = async () => {
       try {
-        const [meta, t, p] = await Promise.all([
-          fetch(`${OPTAVISION_API_URL}/api/optavision/meta/summary`).then(r => r.json()),
-          fetch(`${OPTAVISION_API_URL}/api/optavision/teams`).then(r => r.json()),
-          fetch(`${OPTAVISION_API_URL}/api/optavision/players`).then(r => r.json())
-        ]);
+        const meta = await fetch(`${OPTAVISION_API_URL}/api/optavision/meta/summary`).then(r => r.json());
 
         setMatchesList(meta.matches || []);
         setAvailableActionTypes(meta.action_types || []);
@@ -703,9 +699,8 @@ const OptaVisionDashboard = ({ user }) => {
         
         const teamObjects = meta.teams 
           ? Object.entries(meta.teams).map(([id, name]) => ({ id, name }))
-          : t;
+          : [];
         setTeamsList(teamObjects);
-        setPlayersList(p);
 
         if (meta.matches?.length > 0 && explorationFilters.matches.length === 0) {
           setExplorationFilters(prev => ({ ...prev, matches: [meta.matches[0].id] }));
@@ -1261,7 +1256,6 @@ const OptaVisionDashboard = ({ user }) => {
                         stadiumsList={stadiumsList}
                         advancedMetricsList={advancedMetricsList}
                         teamsList={teamsList}
-                        playersList={playersList}
                         filters={explorationFilters}
                         onFilterChange={setExplorationFilters}
                         onClose={() => setIsFilterOpen(false)}
@@ -1281,7 +1275,6 @@ const OptaVisionDashboard = ({ user }) => {
                         stadiumsList={stadiumsList}
                         advancedMetricsList={advancedMetricsList}
                         teamsList={teamsList}
-                        playersList={playersList}
                         filters={explorationFilters}
                         onFilterChange={setExplorationFilters}
                         onClose={() => setIsFilterOpen(false)}
@@ -1290,7 +1283,6 @@ const OptaVisionDashboard = ({ user }) => {
                     {activeTab === 'buildup' && (
                       <BuildUpFilterPanel 
                         matchIds={explorationFilters.matches} 
-                        playersList={playersList} 
                         matchesList={matchesList}
                         competitionsList={competitionsList}
                         seasonsList={seasonsList}
@@ -1315,7 +1307,6 @@ const OptaVisionDashboard = ({ user }) => {
                         countriesList={countriesList}
                         phasesList={phasesList}
                         stadiumsList={stadiumsList}
-                        playersList={playersList}
                         filters={shotFilters}
                         onFilterChange={setShotFilters}
                         onApply={(nextFilters) => {
