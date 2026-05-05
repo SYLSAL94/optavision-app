@@ -1,16 +1,32 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Activity, Clock, Hash, Zap, TrendingUp, Loader2, PlayCircle, ListPlus } from 'lucide-react';
 import EventExplorer from './EventExplorer';
 import { OPTAVISION_API_URL } from '../../config';
 
-const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], teamsList = [], advancedMetricsList = [], matchIds, onPlayVideo, onAddToPlaylist, isVideoLoading = false }) => {
+const BuildUpExplorer = ({
+  data = {},
+  loading = false,
+  playersList = [],
+  teamsList = [],
+  advancedMetricsList = [],
+  matchIds,
+  onPlayVideo,
+  onAddToPlaylist,
+  isVideoLoading = false,
+  pagination = {},
+  onPageChange,
+}) => {
   const [selectedSequence, setSelectedSequence] = useState(null);
   const [sequenceEvents, setSequenceEvents] = useState([]);
   const [sequenceLoading, setSequenceLoading] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
   const [loadingSequenceId, setLoadingSequenceId] = useState(null);
-  const itemsPerPage = 5; // Nombre de séquences par page pour garder un layout aéré
+  const currentPage = Number(pagination.page || 1);
+  const totalPages = Number(pagination.total_pages || pagination.totalPages || 0);
+  const hasMore = Boolean(pagination.has_more ?? pagination.hasMore);
+  const canGoPrevious = currentPage > 1 && !loading;
+  const canGoNext = !loading && (totalPages > 0 ? currentPage < totalPages : hasMore);
+  const showPagination = currentPage > 1 || canGoNext || totalPages > 1;
   
   // Mapping des noms d'équipes pour éradiquer les IDs parasites
   const teamMap = useMemo(() => {
@@ -29,6 +45,7 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], teamsLi
       ...seq,
       // Mapping pour la compatibilité avec la vue existante
       id: seq.seq_uuid || seq.sub_sequence_id,
+      shortId: String(seq.seq_uuid || seq.sub_sequence_id || '').split('-').pop(),
       matchName: seq.match_name || seq.match_id,
       matchDate: seq.match_date,
       teamName: teamMap[seq.team_id] || seq.team_id,
@@ -39,19 +56,12 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], teamsLi
       hasShot: toBool(seq.has_shot ?? seq.seq_has_shot),
       duration: seq.start_time && seq.end_time ? `${seq.start_time} - ${seq.end_time}` : "N/A"
     });
-    }).sort((a, b) => b.threatScore - a.threatScore);
+    });
   }, [data, teamMap]);
 
-  const totalPages = Math.ceil(sequences.length / itemsPerPage);
-  const paginatedSequences = useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage;
-    return sequences.slice(start, start + itemsPerPage);
-  }, [sequences, currentPage]);
-
-  // Reset page quand les données changent
-  React.useEffect(() => {
-    setCurrentPage(1);
-  }, [data]);
+  const sequenceTotalLabel = pagination.total !== null && pagination.total !== undefined
+    ? pagination.total
+    : `${sequences.length}${hasMore ? '+' : ''}`;
 
   /**
    * LAZY-LOADING : Fetch dédié des événements d'une séquence via la route /buildup/{seq_id}/events
@@ -60,12 +70,15 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], teamsLi
   const fetchSequenceEventsLazy = async (seq) => {
     const seqId = seq.sub_sequence_id;
     const matchId = seq.match_id || (Array.isArray(matchIds) ? matchIds[0] : matchIds);
-    if (!seqId) return [];
+    if (!seqId || !matchId) {
+      console.warn("BUILDUP_SEQUENCE_EVENTS_SKIPPED: match_id is required");
+      return [];
+    }
 
     setSequenceLoading(true);
     try {
       const params = new URLSearchParams();
-      if (matchId) params.append('match_id', matchId);
+      params.set('match_id', matchId);
       const url = `${OPTAVISION_API_URL}/api/optavision/buildup/${encodeURIComponent(seqId)}/events?${params.toString()}`;
       console.log("🌐 Lazy-Loading séquence :", url);
 
@@ -135,12 +148,12 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], teamsLi
               </div>
            </div>
            <div className="verge-label-mono text-[9px] text-[#949494] bg-white/5 px-4 py-2 rounded-[2px]">
-             {sequences.length} SÉQUENCES DÉTECTÉES
+             {sequenceTotalLabel} SÉQUENCES DÉTECTÉES
            </div>
         </div>
 
         <div className="flex-1 overflow-y-auto scrollbar-verge pr-4 space-y-4 pt-4">
-           {paginatedSequences.length > 0 ? paginatedSequences.map((seq, i) => (
+           {sequences.length > 0 ? sequences.map((seq, i) => (
              <motion.div 
                key={seq.id}
                initial={{ opacity: 0, y: 20 }}
@@ -171,7 +184,7 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], teamsLi
                          </span>
                          <div className="w-1 h-1 rounded-full bg-[#3cffd0]/50" />
                          <span className="verge-label-mono text-[8px] text-[#949494] uppercase tracking-tighter">
-                           Séquence #{seq.id.toString().slice(-4)}
+                           Séquence #{seq.shortId || seq.id}
                          </span>
                       </div>
                    </div>
@@ -250,21 +263,21 @@ const BuildUpExplorer = ({ data = {}, loading = false, playersList = [], teamsLi
         </div>
 
         {/* CONTROLES DE PAGINATION SIDEBAR */}
-        {totalPages > 1 && (
+        {showPagination && (
           <div className="flex items-center justify-between pt-8 border-t border-white/5">
              <button 
-               disabled={currentPage === 1}
-               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+               disabled={!canGoPrevious}
+               onClick={() => onPageChange?.(Math.max(1, currentPage - 1))}
                className="verge-label-mono text-[10px] text-[#949494] hover:text-white uppercase font-black disabled:opacity-20 transition-all flex items-center gap-2"
              >
                Précédent
              </button>
              <div className="verge-label-mono text-[9px] text-[#3cffd0] font-black tracking-widest">
-               PAGE {currentPage} / {totalPages}
+               PAGE {currentPage}{totalPages > 0 ? ` / ${totalPages}` : hasMore ? ' / ...' : ''}
              </div>
              <button 
-               disabled={currentPage === totalPages}
-               onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+               disabled={!canGoNext}
+               onClick={() => onPageChange?.(currentPage + 1)}
                className="verge-label-mono text-[10px] text-[#949494] hover:text-white uppercase font-black disabled:opacity-20 transition-all flex items-center gap-2"
              >
                Suivant

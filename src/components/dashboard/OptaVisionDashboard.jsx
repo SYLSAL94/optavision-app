@@ -54,6 +54,15 @@ import {
 
 const DEFAULT_VIDEO_TITLE = "OptaVision Elite Video Feed";
 const DEFAULT_VIDEO_CONFIG = { before_buffer: 3, after_buffer: 3, min_clip_gap: 3 };
+const DEFAULT_BUILDUP_META = {
+  page: 1,
+  limit: 50,
+  total: null,
+  total_pages: null,
+  has_more: false,
+  safety_mode: null,
+  count_strategy: null,
+};
 
 const readVideoConfig = () => {
   try {
@@ -330,6 +339,7 @@ const OptaVisionDashboard = ({ user }) => {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(50);
   const [totalEvents, setTotalEvents] = useState(0);
+  const [buildupMeta, setBuildupMeta] = useState(DEFAULT_BUILDUP_META);
 
   // Auto-Discovery States
   const [matchesList, setMatchesList] = useState([]);
@@ -614,11 +624,13 @@ const OptaVisionDashboard = ({ user }) => {
     setIsPlaylistModalOpen(true);
   };
 
-  const fetchBuildup = async (filters) => {
+  const fetchBuildup = async (filters, requestPage = page, requestLimit = limit) => {
     setLoading(true);
     setError(null);
 
     const params = new URLSearchParams();
+    params.set('page', requestPage.toString());
+    params.set('limit', Math.min(requestLimit, 100).toString());
     
     // 1. MACRO-ANALYSE : Support multi-matchs et contextes (Miroir Exploration)
     const matchIdsParam = Array.isArray(filters?.matches) ? filters.matches.join(',') : (filters?.matches || '');
@@ -654,10 +666,24 @@ const OptaVisionDashboard = ({ user }) => {
       const json = await response.json();
       console.log("🚨 RÉPONSE API BUILDUP :", json);
       setBuildupSequences(json.sequences || []);
+      setBuildupMeta({
+        page: json.page || requestPage,
+        limit: json.limit || requestLimit,
+        total: json.total ?? null,
+        total_pages: json.total_pages ?? null,
+        has_more: Boolean(json.has_more),
+        safety_mode: json.safety_mode || null,
+        count_strategy: json.count_strategy || null,
+      });
     } catch (err) {
       console.error("❌ ERREUR DE FETCH BUILDUP :", err);
       setError(err.message);
       setBuildupSequences([]);
+      setBuildupMeta({
+        ...DEFAULT_BUILDUP_META,
+        page: requestPage,
+        limit: requestLimit,
+      });
     } finally {
       setLoading(false);
     }
@@ -725,7 +751,7 @@ const OptaVisionDashboard = ({ user }) => {
     if (activeTool === 'formationviewer') return;
     if (activeTool === 'playlists') return;
     if (activeTool === 'sequences') {
-      Promise.resolve().then(() => fetchBuildup(explorationFilters));
+      Promise.resolve().then(() => fetchBuildup(explorationFilters, page, limit));
       return;
     }
     fetchEvents();
@@ -738,6 +764,7 @@ const OptaVisionDashboard = ({ user }) => {
   };
 
   const openHubModule = (module) => {
+    if (module.tool === 'sequences') setPage(1);
     setActiveTab(module.tab);
     setActiveTool(module.tool);
     setIsFilterOpen(false);
@@ -1133,6 +1160,8 @@ const OptaVisionDashboard = ({ user }) => {
                         <BuildUpExplorer 
                           data={{ sequences: buildupSequences }} 
                           loading={loading} 
+                          pagination={buildupMeta}
+                          onPageChange={setPage}
                           matchIds={explorationFilters.matches}
                           playersList={playersList}
                           teamsList={teamsList}
@@ -1293,6 +1322,7 @@ const OptaVisionDashboard = ({ user }) => {
                         teamsList={teamsList}
                         filters={explorationFilters}
                         onApply={(filters) => { 
+                          setPage(1);
                           setExplorationFilters(filters); 
                         }} 
                         onClose={() => setIsFilterOpen(false)} 
