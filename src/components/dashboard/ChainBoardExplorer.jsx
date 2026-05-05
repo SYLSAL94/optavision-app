@@ -4,6 +4,7 @@ import { Circle, Square, Trash2, Network, Loader2, PlayCircle, MapPin, Search, R
 import { OPTAVISION_API_URL } from '../../config';
 import { TacticalPitch } from './TacticalPitch';
 import { EventTooltip } from './EventTooltip';
+import { EventMarkerGlyph, EventPathTrace } from './EventMapMarker';
 import { usePitchProjection, PITCH_DIMENSIONS } from '../../hooks/usePitchProjection';
 
 const EMPTY_DRAW = { start: null, current: null };
@@ -70,8 +71,6 @@ const ChainBoardLayer = ({ chains, selectedChainId, focusedEventId, projectPoint
 
             const id = event.opta_id || event.id || `${chain.chain_id}-${eventIndex}`;
             const isFocused = String(id) === String(focusedEventId);
-            const type = eventType(event).replace(/\s+/g, '').toLowerCase();
-            const isCarry = type.includes('carry');
             const color = eventIndex === 0 ? '#3cffd0' : '#ffd03c';
 
             return (
@@ -89,37 +88,25 @@ const ChainBoardLayer = ({ chains, selectedChainId, focusedEventId, projectPoint
                 }}
               >
                 {end && (
-                  <line
-                    x1={start.x}
-                    y1={start.y}
-                    x2={end.x}
-                    y2={end.y}
-                    stroke={isFocused ? '#ffffff' : color}
-                    strokeWidth={isFocused ? 0.9 : 0.52}
-                    strokeDasharray={isCarry ? '1.2,0.9' : 'none'}
-                    markerEnd="url(#chainboard-arrow)"
-                    style={{ color: isFocused ? '#ffffff' : color }}
+                  <EventPathTrace
+                    event={event}
+                    start={start}
+                    end={end}
+                    isFocused={isFocused}
+                    colorOverride={color}
+                    opacity={isFocused ? 1 : 0.82}
                   />
                 )}
-                <circle
+                <EventMarkerGlyph
+                  event={event}
                   cx={start.x}
                   cy={start.y}
-                  r={isFocused ? 1.7 : 1.05}
-                  fill={isFocused ? '#ffffff' : color}
-                  stroke="#050505"
-                  strokeWidth="0.25"
+                  isFocused={isFocused}
+                  colorOverride={color}
+                  opacity={isFocused ? 1 : 0.82}
+                  showIndex
+                  index={eventIndex + 1}
                 />
-                <text
-                  x={start.x}
-                  y={start.y - 2.3}
-                  textAnchor="middle"
-                  fontSize="1.25"
-                  fill="#ffffff"
-                  fontWeight="900"
-                  className="pointer-events-none"
-                >
-                  {eventIndex + 1}
-                </text>
               </g>
             );
           })}

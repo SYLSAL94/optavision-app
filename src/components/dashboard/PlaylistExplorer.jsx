@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Database, Film, ListMusic, Loader2, Map, PlayCircle, RefreshCcw, Save, Scissors, Search, Shuffle, Trash2 } from 'lucide-react';
 import { TacticalPitch } from './TacticalPitch';
+import { EventMapMarker, EventPathTrace } from './EventMapMarker';
 import { usePitchProjection } from '../../hooks/usePitchProjection';
 import { API_BASE_URL, OPTAVISION_API_URL } from '../../config';
 import { pollVideoJob, pollVideoJobDetails } from '../../utils/videoJobs';
@@ -422,37 +423,24 @@ const PlaylistSpatialLayer = ({ items, selectedItem, onSelect, projectPoint }) =
           }}
         >
           {end && (
-            <line
-              x1={start.x}
-              y1={start.y}
-              x2={end.x}
-              y2={end.y}
-              stroke={color}
-              strokeWidth={selected ? 0.85 : 0.45}
-              strokeOpacity={selected ? 0.95 : 0.42}
-              strokeLinecap="round"
+            <EventPathTrace
+              event={item}
+              start={start}
+              end={end}
+              isFocused={selected}
+              colorOverride={color}
+              opacity={selected ? 0.95 : 0.42}
             />
           )}
-          <circle
+          <EventMapMarker
+            event={item}
             cx={start.x}
             cy={start.y}
-            r={selected ? 1.8 : 1.15}
-            fill={color}
-            fillOpacity={selected ? 1 : 0.74}
-            stroke={selected ? '#ffffff' : '#050505'}
-            strokeWidth={selected ? 0.45 : 0.25}
+            isFocused={selected}
+            colorOverride={color}
+            halo={selected}
+            opacity={selected ? 1 : 0.74}
           />
-          {selected && (
-            <circle
-              cx={start.x}
-              cy={start.y}
-              r="3"
-              fill="transparent"
-              stroke={color}
-              strokeWidth="0.28"
-              strokeOpacity="0.55"
-            />
-          )}
         </g>
       );
     })}

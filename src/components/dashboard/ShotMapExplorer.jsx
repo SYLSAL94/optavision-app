@@ -4,6 +4,7 @@ import GoalFrameSVG from './GoalFrameSVG';
 
 import { TacticalPitch } from './TacticalPitch';
 import { usePitchProjection, PITCH_DIMENSIONS as GLOBAL_DIMENSIONS } from '../../hooks/usePitchProjection';
+import { EventMapMarker } from './EventMapMarker';
 
 const normalizeShotToAttackingGoal = (event) => {
   const x = Number(event?.x);
@@ -108,24 +109,21 @@ const ShotMapLayer = ({ shots, focusedShot, onShotFocus, projectPoint }) => {
     const isDimmed = focusedShotId !== null && !isFocused;
 
     return (
-      <circle
+      <EventMapMarker
         key={shot.id || shot.opta_id || index}
+        event={shot}
         cx={position.x}
         cy={position.y}
-        r={isFocused ? 1.6 : 1}
-        fill={shot.isGoal ? "#3cffd0" : "#ff4d4d"}
-        fillOpacity={isDimmed ? 0.2 : 0.8}
-        stroke={isFocused ? "white" : "white"}
-        strokeWidth={isFocused ? 0.6 : 0.1}
-        className="cursor-pointer pointer-events-auto transition-all duration-300"
+        isFocused={isFocused}
+        isDimmed={isDimmed}
+        className="cursor-pointer"
+        style={{ filter: isFocused ? 'drop-shadow(0 0 4px rgba(255,255,255,0.6))' : 'none' }}
+        title={`${shot.playerName || 'Joueur'} - ${shot.type_name || 'Tir'}`}
         onClick={(e) => {
           e.stopPropagation();
           onShotFocus?.(shot);
         }}
-        style={{ filter: isFocused ? 'drop-shadow(0 0 4px rgba(255,255,255,0.6))' : 'none' }}
-      >
-        <title>{shot.playerName} - {shot.type_name}</title>
-      </circle>
+      />
     );
   };
 

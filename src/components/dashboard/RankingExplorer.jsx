@@ -6,6 +6,7 @@ import { TacticalPitch } from './TacticalPitch';
 import { usePitchProjection } from '../../hooks/usePitchProjection';
 import { OPTAVISION_API_URL } from '../../config';
 import { createExplorationSearchParams } from './optaFilterParams';
+import { EventMapMarker } from './EventMapMarker';
 
 const parseAdvancedMetrics = (event) => {
   let parsed = event?.advanced_metrics;
@@ -595,24 +596,14 @@ const RankingExplorer = ({
                     const point = projectPoint(e.x, e.y);
                     if (!point) return null;
                     return (
-                      <g key={e.opta_id || idx} className="group/dot">
-                        <circle 
-                          cx={point.x} 
-                          cy={point.y} 
-                          r="0.7" 
-                          fill={e.outcome === 1 ? '#3cffd0' : '#ff4d4d'} 
-                          className="opacity-80"
-                        />
-                        <circle 
-                          cx={point.x} 
-                          cy={point.y} 
-                          r="2.2" 
-                          fill="transparent" 
-                          stroke={e.outcome === 1 ? '#3cffd0' : '#ff4d4d'} 
-                          strokeWidth="0.1"
-                          className="opacity-10 group-hover/dot:opacity-100 transition-opacity"
-                        />
-                      </g>
+                      <EventMapMarker
+                        key={e.opta_id || idx}
+                        event={e}
+                        cx={point.x}
+                        cy={point.y}
+                        halo
+                        className="group/dot"
+                      />
                     );
                   })}
                 </TacticalPitch>
