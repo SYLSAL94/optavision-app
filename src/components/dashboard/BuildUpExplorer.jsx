@@ -134,12 +134,12 @@ const BuildUpExplorer = ({
 
 
   return (
-    <div className="w-full h-full bg-[#131313] overflow-hidden">
-      <div className="max-w-[1800px] mx-auto flex h-full w-full gap-8 animate-in fade-in zoom-in-95 duration-500 overflow-hidden p-8">
+    <div className="w-full h-[100dvh] max-h-[100dvh] min-h-0 bg-[#131313] overflow-hidden">
+      <div className="max-w-[1800px] mx-auto flex h-full max-h-full min-h-0 w-full gap-8 animate-in fade-in zoom-in-95 duration-500 overflow-hidden p-8">
       
       {/* LISTE DES SÉQUENCES */}
-      <div className="flex-1 flex flex-col gap-6 bg-[#1a1a1a] border border-white/10 rounded-[4px] p-10 overflow-hidden">
-        <div className="flex justify-between items-center border-b border-white/5 pb-8">
+      <div className="flex-1 min-h-0 flex flex-col gap-6 bg-[#1a1a1a] border border-white/10 rounded-[4px] p-10 overflow-hidden">
+        <div className="flex shrink-0 justify-between items-center border-b border-white/5 pb-8">
            <div className="flex items-center gap-6">
               <div className="w-1 h-8 bg-[#3cffd0]" />
               <div>
@@ -152,7 +152,7 @@ const BuildUpExplorer = ({
            </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto scrollbar-verge pr-4 space-y-4 pt-4">
+        <div className="min-h-0 flex-1 overflow-y-auto scrollbar-verge pr-4 space-y-4 pt-4">
            {sequences.length > 0 ? sequences.map((seq, i) => (
              <motion.div 
                key={seq.id}
@@ -264,7 +264,7 @@ const BuildUpExplorer = ({
 
         {/* CONTROLES DE PAGINATION SIDEBAR */}
         {showPagination && (
-          <div className="flex items-center justify-between pt-8 border-t border-white/5">
+          <div className="flex shrink-0 items-center justify-between pt-8 border-t border-white/5">
              <button 
                disabled={!canGoPrevious}
                onClick={() => onPageChange?.(Math.max(1, currentPage - 1))}
@@ -287,9 +287,9 @@ const BuildUpExplorer = ({
       </div>
 
       {/* MAP ET STATS GLOBALES */}
-      <div className="flex-[2] flex flex-col gap-6">
+      <div className="flex-[2] min-h-0 flex flex-col gap-6">
          {/* Carte Spatiale Isolée */}
-         <div className="flex-1 bg-[#1a1a1a] border border-white/10 rounded-[4px] overflow-hidden">
+         <div className="min-h-0 flex-1 bg-[#1a1a1a] border border-white/10 rounded-[4px] overflow-hidden">
             <EventExplorer 
               data={data} 
               isSequenceMode={true}
