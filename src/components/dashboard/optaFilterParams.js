@@ -40,6 +40,12 @@ export const appendExplorationFilterParams = (params, requestFilters = {}) => {
   if (requestFilters.advanced_tactics?.length > 0) params.append('advanced_tactics', requestFilters.advanced_tactics.join(','));
   if (requestFilters.include_technical === true) params.append('include_technical', 'true');
 
+  if (requestFilters.shot_distance_min !== null && requestFilters.shot_distance_min !== undefined) {
+    params.append('min_shot_distance', requestFilters.shot_distance_min.toString());
+  }
+  if (requestFilters.shot_distance_max !== null && requestFilters.shot_distance_max !== undefined) {
+    params.append('max_shot_distance', requestFilters.shot_distance_max.toString());
+  }
   if (requestFilters.pass_distance_min !== null && requestFilters.pass_distance_min !== undefined) {
     params.append('min_pass_distance', requestFilters.pass_distance_min.toString());
   }

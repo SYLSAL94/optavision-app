@@ -18,6 +18,8 @@ import { OPTAVISION_API_URL } from '../../config';
 
 const DISTANCE_RANGE_MIN = 0;
 const DISTANCE_RANGE_MAX = 80;
+const SHOT_DISTANCE_RANGE_MIN = 0;
+const SHOT_DISTANCE_RANGE_MAX = 45;
 const TIME_RANGE_MIN = 0;
 const TIME_RANGE_MAX = 130;
 const TEAM_SEARCH_ENDPOINT = `${OPTAVISION_API_URL}/api/optavision/teams`;
@@ -105,6 +107,8 @@ const ExplorationFilterPanel = ({
   const passDistanceMax = pendingFilters.pass_distance_max ?? DISTANCE_RANGE_MAX;
   const carryDistanceMin = pendingFilters.carry_distance_min ?? DISTANCE_RANGE_MIN;
   const carryDistanceMax = pendingFilters.carry_distance_max ?? DISTANCE_RANGE_MAX;
+  const shotDistanceMin = pendingFilters.shot_distance_min ?? SHOT_DISTANCE_RANGE_MIN;
+  const shotDistanceMax = pendingFilters.shot_distance_max ?? SHOT_DISTANCE_RANGE_MAX;
   const passDistanceActive = (
     pendingFilters.pass_distance_min !== null && pendingFilters.pass_distance_min !== undefined
   ) || (
@@ -114,6 +118,11 @@ const ExplorationFilterPanel = ({
     pendingFilters.carry_distance_min !== null && pendingFilters.carry_distance_min !== undefined
   ) || (
     pendingFilters.carry_distance_max !== null && pendingFilters.carry_distance_max !== undefined
+  );
+  const shotDistanceActive = (
+    pendingFilters.shot_distance_min !== null && pendingFilters.shot_distance_min !== undefined
+  ) || (
+    pendingFilters.shot_distance_max !== null && pendingFilters.shot_distance_max !== undefined
   );
   const timeStart = Number.isFinite(Number(pendingFilters.start_min)) ? Number(pendingFilters.start_min) : TIME_RANGE_MIN;
   const timeEnd = Number.isFinite(Number(pendingFilters.end_min)) ? Number(pendingFilters.end_min) : TIME_RANGE_MAX;
@@ -192,6 +201,8 @@ const ExplorationFilterPanel = ({
       pass_distance_max: null,
       carry_distance_min: null,
       carry_distance_max: null,
+      shot_distance_min: null,
+      shot_distance_max: null,
       include_technical: false
     };
     setPendingFilters(initial);
@@ -550,7 +561,7 @@ const ExplorationFilterPanel = ({
           icon={<Zap size={18} />}
           isOpen={openSection === 'performance'}
           onToggle={() => setOpenSection(openSection === 'performance' ? null : 'performance')}
-          badge={(pendingFilters.min_xt > 0 ? 1 : 0) + (pendingFilters.outcome !== null && pendingFilters.outcome !== undefined ? 1 : 0) + (pendingFilters.advanced_tactics?.length || 0) + (passDistanceActive ? 1 : 0) + (carryDistanceActive ? 1 : 0)}
+          badge={(pendingFilters.min_xt > 0 ? 1 : 0) + (pendingFilters.outcome !== null && pendingFilters.outcome !== undefined ? 1 : 0) + (pendingFilters.advanced_tactics?.length || 0) + (passDistanceActive ? 1 : 0) + (carryDistanceActive ? 1 : 0) + (shotDistanceActive ? 1 : 0)}
         >
           <div className="space-y-10">
             <FilterGroup label={`Seuil de Menace (xT >= ${pendingFilters.min_xt})`}>
@@ -568,6 +579,17 @@ const ExplorationFilterPanel = ({
             </FilterGroup>
 
             <div className="space-y-8">
+              <DualRangeSlider
+                label="Distance des tirs"
+                min={SHOT_DISTANCE_RANGE_MIN}
+                max={SHOT_DISTANCE_RANGE_MAX}
+                step={1}
+                unit="m"
+                currentMin={shotDistanceMin}
+                currentMax={shotDistanceMax}
+                onChange={(nextMin, nextMax) => updateDistanceRange('shot_distance_min', 'shot_distance_max', nextMin, nextMax)}
+              />
+
               <DualRangeSlider
                 label="Distance des passes"
                 min={DISTANCE_RANGE_MIN}
@@ -590,7 +612,7 @@ const ExplorationFilterPanel = ({
                 onChange={(nextMin, nextMax) => updateDistanceRange('carry_distance_min', 'carry_distance_max', nextMin, nextMax)}
               />
 
-              {(passDistanceActive || carryDistanceActive) && (
+              {(passDistanceActive || carryDistanceActive || shotDistanceActive) && (
                 <button
                   type="button"
                   onClick={() => setPendingFilters({
@@ -598,7 +620,9 @@ const ExplorationFilterPanel = ({
                     pass_distance_min: null,
                     pass_distance_max: null,
                     carry_distance_min: null,
-                    carry_distance_max: null
+                    carry_distance_max: null,
+                    shot_distance_min: null,
+                    shot_distance_max: null
                   })}
                   className="verge-label-mono text-[9px] text-[#949494] hover:text-white uppercase font-black transition-colors"
                 >
