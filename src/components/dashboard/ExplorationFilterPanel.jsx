@@ -50,6 +50,33 @@ const periodIdFromLabel = (label) => (
   PERIOD_OPTIONS.find(option => option.label === label)?.id
 );
 
+const normalizeAdvancedMetricGroups = (categorizedMetrics = {}, flatMetrics = []) => {
+  const flatSet = new Set(flatMetrics);
+  const seen = new Set();
+  const groups = Object.entries(categorizedMetrics || {}).reduce((acc, [category, metrics]) => {
+    const options = (Array.isArray(metrics) ? metrics : [])
+      .filter(metric => typeof metric === 'string')
+      .filter(metric => flatSet.size === 0 || flatSet.has(metric))
+      .filter(metric => {
+        if (seen.has(metric)) return false;
+        seen.add(metric);
+        return true;
+      });
+
+    if (options.length > 0) {
+      acc.push({ category, options });
+    }
+    return acc;
+  }, []);
+
+  const fallbackOptions = flatMetrics.filter(metric => !seen.has(metric));
+  if (fallbackOptions.length > 0) {
+    groups.push({ category: groups.length > 0 ? 'General' : 'JSONB', options: fallbackOptions });
+  }
+
+  return groups;
+};
+
 /**
  * ExplorationFilterPanel - Version Dynamique (Auto-Discovery)
  * Hydrate automatiquement les filtres à partir de la prop eventsData.
@@ -64,6 +91,7 @@ const ExplorationFilterPanel = ({
   countriesList = [],
   phasesList = [],
   advancedMetricsList = [],
+  categorizedAdvancedMetrics = {},
   filters, 
   onFilterChange, 
   onClose 
@@ -78,11 +106,28 @@ const ExplorationFilterPanel = ({
   };
 
   const updateDistanceRange = (minKey, maxKey, nextMin, nextMax) => {
-    const isFullRange = nextMin === DISTANCE_RANGE_MIN && nextMax === DISTANCE_RANGE_MAX;
+    const rangeMin = minKey === 'shot_distance_min' ? SHOT_DISTANCE_RANGE_MIN : DISTANCE_RANGE_MIN;
+    const rangeMax = maxKey === 'shot_distance_max' ? SHOT_DISTANCE_RANGE_MAX : DISTANCE_RANGE_MAX;
+    const isFullRange = nextMin === rangeMin && nextMax === rangeMax;
     setPendingFilters({
       ...pendingFilters,
       [minKey]: isFullRange ? null : nextMin,
       [maxKey]: isFullRange ? null : nextMax
+    });
+  };
+
+  const updateAdvancedTacticsGroup = (groupOptions, selectedValues) => {
+    const groupSet = new Set(groupOptions);
+    const currentValues = pendingFilters.advanced_tactics || [];
+    const valuesOutsideGroup = currentValues.filter(value => !groupSet.has(value));
+    const nextValues = [
+      ...valuesOutsideGroup,
+      ...selectedValues.filter(value => groupSet.has(value))
+    ];
+
+    setPendingFilters({
+      ...pendingFilters,
+      advanced_tactics: [...new Set(nextValues)]
     });
   };
 
@@ -128,6 +173,7 @@ const ExplorationFilterPanel = ({
   const timeEnd = Number.isFinite(Number(pendingFilters.end_min)) ? Number(pendingFilters.end_min) : TIME_RANGE_MAX;
   const selectedPeriods = (pendingFilters.period_id || []).map(Number).filter(Number.isFinite);
   const timeRangeActive = timeStart > TIME_RANGE_MIN || timeEnd < TIME_RANGE_MAX || selectedPeriods.length > 0;
+  const advancedMetricGroups = normalizeAdvancedMetricGroups(categorizedAdvancedMetrics, advancedMetricsList);
 
   const updateTimeRange = (nextStart, nextEnd) => {
     setPendingFilters({
@@ -653,13 +699,18 @@ const ExplorationFilterPanel = ({
                </div>
             </FilterGroup>
 
-            <MultiSelectWithChips 
-              label="Tactique Avancée (JSONB)" 
-              options={advancedMetricsList} 
-              selected={pendingFilters.advanced_tactics || []} 
-              onChange={(vals) => setPendingFilters({ ...pendingFilters, advanced_tactics: vals })} 
-              placeholder="Sélectionner..." 
-            />
+            <div className="space-y-8">
+              {advancedMetricGroups.map(({ category, options }) => (
+                <MultiSelectWithChips
+                  key={category}
+                  label={`Tactique Avancee - ${category}`}
+                  options={options}
+                  selected={(pendingFilters.advanced_tactics || []).filter(value => options.includes(value))}
+                  onChange={(vals) => updateAdvancedTacticsGroup(options, vals)}
+                  placeholder="Selectionner..."
+                />
+              ))}
+            </div>
           </div>
         </AccordionSection>
 

@@ -701,6 +701,7 @@ const OptaVisionDashboard = ({ user }) => {
   const [countriesList, setCountriesList] = useState([]);
   const [phasesList, setPhasesList] = useState([]);
   const [advancedMetricsList, setAdvancedMetricsList] = useState([]);
+  const [categorizedAdvancedMetrics, setCategorizedAdvancedMetrics] = useState({});
 
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState('profile');
@@ -718,6 +719,7 @@ const OptaVisionDashboard = ({ user }) => {
         setCountriesList(meta.countries || []);
         setPhasesList(meta.phases || []);
         setAdvancedMetricsList(meta.advanced_metrics_keys || []);
+        setCategorizedAdvancedMetrics(meta.categorized_advanced_metrics || {});
         setAvailableNextActionTypes(meta.next_action_types || meta.action_types || []);
         setAvailablePreviousActionTypes(meta.previous_action_types || meta.action_types || []);
         
@@ -1231,6 +1233,7 @@ const OptaVisionDashboard = ({ user }) => {
                           countriesList={countriesList}
                           phasesList={phasesList}
                           advancedMetricsList={advancedMetricsList}
+                          categorizedAdvancedMetrics={categorizedAdvancedMetrics}
                           teamsList={teamsList}
                           playersList={playersList}
                           onPlayVideo={handlePlaySingleVideo}
@@ -1277,6 +1280,7 @@ const OptaVisionDashboard = ({ user }) => {
                         countriesList={countriesList}
                         phasesList={phasesList}
                         advancedMetricsList={advancedMetricsList}
+                        categorizedAdvancedMetrics={categorizedAdvancedMetrics}
                         teamsList={teamsList}
                         filters={explorationFilters}
                         onFilterChange={setExplorationFilters}
@@ -1294,6 +1298,7 @@ const OptaVisionDashboard = ({ user }) => {
                         countriesList={countriesList}
                         phasesList={phasesList}
                         advancedMetricsList={advancedMetricsList}
+                        categorizedAdvancedMetrics={categorizedAdvancedMetrics}
                         teamsList={teamsList}
                         filters={explorationFilters}
                         onFilterChange={setExplorationFilters}
